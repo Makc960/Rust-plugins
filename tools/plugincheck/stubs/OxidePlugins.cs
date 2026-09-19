@@ -51,9 +51,8 @@ namespace Oxide.Plugins
         protected Timer timer = new Timer();
         protected Lang lang = new Lang();
 
-        public new string Name { get; set; }
-        public new string Title { get; set; }
-        public new bool IsLoaded { get; set; }
+        // Name/Title/IsLoaded наследуются от Plugin: отдельные new-свойства
+        // раздваивали бы состояние и ломали межплагинные проверки.
         public string Author { get; set; }
 
         protected virtual void LoadDefaultConfig() { }

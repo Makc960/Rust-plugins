@@ -2368,6 +2368,17 @@ namespace Oxide.Plugins
                 Button(c, UiRoot, "1 1", "1 1", "-186 -42", "-22 -12",
                     "servermenu.ui topback", Lang(player, "BackToTop"),
                     UiStyle.ChipActive, 11, UiStyle.ChipActiveText);
+
+                // Сброс статистики раньше жил в ServerMenu внутри DrawAccountProfile.
+                // Вместе с профилем он переехал сюда; саму команду по-прежнему
+                // исполняет ServerMenu, она приходит обратно в API_ResetAccountStats.
+                if (API_CanAdminReset(player))
+                {
+                    Button(c, UiRoot, "1 1", "1 1", "-368 -42", "-194 -12",
+                        "servermenu.ui accountreset " +
+                        a.UserId.ToString(CultureInfo.InvariantCulture),
+                        Lang(player, "ResetStats"), "#E0947ABF", 11, "#FFFFFF");
+                }
             }
 
             Panel(c, UiRoot, UiHead, "0 1", "1 1",
@@ -3087,6 +3098,7 @@ namespace Oxide.Plugins
                 ["TitleSelf"] = "МОЙ ПРОФИЛЬ",
                 ["TitleOther"] = "ПРОФИЛЬ ИГРОКА",
                 ["BackToTop"] = "НАЗАД К ТОПУ",
+                ["ResetStats"] = "СБРОСИТЬ СТАТИСТИКУ",
                 ["Level"] = "УРОВЕНЬ",
                 ["Wipes"] = "вайпов:",
 

@@ -18,7 +18,16 @@ namespace Oxide.Core
 
     public class PluginManager
     {
-        public Oxide.Core.Plugins.Plugin GetPlugin(string name) { return null; }
+        // Реестр, чтобы сквозной тест мог связать ServerMenu и AccountSystem
+        // так же, как это делает Oxide на сервере.
+        public readonly Dictionary<string, Oxide.Core.Plugins.Plugin> Plugins =
+            new Dictionary<string, Oxide.Core.Plugins.Plugin>();
+
+        public Oxide.Core.Plugins.Plugin GetPlugin(string name)
+        {
+            Oxide.Core.Plugins.Plugin plugin;
+            return name != null && Plugins.TryGetValue(name, out plugin) ? plugin : null;
+        }
     }
 
     public class OxideMod
@@ -81,9 +90,39 @@ namespace Oxide.Core
             public string Title { get; set; }
             public bool IsLoaded { get; set; }
             public VersionNumber Version { get; set; }
-            public object Call(string hook, params object[] args) { return null; }
-            public T Call<T>(string hook, params object[] args) { return default(T); }
-            public object CallHook(string hook, params object[] args) { return null; }
+
+            // Настоящая диспетчеризация: ищем метод по имени или по
+            // [HookMethod("...")], как это делает Oxide, и зовём его.
+            // Без этого межплагинные вызовы в тестах были бы немыми.
+            public object Call(string hook, params object[] args)
+            {
+                if (string.IsNullOrEmpty(hook)) return null;
+
+                int count = args == null ? 0 : args.Length;
+                const System.Reflection.BindingFlags any =
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic;
+
+                foreach (var method in GetType().GetMethods(any))
+                {
+                    var parameters = method.GetParameters();
+                    if (parameters.Length != count) continue;
+
+                    if (method.Name != hook) continue;
+                    return method.Invoke(this, args);
+                }
+
+                return null;
+            }
+
+            public T Call<T>(string hook, params object[] args)
+            {
+                object result = Call(hook, args);
+                return result is T ? (T)result : default(T);
+            }
+
+            public object CallHook(string hook, params object[] args) { return Call(hook, args); }
         }
 
         [AttributeUsage(AttributeTargets.Field)]
