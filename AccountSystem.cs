@@ -6,11 +6,12 @@ using System.Linq;
 using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Plugins;
+using Oxide.Game.Rust.Cui;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("AccountSystem", "ICE RUST", "1.1.0")]
+    [Info("AccountSystem", "ICE RUST", "1.2.0")]
     [Description("Persistent ICE RUST account progression with per-wipe, previous-wipe and lifetime statistics.")]
     public class AccountSystem : RustPlugin
     {
@@ -688,6 +689,8 @@ namespace Oxide.Plugins
 
         private void OnServerInitialized()
         {
+            RegisterMenuTab();
+
             foreach (BasePlayer player in BasePlayer.activePlayerList)
                 StartSession(player, false);
 
@@ -709,6 +712,7 @@ namespace Oxide.Plugins
             _expTopRankCache.Clear();
             _expTopCacheUntil = 0;
             _rankCacheUntil = 0;
+            UnregisterMenuTab();
         }
 
         private void OnServerSave()
@@ -1920,6 +1924,1317 @@ namespace Oxide.Plugins
         }
 
         #endregion
+
+        #region UiStyle
+
+        // Визуальный язык ICE RUST. Повторяет палитру и шрифты ServerMenu,
+        // чтобы встроенная вкладка не отличалась от остальных.
+        private static class UiStyle
+        {
+            public const string Bold = "robotocondensed-bold.ttf";
+            public const string Reg = "robotocondensed-regular.ttf";
+            public const string MatBlur = "assets/content/ui/uibackgroundblur.mat";
+
+            public const string Card = "1 1 1 0.045";
+            public const string CardDark = "0 0 0 0.16";
+            public const string Line = "1 1 1 0.07";
+            public const string Text = "#CEC5BB";
+            public const string Muted = "#7F7D7D";
+            public const string SubText = "#A39C96";
+            public const string Accent = "#65A30DBF";
+            public const string AccentSoft = "#65A30D59";
+            public const string Danger = "#E0947A";
+            public const string Positive = "#8FBF3F";
+            public const string Chip = "0 0 0 0.16";
+            public const string ChipActive = "#B2A9A3E6";
+            public const string ChipActiveText = "#45403B";
+
+            public static string Col(string hex)
+            {
+                if (string.IsNullOrEmpty(hex)) return "1 1 1 1";
+                if (!hex.StartsWith("#", StringComparison.Ordinal)) return hex;
+
+                Color color;
+                return ColorUtility.TryParseHtmlString(hex, out color)
+                    ? F(color.r) + " " + F(color.g) + " " + F(color.b) + " " + F(color.a)
+                    : "1 1 1 1";
+            }
+
+            public static bool Blur(string color)
+            {
+                return color == Card || color == Line;
+            }
+
+            public static string F(float value)
+            {
+                return value.ToString("0.###", CultureInfo.InvariantCulture);
+            }
+
+            public static string Safe(string text, int max)
+            {
+                if (string.IsNullOrEmpty(text)) return string.Empty;
+                text = text.Replace("\n", " ").Replace("\r", " ");
+                return text.Length <= max ? text : text.Substring(0, Math.Max(0, max - 1)) + "…";
+            }
+
+            public static string Num(long value)
+            {
+                return value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
+            }
+
+            public static string Num(double value)
+            {
+                return Math.Round(value).ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
+            }
+
+            public static string Percent(double fraction)
+            {
+                return Math.Round(fraction * 100d, 1).ToString("0.#", CultureInfo.InvariantCulture) + "%";
+            }
+
+            public static string Time(long seconds)
+            {
+                if (seconds <= 0) return "0м";
+                long days = seconds / 86400;
+                long hours = (seconds % 86400) / 3600;
+                long minutes = (seconds % 3600) / 60;
+                if (days > 0) return days + "д " + hours + "ч";
+                if (hours > 0) return hours + "ч " + minutes + "м";
+                return Math.Max(1, minutes) + "м";
+            }
+
+            public static string Date(long unix)
+            {
+                if (unix <= 0) return "—";
+                return DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime
+                    .ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture);
+            }
+
+            public static string Rich(string color, string value)
+            {
+                return "<color=" + color + ">" + value + "</color>";
+            }
+        }
+
+        private void Panel(CuiElementContainer c, string parent, string name,
+            string amin, string amax, string omin, string omax, string color)
+        {
+            var image = new CuiImageComponent { Color = UiStyle.Col(color) };
+            if (UiStyle.Blur(color)) image.Material = UiStyle.MatBlur;
+
+            c.Add(new CuiPanel
+            {
+                RectTransform = { AnchorMin = amin, AnchorMax = amax, OffsetMin = omin, OffsetMax = omax },
+                Image = image
+            }, parent, name, name);
+        }
+
+        private void Label(CuiElementContainer c, string parent,
+            string amin, string amax, string omin, string omax, string text,
+            int size = 12, string color = UiStyle.Text,
+            TextAnchor align = TextAnchor.MiddleLeft, string font = UiStyle.Bold)
+        {
+            c.Add(new CuiLabel
+            {
+                RectTransform = { AnchorMin = amin, AnchorMax = amax, OffsetMin = omin, OffsetMax = omax },
+                Text = { Text = text, Font = font, FontSize = size, Align = align, Color = UiStyle.Col(color) }
+            }, parent);
+        }
+
+        private void Button(CuiElementContainer c, string parent,
+            string amin, string amax, string omin, string omax,
+            string command, string text, string color, int size = 11, string textColor = UiStyle.Text)
+        {
+            var button = new CuiButton
+            {
+                RectTransform = { AnchorMin = amin, AnchorMax = amax, OffsetMin = omin, OffsetMax = omax },
+                Button = { Color = UiStyle.Col(color), Command = command ?? string.Empty },
+                Text =
+                {
+                    Text = text, Font = UiStyle.Bold, FontSize = size,
+                    Align = TextAnchor.MiddleCenter, Color = UiStyle.Col(textColor)
+                }
+            };
+
+            if (color != "0 0 0 0") button.Button.Material = UiStyle.MatBlur;
+            c.Add(button, parent);
+        }
+
+        // Горизонтальная полоса заполнения: используется и для прогресса уровня,
+        // и как столбик в графиках активности.
+        private void Progress(CuiElementContainer c, string parent, string name,
+            string amin, string amax, string omin, string omax, double fraction, string color)
+        {
+            Panel(c, parent, name, amin, amax, omin, omax, UiStyle.CardDark);
+
+            double value = fraction < 0d ? 0d : (fraction > 1d ? 1d : fraction);
+            if (value <= 0d) return;
+
+            Panel(c, name, name + ".Fill", "0 0", UiStyle.F((float)value) + " 1", "0 0", "0 0", color);
+        }
+
+        // Вертикальный столбик снизу вверх — для графиков по дням и часам.
+        private void Bar(CuiElementContainer c, string parent, string name,
+            string amin, string amax, string omin, string omax, double fraction, string color)
+        {
+            Panel(c, parent, name, amin, amax, omin, omax, UiStyle.CardDark);
+
+            double value = fraction < 0d ? 0d : (fraction > 1d ? 1d : fraction);
+            if (value <= 0d) return;
+
+            Panel(c, name, name + ".Fill", "0 0", "1 " + UiStyle.F((float)value), "0 0", "0 0", color);
+        }
+
+        private void Chip(CuiElementContainer c, string parent, string name,
+            float left, float width, float top, float height,
+            string command, string text, bool active)
+        {
+            Button(c, parent, "0 1", "0 1",
+                UiStyle.F(left) + " " + UiStyle.F(top - height),
+                UiStyle.F(left + width) + " " + UiStyle.F(top),
+                active ? string.Empty : command, text,
+                active ? UiStyle.ChipActive : UiStyle.Chip, 11,
+                active ? UiStyle.ChipActiveText : UiStyle.SubText);
+        }
+
+        private void Card(CuiElementContainer c, string parent, string name,
+            float left, float right, float top, float bottom, string title)
+        {
+            Panel(c, parent, name, "0 1", "0 1",
+                UiStyle.F(left) + " " + UiStyle.F(bottom),
+                UiStyle.F(right) + " " + UiStyle.F(top), UiStyle.Card);
+
+            if (string.IsNullOrEmpty(title)) return;
+
+            Label(c, name, "0 1", "1 1", "14 -26", "-14 -8", title, 11, UiStyle.Muted);
+            Panel(c, name, name + ".Line", "0 1", "1 1", "14 -30", "-14 -29", UiStyle.Line);
+        }
+
+        // Строка «подпись — значение» внутри карточки.
+        private void Row(CuiElementContainer c, string parent, string name, int index,
+            string title, string value, string valueColor)
+        {
+            float top = -34f - index * 22f;
+
+            Label(c, parent, "0 1", "0.62 1",
+                "14 " + UiStyle.F(top - 20f), "0 " + UiStyle.F(top),
+                title, 11, UiStyle.SubText, TextAnchor.MiddleLeft, UiStyle.Reg);
+
+            Label(c, parent, "0.38 1", "1 1",
+                "0 " + UiStyle.F(top - 20f), "-14 " + UiStyle.F(top),
+                value, 12, valueColor, TextAnchor.MiddleRight);
+        }
+
+        private void Row(CuiElementContainer c, string parent, string name, int index, string title, string value)
+        {
+            Row(c, parent, name, index, title, value, UiStyle.Text);
+        }
+
+        private void Empty(CuiElementContainer c, string parent, string name, string title, string description)
+        {
+            Label(c, parent, "0 0", "1 1", "0 18", "0 0", title, 15, UiStyle.Muted, TextAnchor.MiddleCenter);
+            Label(c, parent, "0 0", "1 1", "0 -14", "0 0", description, 11, UiStyle.SubText,
+                TextAnchor.MiddleCenter, UiStyle.Reg);
+        }
+
+        #endregion
+
+
+        #region ServerMenu tab
+
+        private const string MenuTabKey = "account";
+        private const string MenuHost = "ServerMenu.UI.Main";
+        private const string UiRoot = "AccountSystem.Profile";
+        private const string UiHead = UiRoot + ".Head";
+        private const string UiSwitch = UiRoot + ".Switch";
+        private const string UiBody = UiRoot + ".Body";
+
+        // Геометрия вкладки. Ширина совпадает с контейнером ServerMenu (StripW).
+        private const float PaneWidth = 1120f;
+        private const float Pad = 16f;
+        private const float HeadTop = -8f;
+        private const float HeadHeight = 96f;
+        private const float SwitchTop = HeadTop - HeadHeight - 10f;
+        private const float SwitchHeight = 62f;
+        private const float BodyTop = SwitchTop - SwitchHeight - 10f;
+        private const float BodyBottom = -572f;
+
+        private sealed class ViewState
+        {
+            public ulong Target;
+            public string Section = "summary";
+            public string Period = "wipe";
+            public bool FromTop;
+        }
+
+        private readonly Dictionary<ulong, ViewState> _views = new Dictionary<ulong, ViewState>();
+
+        private static readonly string[] SectionKeys =
+        {
+            "summary", "pvp", "weapons", "gather", "build", "pve", "activity"
+        };
+
+        private static readonly string[] PeriodKeys = { "wipe", "previous", "lifetime" };
+
+        private ViewState View(BasePlayer player)
+        {
+            ViewState state;
+            if (!_views.TryGetValue(player.userID, out state) || state == null)
+            {
+                _views[player.userID] = state = new ViewState();
+                state.Target = player.userID;
+            }
+            return state;
+        }
+
+        private void RegisterMenuTab()
+        {
+            if (!ServerMenuReady()) return;
+
+            object result = ServerMenu.Call("API_RegisterTab", this, MenuTabKey, "ПРОФИЛЬ", "", 12);
+            if (result is bool && (bool)result) return;
+
+            PrintWarning("ServerMenu отклонил регистрацию вкладки \"" + MenuTabKey +
+                         "\". Обнови ServerMenu: ключ должен быть убран из IsBuiltInTab.");
+        }
+
+        private void UnregisterMenuTab()
+        {
+            if (ServerMenuReady()) ServerMenu.Call("API_UnregisterTab", MenuTabKey);
+            _views.Clear();
+        }
+
+        private void OnPluginLoaded(Plugin plugin)
+        {
+            if (plugin != null && plugin.Name == "ServerMenu")
+                RegisterMenuTab();
+        }
+
+        [HookMethod("API_TabTitle")]
+        public string API_TabTitle(BasePlayer player)
+        {
+            return "ПРОФИЛЬ";
+        }
+
+        // Вызывается ServerMenu перед отрисовкой. mode — payload из API_OpenTab:
+        // SteamID64 открывает чужой профиль, пустая строка — свой.
+        [HookMethod("API_PrepareServerMenu")]
+        public void API_PrepareServerMenu(BasePlayer player, string mode)
+        {
+            if (!Human(player)) return;
+
+            ViewState state = View(player);
+            ulong target;
+
+            if (!string.IsNullOrEmpty(mode) && ulong.TryParse(mode, out target) && target.IsSteamId())
+            {
+                state.Target = target;
+                state.FromTop = target != player.userID;
+            }
+            else
+            {
+                state.Target = player.userID;
+                state.FromTop = false;
+            }
+
+            state.Section = "summary";
+            state.Period = "wipe";
+        }
+
+        [HookMethod("API_RenderServerMenu")]
+        public void API_RenderServerMenu(BasePlayer player)
+        {
+            if (!Human(player)) return;
+            DrawProfile(player, View(player), true);
+        }
+
+        [HookMethod("API_OnTabHidden")]
+        public void API_OnTabHidden(BasePlayer player)
+        {
+            if (player == null) return;
+            CuiHelper.DestroyUi(player, UiRoot);
+            _views.Remove(player.userID);
+        }
+
+        // Команды приходят как "servermenu.ui ext account <payload>".
+        [HookMethod("API_OnTabCommand")]
+        public void API_OnTabCommand(BasePlayer player, string payload)
+        {
+            if (!Human(player) || string.IsNullOrEmpty(payload)) return;
+
+            ViewState state = View(player);
+
+            int space = payload.IndexOf(' ');
+            string verb = space < 0 ? payload : payload.Substring(0, space);
+            string rest = space < 0 ? string.Empty : payload.Substring(space + 1).Trim();
+
+            if (verb == "sec" && IsKnown(SectionKeys, rest))
+            {
+                if (state.Section == rest) return;
+                state.Section = rest;
+                // Перерисовываем только переключатели и тело, шапка остаётся.
+                DrawProfile(player, state, false);
+                return;
+            }
+
+            if (verb == "per" && IsKnown(PeriodKeys, rest))
+            {
+                if (state.Period == rest) return;
+                state.Period = rest;
+                DrawProfile(player, state, false);
+            }
+        }
+
+        private static bool IsKnown(string[] keys, string value)
+        {
+            if (string.IsNullOrEmpty(value)) return false;
+            for (int i = 0; i < keys.Length; i++)
+                if (keys[i] == value) return true;
+            return false;
+        }
+
+        private static string Cmd(string verb, string argument)
+        {
+            return "servermenu.ui ext " + MenuTabKey + " " + verb + " " + argument;
+        }
+
+        #endregion
+
+
+        #region Profile rendering
+
+        // Колонки сетки: 16 + 352 + 16 + 352 + 16 + 352 + 16 = 1120.
+        private const float Col3 = 352f;
+        private const float Col2 = 536f;
+        private const float Col4 = 260f;
+
+        // Внутри UiBody отступы уже сняты, рабочая ширина 1088.
+        private static float ColX(int index, float width)
+        {
+            return index * (width + Pad);
+        }
+
+        private const float RowTop = 0f;
+        private const float RowMid = -168f;
+        private const float BodyHeight = 340f;
+
+        private void DrawProfile(BasePlayer player, ViewState state, bool full)
+        {
+            AccountData a = Resolve(state.Target);
+            var c = new CuiElementContainer();
+
+            if (full)
+            {
+                CuiHelper.DestroyUi(player, UiRoot);
+
+                Panel(c, MenuHost, UiRoot, "0 0", "1 1", "0 0", "0 0", "0 0 0 0");
+
+                if (a == null)
+                {
+                    Label(c, UiRoot, "0 1", "1 1", "22 -46", "-22 -12",
+                        state.FromTop ? Lang(player, "TitleOther") : Lang(player, "TitleSelf"),
+                        22, UiStyle.Text);
+                    Empty(c, UiRoot, UiRoot + ".Empty",
+                        Lang(player, "NoProfile"), Lang(player, "NoProfileHint"));
+                    CuiHelper.AddUi(player, c);
+                    return;
+                }
+
+                Normalize(a);
+                DrawHead(c, player, state, a);
+            }
+            else
+            {
+                if (a == null) return;
+                Normalize(a);
+                CuiHelper.DestroyUi(player, UiSwitch);
+                CuiHelper.DestroyUi(player, UiBody);
+            }
+
+            DrawSwitch(c, player, state);
+            DrawBody(c, player, state, a);
+
+            CuiHelper.AddUi(player, c);
+        }
+
+        private void DrawHead(CuiElementContainer c, BasePlayer player, ViewState state, AccountData a)
+        {
+            Label(c, UiRoot, "0 1", "0.6 1", "22 -40", "0 -10",
+                state.FromTop ? Lang(player, "TitleOther") : Lang(player, "TitleSelf"),
+                22, UiStyle.Text);
+
+            if (state.FromTop)
+            {
+                Button(c, UiRoot, "1 1", "1 1", "-186 -42", "-22 -12",
+                    "servermenu.ui topback", Lang(player, "BackToTop"),
+                    UiStyle.ChipActive, 11, UiStyle.ChipActiveText);
+            }
+
+            Panel(c, UiRoot, UiHead, "0 1", "1 1",
+                UiStyle.F(Pad) + " " + UiStyle.F(HeadTop - HeadHeight - 46f),
+                UiStyle.F(-Pad) + " " + UiStyle.F(HeadTop - 46f), UiStyle.Card);
+            Panel(c, UiHead, UiHead + ".Accent", "0 0", "0 1", "0 0", "4 0", UiStyle.Accent);
+
+            Panel(c, UiHead, UiHead + ".Avatar", "0 0.5", "0 0.5", "16 -30", "76 30", UiStyle.CardDark);
+            c.Add(new CuiElement
+            {
+                Parent = UiHead + ".Avatar",
+                Components =
+                {
+                    new CuiRawImageComponent
+                    {
+                        SteamId = a.UserId.ToString(CultureInfo.InvariantCulture),
+                        Color = "1 1 1 1"
+                    },
+                    new CuiRectTransformComponent
+                    {
+                        AnchorMin = "0 0", AnchorMax = "1 1", OffsetMin = "3 3", OffsetMax = "-3 -3"
+                    }
+                }
+            });
+
+            string identity =
+                "<size=17>" + UiStyle.Rich(UiStyle.Text, UiStyle.Safe(a.Name, 28)) + "</size>\n" +
+                "<size=10>" + UiStyle.Rich(UiStyle.Muted,
+                    "SteamID  " + a.UserId.ToString(CultureInfo.InvariantCulture)) + "</size>";
+            Label(c, UiHead, "0 0", "0 1", "90 0", "390 0", identity, 17, UiStyle.Text);
+
+            Panel(c, UiHead, UiHead + ".Sep", "0 0", "0 1", "404 14", "405 -14", UiStyle.Line);
+
+            long required = Math.Max(1, RequiredExp(a.Level));
+            double progress = Math.Min(1d, a.Exp / (double)required);
+
+            Label(c, UiHead, "0 1", "0 1", "424 -34", "700 -12",
+                UiStyle.Rich(UiStyle.Muted, "<size=10>" + Lang(player, "Level") + "</size>") + "   " +
+                "<size=17>" + UiStyle.Rich(UiStyle.Text, a.Level.ToString(CultureInfo.InvariantCulture)) + "</size>" +
+                "   " + UiStyle.Rich(UiStyle.SubText, "<size=10>" +
+                    UiStyle.Num(a.Exp) + " / " + UiStyle.Num(required) + " EXP</size>"),
+                12, UiStyle.Text);
+
+            Progress(c, UiHead, UiHead + ".Exp", "0 1", "0 1", "424 -46", "700 -38",
+                progress, UiStyle.Accent);
+
+            Label(c, UiHead, "0 1", "0 1", "424 -68", "700 -50",
+                UiStyle.Rich(UiStyle.Muted, "<size=10>" + Lang(player, "InGame") + "</size>") + "   " +
+                UiStyle.Rich(UiStyle.SubText, UiStyle.Time(EffectivePlaySeconds(a.UserId, a))) +
+                UiStyle.Rich(UiStyle.Muted, "   <size=10>" + Lang(player, "Wipes") + " " +
+                    a.WipesPlayed.ToString(CultureInfo.InvariantCulture) + "</size>"),
+                11, UiStyle.SubText, TextAnchor.MiddleLeft, UiStyle.Reg);
+
+            DrawHeadRanks(c, a);
+        }
+
+        private void DrawHeadRanks(CuiElementContainer c, AccountData a)
+        {
+            EnsureRankCache();
+
+            string total = _rankTotal > 0 ? " / " + _rankTotal.ToString(CultureInfo.InvariantCulture) : "";
+            DrawRankChip(c, 0, "УБИЙСТВА", RankOf(_rankKills, a.UserId), total);
+            DrawRankChip(c, 1, "K/D", RankOf(_rankKd, a.UserId), total);
+            DrawRankChip(c, 2, "ДОБЫЧА", RankOf(_rankGathered, a.UserId), total);
+            DrawRankChip(c, 3, "ВРЕМЯ", RankOf(_rankTime, a.UserId), total);
+            DrawRankChip(c, 4, "УРОВЕНЬ", RankOf(_rankLevel, a.UserId), total);
+        }
+
+        private void DrawRankChip(CuiElementContainer c, int index, string title, int rank, string total)
+        {
+            float right = -16f - (4 - index) * 108f;
+            string name = UiHead + ".Rank" + index.ToString(CultureInfo.InvariantCulture);
+
+            Panel(c, UiHead, name, "1 0.5", "1 0.5",
+                UiStyle.F(right) + " -30", UiStyle.F(right + 100f) + " 30", UiStyle.CardDark);
+
+            Label(c, name, "0 0.5", "1 1", "0 -4", "0 -8", title, 9, UiStyle.Muted, TextAnchor.UpperCenter);
+            Label(c, name, "0 0", "1 0.5", "0 6", "0 8",
+                rank > 0 ? "#" + rank.ToString(CultureInfo.InvariantCulture) + UiStyle.Rich(UiStyle.Muted,
+                    "<size=9>" + total + "</size>") : "—",
+                15, rank > 0 && rank <= 3 ? UiStyle.Positive : UiStyle.Text, TextAnchor.LowerCenter);
+        }
+
+        private void DrawSwitch(CuiElementContainer c, BasePlayer player, ViewState state)
+        {
+            Panel(c, UiRoot, UiSwitch, "0 1", "1 1",
+                UiStyle.F(Pad) + " " + UiStyle.F(SwitchTop - SwitchHeight - 46f),
+                UiStyle.F(-Pad) + " " + UiStyle.F(SwitchTop - 46f), "0 0 0 0");
+
+            // Период: вайп / прошлый вайп / всё время.
+            float x = 0f;
+            for (int i = 0; i < PeriodKeys.Length; i++)
+            {
+                string key = PeriodKeys[i];
+                float width = i == 0 ? 96f : (i == 1 ? 150f : 116f);
+                Chip(c, UiSwitch, UiSwitch + ".P" + i, x, width, 0f, 26f,
+                    Cmd("per", key), Lang(player, "Period_" + key), state.Period == key);
+                x += width + 6f;
+            }
+
+            Panel(c, UiSwitch, UiSwitch + ".Line", "0 1", "1 1", "0 -32", "0 -31", UiStyle.Line);
+
+            // Подвкладки.
+            x = 0f;
+            for (int i = 0; i < SectionKeys.Length; i++)
+            {
+                string key = SectionKeys[i];
+                string text = Lang(player, "Section_" + key);
+                float width = 46f + text.Length * 7.4f;
+                Chip(c, UiSwitch, UiSwitch + ".S" + i, x, width, -36f, 26f,
+                    Cmd("sec", key), text, state.Section == key);
+                x += width + 6f;
+            }
+        }
+
+        private void DrawBody(CuiElementContainer c, BasePlayer player, ViewState state, AccountData a)
+        {
+            Panel(c, UiRoot, UiBody, "0 1", "1 1",
+                UiStyle.F(Pad) + " " + UiStyle.F(BodyBottom),
+                UiStyle.F(-Pad) + " " + UiStyle.F(BodyTop - 46f), "0 0 0 0");
+
+            StatLayer layer = LayerOf(a, state.Period);
+
+            if (state.Period == "previous" && IsLayerEmpty(layer))
+            {
+                Empty(c, UiBody, UiBody + ".Empty",
+                    Lang(player, "NoPrevious"), Lang(player, "NoPreviousHint"));
+                return;
+            }
+
+            switch (state.Section)
+            {
+                case "pvp": DrawSectionPvp(c, player, a, layer); break;
+                case "weapons": DrawSectionWeapons(c, player, a, layer); break;
+                case "gather": DrawSectionGather(c, player, a, layer); break;
+                case "build": DrawSectionBuild(c, player, a, layer); break;
+                case "pve": DrawSectionPve(c, player, a, layer); break;
+                case "activity": DrawSectionActivity(c, player, a, layer); break;
+                default: DrawSectionSummary(c, player, a, layer); break;
+            }
+        }
+
+        private static bool IsLayerEmpty(StatLayer layer)
+        {
+            return layer.PlayerKills == 0 && layer.Deaths == 0 && layer.PlaySeconds == 0 &&
+                   layer.GatheredTotal == 0 && layer.LootContainers == 0 &&
+                   layer.BuildingPiecesPlaced == 0 && layer.NpcKills == 0;
+        }
+
+        #endregion
+
+
+        #region Profile sections
+
+        private void DrawSectionSummary(CuiElementContainer c, BasePlayer player, AccountData a, StatLayer layer)
+        {
+            string n1 = UiBody + ".Sum1";
+            Card(c, UiBody, n1, ColX(0, Col3), ColX(0, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardCombat"));
+            Row(c, n1, n1, 0, Lang(player, "Kills"), UiStyle.Num(layer.PlayerKills));
+            Row(c, n1, n1, 1, Lang(player, "Deaths"), UiStyle.Num(layer.Deaths));
+            Row(c, n1, n1, 2, "K/D", Math.Round(KdOf(layer), 2).ToString("0.##", CultureInfo.InvariantCulture),
+                KdOf(layer) >= 1d ? UiStyle.Positive : UiStyle.Danger);
+            Row(c, n1, n1, 3, Lang(player, "Assists"), UiStyle.Num(layer.Assists));
+            Row(c, n1, n1, 4, Lang(player, "BestStreak"), UiStyle.Num(layer.BestKillStreak));
+
+            string n2 = UiBody + ".Sum2";
+            Card(c, UiBody, n2, ColX(1, Col3), ColX(1, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardShooting"));
+            Row(c, n2, n2, 0, Lang(player, "Shots"), UiStyle.Num(layer.ShotsFired));
+            Row(c, n2, n2, 1, Lang(player, "Hits"), UiStyle.Num(layer.HitsLanded));
+            Row(c, n2, n2, 2, Lang(player, "Accuracy"),
+                UiStyle.Percent(layer.ShotsFired <= 0 ? 0d : layer.HitsLanded / (double)layer.ShotsFired));
+            Row(c, n2, n2, 3, Lang(player, "Headshots"), UiStyle.Num(layer.Headshots));
+            Row(c, n2, n2, 4, Lang(player, "DamageDealt"), UiStyle.Num(layer.DamageDealt));
+
+            string n3 = UiBody + ".Sum3";
+            Card(c, UiBody, n3, ColX(2, Col3), ColX(2, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardEconomy"));
+            Row(c, n3, n3, 0, Lang(player, "Gathered"), UiStyle.Num(layer.GatheredTotal));
+            Row(c, n3, n3, 1, Lang(player, "Containers"), UiStyle.Num(layer.LootContainers));
+            Row(c, n3, n3, 2, Lang(player, "Crafted"), UiStyle.Num(layer.CraftedItemsTotal));
+            Row(c, n3, n3, 3, Lang(player, "Built"), UiStyle.Num(layer.BuildingPiecesPlaced));
+            Row(c, n3, n3, 4, Lang(player, "InGame"), UiStyle.Time(LayerPlaySeconds(a.UserId, a, layer)));
+
+            int favourite = FavouriteWeapon(layer);
+            string n4 = UiBody + ".Sum4";
+            Card(c, UiBody, n4, ColX(0, Col2), ColX(0, Col2) + Col2, RowMid, -BodyHeight, Lang(player, "CardFavourite"));
+
+            if (favourite == 0)
+            {
+                Label(c, n4, "0 0", "1 1", "14 0", "-14 -34",
+                    Lang(player, "NoWeaponYet"), 11, UiStyle.Muted, TextAnchor.MiddleCenter, UiStyle.Reg);
+            }
+            else
+            {
+                WeaponStat stat = layer.Weapons[favourite];
+                DrawItemIcon(c, n4, n4 + ".Icon", favourite, 14f, -44f, 48f);
+
+                Label(c, n4, "0 1", "1 1", "74 -66", "-14 -40",
+                    ItemLabel(favourite), 14, UiStyle.Text);
+                Label(c, n4, "0 1", "1 1", "74 -86", "-14 -66",
+                    UiStyle.Num(stat.Kills) + " " + Lang(player, "KillsShort") + "   " +
+                    UiStyle.Rich(UiStyle.SubText, UiStyle.Num(stat.Damage) + " " + Lang(player, "DamageShort")),
+                    11, UiStyle.SubText, TextAnchor.MiddleLeft, UiStyle.Reg);
+
+                Row(c, n4, n4, 3, Lang(player, "Accuracy"),
+                    UiStyle.Percent(stat.Shots <= 0 ? 0d : stat.Hits / (double)stat.Shots));
+                Row(c, n4, n4, 4, Lang(player, "HeadshotRate"),
+                    UiStyle.Percent(stat.Hits <= 0 ? 0d : stat.Headshots / (double)stat.Hits));
+            }
+
+            string n5 = UiBody + ".Sum5";
+            Card(c, UiBody, n5, ColX(1, Col2), ColX(1, Col2) + Col2, RowMid, -BodyHeight, Lang(player, "CardRecords"));
+            Row(c, n5, n5, 0, Lang(player, "LongestShot"),
+                layer.LongestKillDistance <= 0f
+                    ? "—"
+                    : Math.Round(layer.LongestKillDistance, 1).ToString("0.#", CultureInfo.InvariantCulture) + " м" +
+                      (layer.LongestKillWeaponId == 0
+                          ? ""
+                          : UiStyle.Rich(UiStyle.SubText, "   " + ItemLabel(layer.LongestKillWeaponId))));
+            Row(c, n5, n5, 1, Lang(player, "TopResource"), ResourceLabel(TopKey(layer.Resources)));
+            Row(c, n5, n5, 2, Lang(player, "Wounded"), UiStyle.Num(layer.TimesWounded));
+            Row(c, n5, n5, 3, Lang(player, "RevivedOthers"), UiStyle.Num(layer.RevivedOthers));
+            Row(c, n5, n5, 4, Lang(player, "Sessions"), UiStyle.Num(layer.Sessions));
+        }
+
+        private void DrawSectionPvp(CuiElementContainer c, BasePlayer player, AccountData a, StatLayer layer)
+        {
+            string n1 = UiBody + ".Pvp1";
+            Card(c, UiBody, n1, ColX(0, Col3), ColX(0, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardDuels"));
+            Row(c, n1, n1, 0, Lang(player, "Kills"), UiStyle.Num(layer.PlayerKills));
+            Row(c, n1, n1, 1, Lang(player, "Deaths"), UiStyle.Num(layer.Deaths));
+            Row(c, n1, n1, 2, "K/D", Math.Round(KdOf(layer), 2).ToString("0.##", CultureInfo.InvariantCulture),
+                KdOf(layer) >= 1d ? UiStyle.Positive : UiStyle.Danger);
+            Row(c, n1, n1, 3, Lang(player, "CurrentStreak"), UiStyle.Num(layer.CurrentKillStreak));
+            Row(c, n1, n1, 4, Lang(player, "BestStreak"), UiStyle.Num(layer.BestKillStreak));
+
+            string n2 = UiBody + ".Pvp2";
+            Card(c, UiBody, n2, ColX(1, Col3), ColX(1, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardBodyParts"));
+            long partsTotal = Math.Max(1, layer.KillsHead + layer.KillsTorso + layer.KillsLimbs);
+            DrawShare(c, n2, n2 + ".H", 0, Lang(player, "PartHead"), layer.KillsHead, partsTotal, UiStyle.Positive);
+            DrawShare(c, n2, n2 + ".T", 1, Lang(player, "PartTorso"), layer.KillsTorso, partsTotal, UiStyle.Accent);
+            DrawShare(c, n2, n2 + ".L", 2, Lang(player, "PartLimbs"), layer.KillsLimbs, partsTotal, UiStyle.AccentSoft);
+            Row(c, n2, n2, 4, Lang(player, "HeadshotRate"),
+                UiStyle.Percent(layer.HitsLanded <= 0 ? 0d : layer.Headshots / (double)layer.HitsLanded));
+
+            string n3 = UiBody + ".Pvp3";
+            Card(c, UiBody, n3, ColX(2, Col3), ColX(2, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardSupport"));
+            Row(c, n3, n3, 0, Lang(player, "Assists"), UiStyle.Num(layer.Assists));
+            Row(c, n3, n3, 1, Lang(player, "Wounded"), UiStyle.Num(layer.TimesWounded));
+            Row(c, n3, n3, 2, Lang(player, "RevivedByOthers"), UiStyle.Num(layer.RevivedByOthers));
+            Row(c, n3, n3, 3, Lang(player, "RevivedOthers"), UiStyle.Num(layer.RevivedOthers));
+            Row(c, n3, n3, 4, Lang(player, "DamageReceived"), UiStyle.Num(layer.DamageReceived));
+
+            DrawDuelList(c, player, UiBody + ".Victims", ColX(0, Col3), Col3,
+                Lang(player, "CardTopVictims"), layer.KilledPlayers);
+            DrawDuelList(c, player, UiBody + ".Killers", ColX(1, Col3), Col3,
+                Lang(player, "CardTopKillers"), layer.KilledByPlayers);
+            DrawCauses(c, player, layer);
+        }
+
+        // Полоса доли с подписью и числом.
+        private void DrawShare(CuiElementContainer c, string parent, string name, int index,
+            string title, long value, long total, string color)
+        {
+            float top = -34f - index * 26f;
+
+            Label(c, parent, "0 1", "0.55 1",
+                "14 " + UiStyle.F(top - 16f), "0 " + UiStyle.F(top),
+                title, 11, UiStyle.SubText, TextAnchor.MiddleLeft, UiStyle.Reg);
+            Label(c, parent, "0.45 1", "1 1",
+                "0 " + UiStyle.F(top - 16f), "-14 " + UiStyle.F(top),
+                UiStyle.Num(value) + UiStyle.Rich(UiStyle.Muted,
+                    "  <size=9>" + UiStyle.Percent(value / (double)total) + "</size>"),
+                11, UiStyle.Text, TextAnchor.MiddleRight);
+            Progress(c, parent, name, "0 1", "1 1",
+                "14 " + UiStyle.F(top - 21f), "-14 " + UiStyle.F(top - 17f),
+                value / (double)total, color);
+        }
+
+        private void DrawDuelList(CuiElementContainer c, BasePlayer player, string name,
+            float left, float width, string title, Dictionary<ulong, DuelStat> map)
+        {
+            Card(c, UiBody, name, left, left + width, RowMid, -BodyHeight, title);
+
+            if (map.Count == 0)
+            {
+                Label(c, name, "0 0", "1 1", "14 0", "-14 -34",
+                    Lang(player, "NoData"), 11, UiStyle.Muted, TextAnchor.MiddleCenter, UiStyle.Reg);
+                return;
+            }
+
+            List<Dictionary<string, object>> rows = DuelRows(map, 10);
+            int limit = rows.Count > 6 ? 6 : rows.Count;
+
+            for (int i = 0; i < limit; i++)
+            {
+                float top = -34f - i * 21f;
+                var row = rows[i];
+
+                Label(c, name, "0 1", "0.72 1",
+                    "14 " + UiStyle.F(top - 18f), "0 " + UiStyle.F(top),
+                    UiStyle.Rich(UiStyle.Muted, (i + 1).ToString(CultureInfo.InvariantCulture) + ".") + " " +
+                    UiStyle.Safe(row["Name"] as string, 22),
+                    11, UiStyle.Text, TextAnchor.MiddleLeft, UiStyle.Reg);
+                Label(c, name, "0.6 1", "1 1",
+                    "0 " + UiStyle.F(top - 18f), "-14 " + UiStyle.F(top),
+                    UiStyle.Num((long)row["Count"]), 11, UiStyle.Text, TextAnchor.MiddleRight);
+            }
+        }
+
+        private void DrawCauses(CuiElementContainer c, BasePlayer player, StatLayer layer)
+        {
+            string name = UiBody + ".Causes";
+            Card(c, UiBody, name, ColX(2, Col3), ColX(2, Col3) + Col3, RowMid, -BodyHeight,
+                Lang(player, "CardDeathCauses"));
+
+            long[] values = layer.DeathsByCause;
+            int drawn = 0;
+
+            for (int i = 0; i < values.Length && drawn < 6; i++)
+            {
+                if (values[i] <= 0) continue;
+                Row(c, name, name, drawn, Lang(player, "Cause_" + ((DeathCause)i)), UiStyle.Num(values[i]));
+                drawn++;
+            }
+
+            if (drawn == 0)
+            {
+                Label(c, name, "0 0", "1 1", "14 0", "-14 -34",
+                    Lang(player, "NoDeaths"), 11, UiStyle.Muted, TextAnchor.MiddleCenter, UiStyle.Reg);
+            }
+        }
+
+        private void DrawSectionWeapons(CuiElementContainer c, BasePlayer player, AccountData a, StatLayer layer)
+        {
+            string name = UiBody + ".Weapons";
+            Card(c, UiBody, name, 0f, 1088f, RowTop, -BodyHeight, Lang(player, "CardWeapons"));
+
+            if (layer.Weapons.Count == 0)
+            {
+                Label(c, name, "0 0", "1 1", "14 0", "-14 -34",
+                    Lang(player, "NoWeaponYet"), 11, UiStyle.Muted, TextAnchor.MiddleCenter, UiStyle.Reg);
+                return;
+            }
+
+            // Заголовок таблицы.
+            WeaponHeaderCell(c, name, 74f, 300f, Lang(player, "ColWeapon"), TextAnchor.MiddleLeft);
+            WeaponHeaderCell(c, name, 380f, 110f, Lang(player, "ColKills"), TextAnchor.MiddleRight);
+            WeaponHeaderCell(c, name, 496f, 110f, Lang(player, "ColShots"), TextAnchor.MiddleRight);
+            WeaponHeaderCell(c, name, 612f, 110f, Lang(player, "ColHits"), TextAnchor.MiddleRight);
+            WeaponHeaderCell(c, name, 728f, 110f, Lang(player, "ColAccuracy"), TextAnchor.MiddleRight);
+            WeaponHeaderCell(c, name, 844f, 110f, Lang(player, "ColHeadshots"), TextAnchor.MiddleRight);
+            WeaponHeaderCell(c, name, 960f, 114f, Lang(player, "ColDamage"), TextAnchor.MiddleRight);
+
+            List<Dictionary<string, object>> rows = WeaponRows(layer);
+            int limit = rows.Count > 10 ? 10 : rows.Count;
+
+            for (int i = 0; i < limit; i++)
+            {
+                var row = rows[i];
+                float top = -58f - i * 26f;
+                int itemId = (int)row["ItemId"];
+
+                if (i % 2 == 1)
+                {
+                    Panel(c, name, name + ".Z" + i, "0 1", "1 1",
+                        "8 " + UiStyle.F(top - 24f), "-8 " + UiStyle.F(top), UiStyle.CardDark);
+                }
+
+                DrawItemIcon(c, name, name + ".I" + i, itemId, 44f, top - 2f, 20f);
+
+                WeaponCell(c, name, 74f, 300f, top, ItemLabel(itemId), TextAnchor.MiddleLeft, UiStyle.Text);
+                WeaponCell(c, name, 380f, 110f, top, UiStyle.Num((long)row["Kills"]), TextAnchor.MiddleRight, UiStyle.Text);
+                WeaponCell(c, name, 496f, 110f, top, UiStyle.Num((long)row["Shots"]), TextAnchor.MiddleRight, UiStyle.SubText);
+                WeaponCell(c, name, 612f, 110f, top, UiStyle.Num((long)row["Hits"]), TextAnchor.MiddleRight, UiStyle.SubText);
+                WeaponCell(c, name, 728f, 110f, top, UiStyle.Percent((double)row["Accuracy"]), TextAnchor.MiddleRight, UiStyle.SubText);
+                WeaponCell(c, name, 844f, 110f, top,
+                    UiStyle.Num((long)row["Headshots"]) + UiStyle.Rich(UiStyle.Muted,
+                        "  <size=9>" + UiStyle.Percent((double)row["HeadshotRate"]) + "</size>"),
+                    TextAnchor.MiddleRight, UiStyle.SubText);
+                WeaponCell(c, name, 960f, 114f, top, UiStyle.Num((double)row["Damage"]), TextAnchor.MiddleRight, UiStyle.Text);
+            }
+
+            if (rows.Count > limit)
+            {
+                Label(c, name, "0 0", "1 0", "14 8", "-14 24",
+                    Lang(player, "MoreWeapons") + " " +
+                    (rows.Count - limit).ToString(CultureInfo.InvariantCulture),
+                    10, UiStyle.Muted, TextAnchor.MiddleRight, UiStyle.Reg);
+            }
+        }
+
+        private void WeaponHeaderCell(CuiElementContainer c, string parent, float left, float width,
+            string text, TextAnchor align)
+        {
+            Label(c, parent, "0 1", "0 1",
+                UiStyle.F(left) + " -52", UiStyle.F(left + width) + " -34",
+                text, 10, UiStyle.Muted, align, UiStyle.Reg);
+        }
+
+        private void WeaponCell(CuiElementContainer c, string parent, float left, float width,
+            float top, string text, TextAnchor align, string color)
+        {
+            Label(c, parent, "0 1", "0 1",
+                UiStyle.F(left) + " " + UiStyle.F(top - 22f),
+                UiStyle.F(left + width) + " " + UiStyle.F(top),
+                text, 11, color, align, UiStyle.Reg);
+        }
+
+        private void DrawSectionGather(CuiElementContainer c, BasePlayer player, AccountData a, StatLayer layer)
+        {
+            string n1 = UiBody + ".Gath1";
+            Card(c, UiBody, n1, ColX(0, Col3), ColX(0, Col3) + Col3, RowTop, -BodyHeight, Lang(player, "CardGather"));
+            Row(c, n1, n1, 0, Lang(player, "Gathered"), UiStyle.Num(layer.GatheredTotal));
+            Row(c, n1, n1, 1, Lang(player, "GatherEvents"), UiStyle.Num(layer.GatherEvents));
+            Row(c, n1, n1, 2, Lang(player, "Collectibles"), UiStyle.Num(layer.CollectiblesPicked));
+            Row(c, n1, n1, 3, Lang(player, "Containers"), UiStyle.Num(layer.LootContainers));
+            Row(c, n1, n1, 4, Lang(player, "CraftOps"), UiStyle.Num(layer.CraftOperations));
+            Row(c, n1, n1, 5, Lang(player, "Crafted"), UiStyle.Num(layer.CraftedItemsTotal));
+            Row(c, n1, n1, 6, Lang(player, "TopLoot"), ResourceLabel(TopKey(layer.LootedContainers)));
+            Row(c, n1, n1, 7, Lang(player, "TopCraft"), ResourceLabel(TopKey(layer.CraftedItems)));
+
+            DrawTopMap(c, player, UiBody + ".Res", ColX(1, Col3), Col3,
+                Lang(player, "CardResources"), layer.Resources, 10);
+            DrawTopMap(c, player, UiBody + ".Loot", ColX(2, Col3), Col3,
+                Lang(player, "CardContainers"), layer.LootedContainers, 10);
+        }
+
+        private void DrawSectionBuild(CuiElementContainer c, BasePlayer player, AccountData a, StatLayer layer)
+        {
+            string n1 = UiBody + ".Bld1";
+            Card(c, UiBody, n1, ColX(0, Col3), ColX(0, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardBuilding"));
+            Row(c, n1, n1, 0, Lang(player, "Built"), UiStyle.Num(layer.BuildingPiecesPlaced));
+            Row(c, n1, n1, 1, Lang(player, "Deployables"), UiStyle.Num(layer.DeployablesPlaced));
+            Row(c, n1, n1, 2, Lang(player, "Upgraded"), UiStyle.Num(layer.StructuresUpgraded));
+            Row(c, n1, n1, 3, Lang(player, "Destroyed"), UiStyle.Num(layer.StructuresDestroyed));
+            Row(c, n1, n1, 4, Lang(player, "OwnBlocksLost"), UiStyle.Num(layer.OwnBlocksLost), UiStyle.Danger);
+
+            string n2 = UiBody + ".Bld2";
+            Card(c, UiBody, n2, ColX(1, Col3), ColX(1, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardRaid"));
+            Row(c, n2, n2, 0, Lang(player, "Explosives"), UiStyle.Num(layer.ExplosivesUsed));
+            Row(c, n2, n2, 1, Lang(player, "Rockets"), UiStyle.Num(layer.RocketsFired));
+            Row(c, n2, n2, 2, Lang(player, "DoorsDestroyed"), UiStyle.Num(layer.DoorsDestroyed));
+            Row(c, n2, n2, 3, Lang(player, "Cupboards"), UiStyle.Num(layer.CupboardsDestroyed));
+            Row(c, n2, n2, 4, Lang(player, "Barrels"), UiStyle.Num(layer.BarrelsDestroyed));
+
+            string n3 = UiBody + ".Bld3";
+            Card(c, UiBody, n3, ColX(2, Col3), ColX(2, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardByGrade"));
+            long gradeTotal = 1;
+            for (int i = 0; i < layer.BlocksByGrade.Length; i++) gradeTotal += layer.BlocksByGrade[i];
+            DrawShare(c, n3, n3 + ".G1", 0, Lang(player, "GradeWood"),
+                layer.BlocksByGrade[(int)BuildingGrade.Enum.Wood], gradeTotal, "#B08A5A");
+            DrawShare(c, n3, n3 + ".G2", 1, Lang(player, "GradeStone"),
+                layer.BlocksByGrade[(int)BuildingGrade.Enum.Stone], gradeTotal, "#9AA0A6");
+            DrawShare(c, n3, n3 + ".G3", 2, Lang(player, "GradeMetal"),
+                layer.BlocksByGrade[(int)BuildingGrade.Enum.Metal], gradeTotal, "#C2C7CC");
+            DrawShare(c, n3, n3 + ".G4", 3, Lang(player, "GradeTop"),
+                layer.BlocksByGrade[(int)BuildingGrade.Enum.TopTier], gradeTotal, "#E0D6C2");
+
+            DrawTopMap(c, player, UiBody + ".Expl", ColX(0, Col2), Col2,
+                Lang(player, "CardExplosives"), layer.ExplosivesByPrefab, 6);
+            DrawTopMap(c, player, UiBody + ".Deploy", ColX(1, Col2), Col2,
+                Lang(player, "CardBuilt"), layer.BuiltEntities, 6);
+        }
+
+        private void DrawSectionPve(CuiElementContainer c, BasePlayer player, AccountData a, StatLayer layer)
+        {
+            string n1 = UiBody + ".Pve1";
+            Card(c, UiBody, n1, ColX(0, Col3), ColX(0, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardNpc"));
+            Row(c, n1, n1, 0, Lang(player, "NpcKills"), UiStyle.Num(layer.NpcKills));
+            Row(c, n1, n1, 1, Lang(player, "AnimalKills"), UiStyle.Num(layer.AnimalKills));
+            Row(c, n1, n1, 2, Lang(player, "Barrels"), UiStyle.Num(layer.BarrelsDestroyed));
+
+            string n2 = UiBody + ".Pve2";
+            Card(c, UiBody, n2, ColX(1, Col3), ColX(1, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardBosses"));
+            Row(c, n2, n2, 0, Lang(player, "BradleyDamage"), UiStyle.Num(layer.BradleyDamage));
+            Row(c, n2, n2, 1, Lang(player, "BradleyKills"), UiStyle.Num(layer.BradleyKills));
+            Row(c, n2, n2, 2, Lang(player, "HeliDamage"), UiStyle.Num(layer.HelicopterDamage));
+            Row(c, n2, n2, 3, Lang(player, "HeliKills"), UiStyle.Num(layer.HelicopterKills));
+
+            string n3 = UiBody + ".Pve3";
+            Card(c, UiBody, n3, ColX(2, Col3), ColX(2, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardEvents"));
+            Row(c, n3, n3, 0, Lang(player, "HackableCrates"), UiStyle.Num(layer.HackableCratesOpened));
+            Row(c, n3, n3, 1, Lang(player, "Airdrops"), UiStyle.Num(layer.AirdropsLooted));
+            Row(c, n3, n3, 2, Lang(player, "Signals"), UiStyle.Num(layer.SignalsCalled));
+
+            DrawTopMap(c, player, UiBody + ".Sci", ColX(0, Col2), Col2,
+                Lang(player, "CardScientists"), layer.NpcKillsByPrefab, 6);
+            DrawTopMap(c, player, UiBody + ".Anim", ColX(1, Col2), Col2,
+                Lang(player, "CardAnimals"), layer.AnimalKillsByPrefab, 6);
+        }
+
+        private void DrawSectionActivity(CuiElementContainer c, BasePlayer player, AccountData a, StatLayer layer)
+        {
+            long seconds = LayerPlaySeconds(a.UserId, a, layer);
+
+            string n1 = UiBody + ".Act1";
+            Card(c, UiBody, n1, ColX(0, Col3), ColX(0, Col3) + Col3, RowTop, RowMid + 8f, Lang(player, "CardTime"));
+            Row(c, n1, n1, 0, Lang(player, "InGame"), UiStyle.Time(seconds));
+            Row(c, n1, n1, 1, Lang(player, "Sessions"), UiStyle.Num(layer.Sessions));
+            Row(c, n1, n1, 2, Lang(player, "AverageSession"),
+                UiStyle.Time(layer.Sessions <= 0 ? 0 : seconds / layer.Sessions));
+            Row(c, n1, n1, 3, Lang(player, "FirstSeen"), UiStyle.Date(a.FirstSeenUtc));
+            Row(c, n1, n1, 4, Lang(player, "LastSeen"), UiStyle.Date(a.LastSeenUtc));
+
+            // Последние 10 сессий.
+            string n2 = UiBody + ".Act2";
+            Card(c, UiBody, n2, ColX(1, Col2), ColX(1, Col2) + Col2, RowTop, RowMid + 8f,
+                Lang(player, "CardSessions"));
+
+            if (a.RecentSessions.Count == 0)
+            {
+                Label(c, n2, "0 0", "1 1", "14 0", "-14 -34",
+                    Lang(player, "NoSessions"), 11, UiStyle.Muted, TextAnchor.MiddleCenter, UiStyle.Reg);
+            }
+            else
+            {
+                int limit = a.RecentSessions.Count > 5 ? 5 : a.RecentSessions.Count;
+                for (int i = 0; i < limit; i++)
+                {
+                    SessionRecord record = a.RecentSessions[i];
+                    float top = -34f - i * 21f;
+
+                    Label(c, n2, "0 1", "0.5 1",
+                        "14 " + UiStyle.F(top - 18f), "0 " + UiStyle.F(top),
+                        UiStyle.Date(record.StartedUtc), 11, UiStyle.SubText,
+                        TextAnchor.MiddleLeft, UiStyle.Reg);
+                    Label(c, n2, "0.4 1", "0.78 1",
+                        "0 " + UiStyle.F(top - 18f), "0 " + UiStyle.F(top),
+                        UiStyle.Date(record.EndedUtc), 11, UiStyle.Muted,
+                        TextAnchor.MiddleRight, UiStyle.Reg);
+                    Label(c, n2, "0.78 1", "1 1",
+                        "0 " + UiStyle.F(top - 18f), "-14 " + UiStyle.F(top),
+                        UiStyle.Time(record.Seconds), 11, UiStyle.Text, TextAnchor.MiddleRight);
+                }
+            }
+
+            DrawDays(c, player, a);
+            DrawHours(c, player, a);
+        }
+
+        // 30 столбиков: слева самый старый день, справа сегодня.
+        private void DrawDays(CuiElementContainer c, BasePlayer player, AccountData a)
+        {
+            string name = UiBody + ".Days";
+            Card(c, UiBody, name, ColX(0, Col2), ColX(0, Col2) + Col2, RowMid, -BodyHeight,
+                Lang(player, "CardDays"));
+
+            long[] days = a.DayPlaySeconds;
+            long peak = 1;
+            for (int i = 0; i < days.Length; i++) if (days[i] > peak) peak = days[i];
+
+            const float chartLeft = 14f;
+            const float chartWidth = Col2 - 28f;
+            float step = chartWidth / days.Length;
+            float barWidth = step - 3f;
+
+            for (int i = 0; i < days.Length; i++)
+            {
+                float x = chartLeft + i * step;
+                Bar(c, name, name + ".B" + i, "0 0", "0 0",
+                    UiStyle.F(x) + " 26", UiStyle.F(x + barWidth) + " 106",
+                    days[i] / (double)peak,
+                    i == days.Length - 1 ? UiStyle.Positive : UiStyle.Accent);
+            }
+
+            Label(c, name, "0 0", "0.5 0", "14 6", "0 24",
+                Lang(player, "Days30"), 10, UiStyle.Muted, TextAnchor.MiddleLeft, UiStyle.Reg);
+            Label(c, name, "0.5 0", "1 0", "0 6", "-14 24",
+                Lang(player, "PeakDay") + " " + UiStyle.Time(peak), 10, UiStyle.Muted,
+                TextAnchor.MiddleRight, UiStyle.Reg);
+        }
+
+        // 24 узких столбика — распределение по часам суток UTC за вайп.
+        private void DrawHours(CuiElementContainer c, BasePlayer player, AccountData a)
+        {
+            string name = UiBody + ".Hours";
+            Card(c, UiBody, name, ColX(1, Col2), ColX(1, Col2) + Col2, RowMid, -BodyHeight,
+                Lang(player, "CardHours"));
+
+            long[] hours = a.Current.HourMinutes;
+            long peak = 1;
+            int best = 0;
+            for (int i = 0; i < hours.Length; i++)
+            {
+                if (hours[i] <= peak) continue;
+                peak = hours[i];
+                best = i;
+            }
+
+            const float chartLeft = 14f;
+            const float chartWidth = Col2 - 28f;
+            float step = chartWidth / 24f;
+            float barWidth = step - 4f;
+
+            for (int i = 0; i < 24; i++)
+            {
+                float x = chartLeft + i * step;
+                Bar(c, name, name + ".B" + i, "0 0", "0 0",
+                    UiStyle.F(x) + " 38", UiStyle.F(x + barWidth) + " 106",
+                    hours[i] / (double)peak,
+                    i == best && peak > 1 ? UiStyle.Positive : UiStyle.Accent);
+
+                if (i % 6 != 0) continue;
+                Label(c, name, "0 0", "0 0",
+                    UiStyle.F(x - 4f) + " 22", UiStyle.F(x + step + 4f) + " 36",
+                    i.ToString("00", CultureInfo.InvariantCulture), 9, UiStyle.Muted,
+                    TextAnchor.MiddleCenter, UiStyle.Reg);
+            }
+
+            Label(c, name, "0 0", "1 0", "14 4", "-14 20",
+                peak > 1
+                    ? Lang(player, "PeakHour") + " " + best.ToString("00", CultureInfo.InvariantCulture) + ":00 UTC"
+                    : Lang(player, "NoHours"),
+                10, UiStyle.Muted, TextAnchor.MiddleLeft, UiStyle.Reg);
+        }
+
+        private void DrawTopMap(CuiElementContainer c, BasePlayer player, string name,
+            float left, float width, string title, Dictionary<string, long> map, int rows)
+        {
+            bool tall = width > Col3;
+            Card(c, UiBody, name, left, left + width,
+                tall ? RowMid : RowTop, tall ? -BodyHeight : -BodyHeight, title);
+
+            if (map.Count == 0)
+            {
+                Label(c, name, "0 0", "1 1", "14 0", "-14 -34",
+                    Lang(player, "NoData"), 11, UiStyle.Muted, TextAnchor.MiddleCenter, UiStyle.Reg);
+                return;
+            }
+
+            _mapScratch.Clear();
+            foreach (var pair in map) _mapScratch.Add(pair);
+            _mapScratch.Sort((x, y) => y.Value.CompareTo(x.Value));
+
+            long peak = Math.Max(1, _mapScratch[0].Value);
+            int limit = _mapScratch.Count > rows ? rows : _mapScratch.Count;
+
+            for (int i = 0; i < limit; i++)
+            {
+                var pair = _mapScratch[i];
+                float top = -34f - i * 24f;
+
+                Label(c, name, "0 1", "0.62 1",
+                    "14 " + UiStyle.F(top - 16f), "0 " + UiStyle.F(top),
+                    ResourceLabel(pair.Key), 11, UiStyle.SubText, TextAnchor.MiddleLeft, UiStyle.Reg);
+                Label(c, name, "0.5 1", "1 1",
+                    "0 " + UiStyle.F(top - 16f), "-14 " + UiStyle.F(top),
+                    UiStyle.Num(pair.Value), 11, UiStyle.Text, TextAnchor.MiddleRight);
+                Progress(c, name, name + ".P" + i, "0 1", "1 1",
+                    "14 " + UiStyle.F(top - 21f), "-14 " + UiStyle.F(top - 18f),
+                    pair.Value / (double)peak, UiStyle.AccentSoft);
+            }
+        }
+
+        private readonly List<KeyValuePair<string, long>> _mapScratch = new List<KeyValuePair<string, long>>();
+
+        private void DrawItemIcon(CuiElementContainer c, string parent, string name,
+            int itemId, float left, float top, float size)
+        {
+            if (itemId == 0) return;
+
+            c.Add(new CuiElement
+            {
+                Parent = parent,
+                Name = name,
+                Components =
+                {
+                    new CuiImageComponent { ItemId = itemId, SkinId = 0UL, Color = "1 1 1 1" },
+                    new CuiRectTransformComponent
+                    {
+                        AnchorMin = "0 1", AnchorMax = "0 1",
+                        OffsetMin = UiStyle.F(left) + " " + UiStyle.F(top - size),
+                        OffsetMax = UiStyle.F(left + size) + " " + UiStyle.F(top)
+                    }
+                }
+            });
+        }
+
+        // Человекочитаемое имя предмета. Строки трогаем только на отрисовке.
+        private static string ItemLabel(int itemId)
+        {
+            if (itemId == 0) return "—";
+
+            ItemDefinition definition = ItemManager.FindItemDefinition(itemId);
+            if (definition == null) return itemId.ToString(CultureInfo.InvariantCulture);
+
+            return string.IsNullOrEmpty(definition.displayName_english)
+                ? definition.shortname
+                : definition.displayName_english;
+        }
+
+        private static string ResourceLabel(string shortname)
+        {
+            if (string.IsNullOrEmpty(shortname)) return "—";
+
+            ItemDefinition definition = ItemManager.FindItemDefinition(shortname);
+            if (definition != null && !string.IsNullOrEmpty(definition.displayName_english))
+                return definition.displayName_english;
+
+            return shortname;
+        }
+
+        #endregion
+
+
+        #region Lang
+
+        private string Lang(BasePlayer player, string key)
+        {
+            return lang.GetMessage(key, this, player == null ? null : player.UserIDString);
+        }
+
+        protected override void LoadDefaultMessages()
+        {
+            lang.RegisterMessages(new Dictionary<string, string>
+            {
+                ["TitleSelf"] = "МОЙ ПРОФИЛЬ",
+                ["TitleOther"] = "ПРОФИЛЬ ИГРОКА",
+                ["BackToTop"] = "НАЗАД К ТОПУ",
+                ["Level"] = "УРОВЕНЬ",
+                ["Wipes"] = "вайпов:",
+
+                ["Period_wipe"] = "ВАЙП",
+                ["Period_previous"] = "ПРОШЛЫЙ ВАЙП",
+                ["Period_lifetime"] = "ВСЁ ВРЕМЯ",
+
+                ["Section_summary"] = "СВОДКА",
+                ["Section_pvp"] = "PVP",
+                ["Section_weapons"] = "ОРУЖИЕ",
+                ["Section_gather"] = "ДОБЫЧА",
+                ["Section_build"] = "СТРОЙКА И РЕЙДЫ",
+                ["Section_pve"] = "PVE",
+                ["Section_activity"] = "АКТИВНОСТЬ",
+
+                ["CardCombat"] = "БОЙ",
+                ["CardShooting"] = "СТРЕЛЬБА",
+                ["CardEconomy"] = "ЭКОНОМИКА",
+                ["CardFavourite"] = "ЛЮБИМОЕ ОРУЖИЕ",
+                ["CardRecords"] = "РЕКОРДЫ",
+                ["CardDuels"] = "ПЕРЕСТРЕЛКИ",
+                ["CardBodyParts"] = "КУДА ПОПАДАЛ",
+                ["CardSupport"] = "ПОДДЕРЖКА",
+                ["CardTopVictims"] = "ЧАЩЕ ВСЕГО УБИВАЛ",
+                ["CardTopKillers"] = "ЧАЩЕ ВСЕГО УБИВАЛИ МЕНЯ",
+                ["CardDeathCauses"] = "ОТЧЕГО ПОГИБАЛ",
+                ["CardWeapons"] = "СТАТИСТИКА ПО ОРУЖИЮ",
+                ["CardGather"] = "ДОБЫЧА И КРАФТ",
+                ["CardResources"] = "РЕСУРСЫ",
+                ["CardContainers"] = "КОНТЕЙНЕРЫ",
+                ["CardBuilding"] = "СТРОИТЕЛЬСТВО",
+                ["CardRaid"] = "РЕЙДЫ",
+                ["CardByGrade"] = "СЛОМАНО ПО МАТЕРИАЛУ",
+                ["CardExplosives"] = "ВЗРЫВЧАТКА",
+                ["CardBuilt"] = "ЧТО СТРОИЛ",
+                ["CardNpc"] = "NPC И ЖИВОТНЫЕ",
+                ["CardBosses"] = "ТАНК И ВЕРТОЛЁТ",
+                ["CardEvents"] = "СОБЫТИЯ",
+                ["CardScientists"] = "УЧЁНЫЕ ПО ТИПАМ",
+                ["CardAnimals"] = "ЖИВОТНЫЕ ПО ТИПАМ",
+                ["CardTime"] = "ВРЕМЯ НА СЕРВЕРЕ",
+                ["CardSessions"] = "ПОСЛЕДНИЕ СЕССИИ",
+                ["CardDays"] = "АКТИВНОСТЬ ПО ДНЯМ",
+                ["CardHours"] = "АКТИВНОСТЬ ПО ЧАСАМ",
+
+                ["Kills"] = "Убийств игроков",
+                ["KillsShort"] = "убийств",
+                ["Deaths"] = "Смертей",
+                ["Assists"] = "Ассистов",
+                ["CurrentStreak"] = "Текущая серия",
+                ["BestStreak"] = "Лучшая серия",
+                ["Shots"] = "Выстрелов",
+                ["Hits"] = "Попаданий",
+                ["Accuracy"] = "Точность",
+                ["Headshots"] = "Хедшотов",
+                ["HeadshotRate"] = "Доля хедшотов",
+                ["DamageDealt"] = "Урон нанесён",
+                ["DamageReceived"] = "Урон получен",
+                ["DamageShort"] = "урона",
+                ["LongestShot"] = "Дальний выстрел",
+                ["Wounded"] = "Был ранен",
+                ["RevivedByOthers"] = "Подняли меня",
+                ["RevivedOthers"] = "Поднял других",
+                ["PartHead"] = "Голова",
+                ["PartTorso"] = "Тело",
+                ["PartLimbs"] = "Конечности",
+
+                ["Gathered"] = "Добыто ресурсов",
+                ["GatherEvents"] = "Заходов на добычу",
+                ["Collectibles"] = "Подобрано с земли",
+                ["Containers"] = "Вскрыто контейнеров",
+                ["CraftOps"] = "Операций крафта",
+                ["Crafted"] = "Создано предметов",
+                ["TopResource"] = "Главный ресурс",
+                ["TopLoot"] = "Главный контейнер",
+                ["TopCraft"] = "Главный крафт",
+
+                ["Built"] = "Построено блоков",
+                ["Deployables"] = "Установлено предметов",
+                ["Upgraded"] = "Улучшено блоков",
+                ["Destroyed"] = "Сломано блоков",
+                ["OwnBlocksLost"] = "Потеряно своих блоков",
+                ["Explosives"] = "Использовано взрывчатки",
+                ["Rockets"] = "Запущено ракет",
+                ["DoorsDestroyed"] = "Выбито чужих дверей",
+                ["Cupboards"] = "Выбито чужих шкафов",
+                ["Barrels"] = "Разбито бочек",
+                ["GradeWood"] = "Дерево",
+                ["GradeStone"] = "Камень",
+                ["GradeMetal"] = "Металл",
+                ["GradeTop"] = "Высокое качество",
+
+                ["NpcKills"] = "Убито NPC",
+                ["AnimalKills"] = "Убито животных",
+                ["BradleyDamage"] = "Урон по танку",
+                ["BradleyKills"] = "Добито танков",
+                ["HeliDamage"] = "Урон по вертолёту",
+                ["HeliKills"] = "Добито вертолётов",
+                ["HackableCrates"] = "Взломано ящиков",
+                ["Airdrops"] = "Поднято аирдропов",
+                ["Signals"] = "Вызвано сигналов",
+
+                ["InGame"] = "В игре",
+                ["Sessions"] = "Сессий",
+                ["AverageSession"] = "Средняя сессия",
+                ["FirstSeen"] = "Первый вход",
+                ["LastSeen"] = "Последний вход",
+                ["Days30"] = "последние 30 дней",
+                ["PeakDay"] = "лучший день:",
+                ["PeakHour"] = "чаще всего играет в",
+                ["NoHours"] = "данных по часам пока нет",
+
+                ["ColWeapon"] = "ОРУЖИЕ",
+                ["ColKills"] = "УБИЙСТВ",
+                ["ColShots"] = "ВЫСТРЕЛОВ",
+                ["ColHits"] = "ПОПАДАНИЙ",
+                ["ColAccuracy"] = "ТОЧНОСТЬ",
+                ["ColHeadshots"] = "ХЕДШОТЫ",
+                ["ColDamage"] = "УРОН",
+                ["MoreWeapons"] = "ещё оружия:",
+
+                ["NoData"] = "Пока пусто",
+                ["NoDeaths"] = "Ни одной смерти",
+                ["NoSessions"] = "Сессии ещё не записаны",
+                ["NoWeaponYet"] = "Оружие ещё не использовалось",
+                ["NoPrevious"] = "ПРОШЛОГО ВАЙПА НЕТ",
+                ["NoPreviousHint"] = "Статистика появится здесь после первого вайпа.",
+                ["NoProfile"] = "ПРОФИЛЬ НЕ НАЙДЕН",
+                ["NoProfileHint"] = "Аккаунт этого игрока ещё не создан.",
+
+                ["Cause_Player"] = "От игрока",
+                ["Cause_Npc"] = "От NPC",
+                ["Cause_Animal"] = "От животного",
+                ["Cause_Fall"] = "Падение",
+                ["Cause_Starvation"] = "Голод и жажда",
+                ["Cause_Radiation"] = "Радиация",
+                ["Cause_Drowned"] = "Утопление",
+                ["Cause_Explosion"] = "Взрыв",
+                ["Cause_Turret"] = "Турель",
+                ["Cause_Bradley"] = "Танк",
+                ["Cause_Helicopter"] = "Вертолёт",
+                ["Cause_Suicide"] = "Самоубийство",
+                ["Cause_Other"] = "Прочее"
+            }, this, "ru");
+        }
+
+        #endregion
+
 
         #region Public API
 

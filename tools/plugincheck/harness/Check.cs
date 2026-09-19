@@ -129,6 +129,8 @@ public static class Check
 
         Console.WriteLine();
         fails += Behaviour.Run();
+        Console.WriteLine();
+        fails += Ui.Run();
 
         Console.WriteLine(fails == 0 ? "\nALL PASS" : "\n" + fails + " FAILED");
         return fails;

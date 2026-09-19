@@ -207,20 +207,74 @@ namespace Oxide.Game.Rust.Cui
         public bool DestroyUi;
     }
 
+    // Заглушка повторяет поведение настоящего контейнера: элементы реально
+    // складываются в список, а AddUi сериализует их в JSON. Без этого замер
+    // времени сборки экрана ничего бы не значил.
     public class CuiElementContainer : List<CuiElement>
     {
-        public string Add(CuiPanel panel, string parent = "Hud", string name = null, string destroyUi = null) { return name; }
-        public string Add(CuiLabel label, string parent = "Hud", string name = null, string destroyUi = null) { return name; }
-        public string Add(CuiButton button, string parent = "Hud", string name = null, string destroyUi = null) { return name; }
-        public string Add(CuiElement element) { return element.Name; }
+        public string Add(CuiPanel panel, string parent = "Hud", string name = null, string destroyUi = null)
+        {
+            if (string.IsNullOrEmpty(name)) name = CuiHelper.GetGuid();
+            var element = new CuiElement { Name = name, Parent = parent, DestroyUi = destroyUi != null };
+            element.Components.Add(panel.Image);
+            element.Components.Add(panel.RectTransform);
+            if (panel.CursorEnabled) element.Components.Add(new CuiNeedsCursorComponent());
+            base.Add(element);
+            return name;
+        }
+
+        public string Add(CuiLabel label, string parent = "Hud", string name = null, string destroyUi = null)
+        {
+            if (string.IsNullOrEmpty(name)) name = CuiHelper.GetGuid();
+            var element = new CuiElement { Name = name, Parent = parent };
+            element.Components.Add(label.Text);
+            element.Components.Add(label.RectTransform);
+            base.Add(element);
+            return name;
+        }
+
+        public string Add(CuiButton button, string parent = "Hud", string name = null, string destroyUi = null)
+        {
+            if (string.IsNullOrEmpty(name)) name = CuiHelper.GetGuid();
+            var element = new CuiElement { Name = name, Parent = parent };
+            element.Components.Add(button.Button);
+            element.Components.Add(button.RectTransform);
+            var label = new CuiElement { Name = name + ".Text", Parent = name };
+            label.Components.Add(button.Text);
+            base.Add(element);
+            base.Add(label);
+            return name;
+        }
+
+        public new string Add(CuiElement element)
+        {
+            if (string.IsNullOrEmpty(element.Name)) element.Name = CuiHelper.GetGuid();
+            base.Add(element);
+            return element.Name;
+        }
     }
 
     public static class CuiHelper
     {
-        public static bool AddUi(BasePlayer player, CuiElementContainer container) { return true; }
+        public static int LastJsonLength;
+        public static int LastElementCount;
+
+        public static bool AddUi(BasePlayer player, CuiElementContainer container)
+        {
+            string json = ToJson(container);
+            LastJsonLength = json.Length;
+            LastElementCount = container.Count;
+            return true;
+        }
+
         public static bool AddUi(BasePlayer player, string json) { return true; }
         public static bool DestroyUi(BasePlayer player, string name) { return true; }
-        public static string ToJson(CuiElementContainer container, bool format = false) { return ""; }
+
+        public static string ToJson(CuiElementContainer container, bool format = false)
+        {
+            return Newtonsoft.Json.JsonConvert.SerializeObject(container);
+        }
+
         public static string GetGuid() { return Guid.NewGuid().ToString("N"); }
     }
 }
