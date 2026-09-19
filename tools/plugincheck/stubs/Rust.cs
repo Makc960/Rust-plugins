@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Rust;
 
 // Заглушки игрового API. Сигнатуры сверены с "исходники игры/Assembly-CSharp.cs".
 
@@ -19,20 +20,29 @@ namespace Network
     public class Networkable { public NetworkableId ID; public Connection connection; }
 }
 
-public class DamageTypeList
+// ВНИМАНИЕ: эти два типа лежат в namespace Rust, а не в глобальном.
+// Assembly-CSharp.cs:617733 - namespace Rust { public class DamageTypeList }
+// Плагину нужен "using Rust;", иначе сервер не соберёт его, даже если
+// заглушки компилируются.
+namespace Rust
 {
-    public float[] types = new float[28];
-    public float Total() { return 0f; }
-    public bool Has(DamageType t) { return false; }
-    public float Get(DamageType t) { return 0f; }
-}
+    public class DamageTypeList
+    {
+        public float[] types = new float[28];
+        public float Total() { return 0f; }
+        public bool Has(DamageType t) { return false; }
+        public float Get(DamageType t) { return 0f; }
+        public DamageType GetMajorityDamageType() { return DamageType.Generic; }
+    }
 
-// Assembly-CSharp.cs: enum DamageType
-public enum DamageType
-{
-    Generic, Hunger, Thirst, Cold, Drowned, Heat, Bleeding, Poison, Suicide, Bullet,
-    Slash, Blunt, Fun_Water, Explosion, Radiation, Bite, Stab, Voice, Decay, ElectricShock,
-    Arrow, AntiVehicle, Collision, Fall, Cold_Exposure, Fire, ColdExposure, AdvancedFire
+    // Assembly-CSharp.cs:617701 - порядок и состав как в игре.
+    public enum DamageType
+    {
+        Generic, Hunger, Thirst, Cold, Drowned, Heat, Bleeding, Poison, Suicide, Bullet,
+        Slash, Blunt, Fall, Radiation, Bite, Stab, Explosion, RadiationExposure, ColdExposure,
+        Decay, ElectricShock, Arrow, AntiVehicle, Collision, Fun_Water, BeeSting, Paintball,
+        Cannon, LAST
+    }
 }
 
 // Assembly-CSharp.cs:349119
@@ -74,7 +84,6 @@ public class BaseEntity : BaseNetworkable
 {
     public ulong OwnerID;
     public ulong skinID;
-    public BasePlayer GetOwnerPlayer() { return null; }
     public BaseEntity GetParentEntity() { return null; }
 }
 
@@ -85,11 +94,21 @@ public class BaseCombatEntity : BaseEntity
     public BaseCombatEntity lastAttacker;
 }
 
+// Rust.Localization.cs:25 - глобальный namespace
+public class Translate
+{
+    public class Phrase
+    {
+        public string token;
+        public string english { get { return token; } }
+    }
+}
+
 public class ItemDefinition : MonoBehaviour
 {
     public int itemid;
     public string shortname;
-    public string displayName_english;
+    public Translate.Phrase displayName;   // Assembly-CSharp.cs:370007 - НЕ строка
 }
 
 public class Item
@@ -123,7 +142,8 @@ public class PlayerInventory
 
 public class HeldEntity : BaseEntity
 {
-    public Item GetOwnerItem() { return null; }
+    // GetOwnerItem() в игре protected (Assembly-CSharp.cs:138256) - плагину недоступен.
+    public BasePlayer GetOwnerPlayer() { return null; }               // :137969
     public ItemDefinition GetOwnerItemDefinition() { return null; }   // :138275
 }
 
@@ -159,7 +179,12 @@ public class ScientistNPC : NPCPlayer { }
 public class BaseAnimalNPC : BaseCombatEntity { }
 public class BaseNpc : BaseCombatEntity { }
 
-public class BuildingGrade { public enum Enum { None, Twigs, Wood, Stone, Metal, TopTier } }
+public class BuildingGrade
+{
+    // Assembly-CSharp.cs:429242 - None отрицательный, Twigs начинает с нуля.
+    public enum Enum { None = -1, Twigs, Wood, Stone, Metal, TopTier, Count }
+    public Enum type;
+}
 public class StabilityEntity : BaseCombatEntity { }
 public class DecayEntity : BaseCombatEntity { }
 public class BuildingBlock : StabilityEntity { public BuildingGrade.Enum grade; }

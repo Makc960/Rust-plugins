@@ -19,11 +19,6 @@ namespace Oxide.Plugins
         public DescriptionAttribute(string description) { }
     }
 
-    public class HookMethodAttribute : Attribute
-    {
-        public HookMethodAttribute(string name) { }
-    }
-
     public class ChatCommandAttribute : Attribute
     {
         public ChatCommandAttribute(string command) { }

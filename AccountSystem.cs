@@ -7,11 +7,12 @@ using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Plugins;
 using Oxide.Game.Rust.Cui;
+using Rust;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("AccountSystem", "ICE RUST", "1.2.0")]
+    [Info("AccountSystem", "ICE RUST", "1.2.1")]
     [Description("Persistent ICE RUST account progression with per-wipe, previous-wipe and lifetime statistics.")]
     public class AccountSystem : RustPlugin
     {
@@ -3065,9 +3066,9 @@ namespace Oxide.Plugins
             ItemDefinition definition = ItemManager.FindItemDefinition(itemId);
             if (definition == null) return itemId.ToString(CultureInfo.InvariantCulture);
 
-            return string.IsNullOrEmpty(definition.displayName_english)
-                ? definition.shortname
-                : definition.displayName_english;
+            // ItemDefinition.displayName - это Translate.Phrase, а не строка.
+            string title = definition.displayName == null ? null : definition.displayName.english;
+            return string.IsNullOrEmpty(title) ? definition.shortname : title;
         }
 
         private static string ResourceLabel(string shortname)
@@ -3075,10 +3076,11 @@ namespace Oxide.Plugins
             if (string.IsNullOrEmpty(shortname)) return "—";
 
             ItemDefinition definition = ItemManager.FindItemDefinition(shortname);
-            if (definition != null && !string.IsNullOrEmpty(definition.displayName_english))
-                return definition.displayName_english;
+            string title = definition == null || definition.displayName == null
+                ? null
+                : definition.displayName.english;
 
-            return shortname;
+            return string.IsNullOrEmpty(title) ? shortname : title;
         }
 
         #endregion

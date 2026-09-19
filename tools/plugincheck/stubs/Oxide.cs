@@ -16,25 +16,11 @@ namespace Oxide.Core
         public bool ExistsDatafile(string name) { return false; }
     }
 
-    public class PluginManager
-    {
-        // Реестр, чтобы сквозной тест мог связать ServerMenu и AccountSystem
-        // так же, как это делает Oxide на сервере.
-        public readonly Dictionary<string, Oxide.Core.Plugins.Plugin> Plugins =
-            new Dictionary<string, Oxide.Core.Plugins.Plugin>();
-
-        public Oxide.Core.Plugins.Plugin GetPlugin(string name)
-        {
-            Oxide.Core.Plugins.Plugin plugin;
-            return name != null && Plugins.TryGetValue(name, out plugin) ? plugin : null;
-        }
-    }
-
     public class OxideMod
     {
         public DataFileSystem DataFileSystem = new DataFileSystem();
         public string DataDirectory { get; private set; }
-        public PluginManager RootPluginManager = new PluginManager();
+        public Oxide.Core.Plugins.PluginManager RootPluginManager = new Oxide.Core.Plugins.PluginManager();
         public void LogInfo(string format, params object[] args) { }
         public void LogWarning(string format, params object[] args) { }
         public void LogError(string format, params object[] args) { }
@@ -84,6 +70,21 @@ namespace Oxide.Core
 
     namespace Plugins
     {
+        public class PluginManager
+    {
+        // Реестр, чтобы сквозной тест мог связать ServerMenu и AccountSystem
+        // так же, как это делает Oxide на сервере.
+            public readonly Dictionary<string, Oxide.Core.Plugins.Plugin> Plugins =
+                new Dictionary<string, Oxide.Core.Plugins.Plugin>();
+
+            public Oxide.Core.Plugins.Plugin GetPlugin(string name)
+        {
+            Oxide.Core.Plugins.Plugin plugin;
+            return name != null && Plugins.TryGetValue(name, out plugin) ? plugin : null;
+        }
+    }
+
+
         public class Plugin
         {
             public string Name { get; set; }
@@ -123,6 +124,12 @@ namespace Oxide.Core
             }
 
             public object CallHook(string hook, params object[] args) { return Call(hook, args); }
+        }
+
+        // Oxide.Core.Plugins, как в Oxide.Core.cs.
+        public class HookMethodAttribute : Attribute
+        {
+            public HookMethodAttribute(string name) { }
         }
 
         [AttributeUsage(AttributeTargets.Field)]
