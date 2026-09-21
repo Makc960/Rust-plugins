@@ -3288,7 +3288,8 @@ namespace Oxide.Plugins
 		
 		private void ItemGUI(BasePlayer player, string category, int Page = 0, string itemname = "null")
 		{
-			bool comfort = StoredData[player.userID].Comfort, comfortp = StoredData[player.userID].ComfortP;
+			Data data = StoredData[player.userID];
+			bool comfort = data.Comfort, comfortp = data.ComfortP;
 			
 			CuiHelper.DestroyUi(player, ".SettingGUI");
 			if(!comfort) CuiHelper.DestroyUi(player, ".SkinGUI");
@@ -3318,22 +3319,34 @@ namespace Oxide.Plugins
 			
 						
 			bool permadmins = permission.UserHasPermission(player.UserIDString, permAdminS), permvips = permission.UserHasPermission(player.UserIDString, permVipS);
-			var player_data = StoredData[player.userID].Skins;
+			var player_data = data.Skins;
 			
 			int x = 0, y = 0, z = 0, count = comfortp ? 14 : 11;
+			int skip = Page * (comfort ? count : 40), taken = 0;
 			
-			foreach(var item in comfort ? config.Category[category].Skip(Page * count).Take(count) : config.Category[category].Skip(Page * 40))
+			if(_tileMinD == null) BuildTileOffsets();
+			string[] tileMin = comfort ? (comfortp ? _itemTileMinP : _itemTileMinC) : _tileMinD, tileMax = comfort ? (comfortp ? _itemTileMaxP : _itemTileMaxC) : _tileMaxD;
+			
+			foreach(var item in config.Category[category])
 			{
+				if(skip > 0)
+				{
+					skip--;
+					continue;
+				}
+				
+				if(comfort && taken++ == count)
+					break;
+				
 				string key = item.Key;
 				
-				bool c = player_data.ContainsKey(key);
-				ulong skinID = c ? player_data[key] : 0;
-				bool s = skinID != 0, available = c && (StoredDataSkins.ContainsKey(key) && StoredDataSkins[key].Count != 0 || permvips && config.Setting.VipSkins.ContainsKey(key) && config.Setting.VipSkins[key].Count != 0 || permadmins && config.Setting.AdminSkins.ContainsKey(key) && config.Setting.AdminSkins[key].Count != 0);
+				bool c = player_data.TryGetValue(key, out ulong skinID);
+				bool s = skinID != 0, available = c && (StoredDataSkins.TryGetValue(key, out List<ulong> stored) && stored.Count != 0 || permvips && config.Setting.VipSkins.TryGetValue(key, out List<ulong> vip) && vip.Count != 0 || permadmins && config.Setting.AdminSkins.TryGetValue(key, out List<ulong> adm) && adm.Count != 0);
 				int itemid = _itemsId[key];
 				
 			    container.Add(new CuiPanel
                 {
-                    RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = comfort ? $"{(comfortp ? -611.25 : -480) + (x * 87.5)} {-42.5 - (y * 90)}" : $"{-497.5 + (x * 100)} {102.375 - (y * 100)}", OffsetMax = comfort ? $"{(comfortp ? -526.25 : -395) + (x * 87.5)} {42.5 - (y * 90)}" : $"{-402.5 + (x * 100)} {197.375 - (y * 100)}" },
+                    RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = tileMin[y * 10 + x], OffsetMax = tileMax[y * 10 + x] },
                     Image = { Color = config.GUI.BlockColor, Material = "assets/icons/greyout.mat" }
                 }, ".ItemGUI", ".Item");
 				
@@ -3956,9 +3969,45 @@ namespace Oxide.Plugins
 			});
 		}
 		
+		// Смещения плиток не зависят от игрока и состояния: те же строки, что давали интерполяции
+		// в SkinGUI/ItemGUI, но посчитанные один раз вместо 80 форматирований double на каждый экран.
+		private string[] _tileMinD, _tileMaxD, _skinTileMinC, _skinTileMaxC, _itemTileMinC, _itemTileMaxC, _itemTileMinP, _itemTileMaxP;
+		
+		private void BuildTileOffsets()
+		{
+			_tileMinD = new string[40];
+			_tileMaxD = new string[40];
+			_skinTileMinC = new string[40];
+			_skinTileMaxC = new string[40];
+			
+			for(int i = 0; i < 40; i++)
+			{
+				int x = i % 10, y = i / 10;
+				
+				_tileMinD[i] = $"{-497.5 + (x * 100)} {102.375 - (y * 100)}";
+				_tileMaxD[i] = $"{-402.5 + (x * 100)} {197.375 - (y * 100)}";
+				_skinTileMinC[i] = $"{-497.5 + (x * 100)} {52.375 - (y * 100)}";
+				_skinTileMaxC[i] = $"{-402.5 + (x * 100)} {147.375 - (y * 100)}";
+			}
+			
+			_itemTileMinC = new string[14];
+			_itemTileMaxC = new string[14];
+			_itemTileMinP = new string[14];
+			_itemTileMaxP = new string[14];
+			
+			for(int x = 0, y = 0; x < 14; x++)
+			{
+				_itemTileMinC[x] = $"{-480 + (x * 87.5)} {-42.5 - (y * 90)}";
+				_itemTileMaxC[x] = $"{-395 + (x * 87.5)} {42.5 - (y * 90)}";
+				_itemTileMinP[x] = $"{-611.25 + (x * 87.5)} {-42.5 - (y * 90)}";
+				_itemTileMaxP[x] = $"{-526.25 + (x * 87.5)} {42.5 - (y * 90)}";
+			}
+		}
+		
 		private void SkinGUI(BasePlayer player, string item, int Page = 0, string category = "null", int PageC = 0, string search = "")
 		{
-			bool comfort = StoredData[player.userID].Comfort;
+			Data data = StoredData[player.userID];
+			bool comfort = data.Comfort;
 			
             CuiElementContainer container = new CuiElementContainer();
 			
@@ -3969,17 +4018,28 @@ namespace Oxide.Plugins
             }, ".SGUI", ".SkinGUI", ".SkinGUI");
 			
 			int x = 0, y = 0, count = comfort ? 30 : 40, yN = comfort ? 3 : 4;
-			ulong s = StoredData[player.userID].Skins[item];
+			ulong s = data.Skins[item];
 			int itemid = _itemsId[item];
+			bool adminUi = permission.UserHasPermission(player.UserIDString, permAdmin) && !_adminUiFD.Contains(player.userID);
 			
-			List<ulong> list_skins = new List<ulong>();
+			if(_tileMinD == null) BuildTileOffsets();
+			string[] tileMin = comfort ? _skinTileMinC : _tileMinD, tileMax = comfort ? _skinTileMaxC : _tileMaxD;
 			
-			if(config.Setting.AdminSkins.ContainsKey(item) && permission.UserHasPermission(player.UserIDString, permAdminS))
-				list_skins.AddRange(config.Setting.AdminSkins[item]);
-			if(config.Setting.VipSkins.ContainsKey(item) && permission.UserHasPermission(player.UserIDString, permVipS))
-				list_skins.AddRange(config.Setting.VipSkins[item]);
+			List<ulong> list_skins = StoredDataSkins[item], adminList, vipList;
 			
-			list_skins.AddRange(StoredDataSkins[item]);
+			bool hasAdmin = config.Setting.AdminSkins.TryGetValue(item, out adminList) && permission.UserHasPermission(player.UserIDString, permAdminS);
+			bool hasVip = config.Setting.VipSkins.TryGetValue(item, out vipList) && permission.UserHasPermission(player.UserIDString, permVipS);
+			
+			if(hasAdmin || hasVip)
+			{
+				List<ulong> merged = new List<ulong>((hasAdmin ? adminList.Count : 0) + (hasVip ? vipList.Count : 0) + list_skins.Count);
+				
+				if(hasAdmin) merged.AddRange(adminList);
+				if(hasVip) merged.AddRange(vipList);
+				
+				merged.AddRange(list_skins);
+				list_skins = merged;
+			}
 			
 			if(!string.IsNullOrEmpty(search))
 			{
@@ -3989,13 +4049,14 @@ namespace Oxide.Plugins
 					list_skins = list_skins.Where(skinID => StoredDataSkinsName.TryGetValue(skinID, out string name) && name.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
 			}
 			
-			foreach(ulong skin in list_skins.Skip(Page * count))
+			for(int i = Page * count; i < list_skins.Count; i++)
 			{
+				ulong skin = list_skins[i];
 				bool isAdminSkin = _adminSkins.Contains(skin), isVipSkin = _vipSkins.Contains(skin);
 				
 			    container.Add(new CuiPanel
                 {
-                    RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = comfort ? $"{-497.5 + (x * 100)} {52.375 - (y * 100)}" : $"{-497.5 + (x * 100)} {102.375 - (y * 100)}", OffsetMax = comfort ? $"{-402.5 + (x * 100)} {147.375 - (y * 100)}" : $"{-402.5 + (x * 100)} {197.375 - (y * 100)}" },
+                    RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = tileMin[y * 10 + x], OffsetMax = tileMax[y * 10 + x] },
                     Image = { Color = s == skin ? config.GUI.ActiveBlockColor : config.GUI.BlockColor, Material = "assets/icons/greyout.mat" }
                 }, ".SkinGUI", ".Skin");
 				
@@ -4009,11 +4070,11 @@ namespace Oxide.Plugins
 						}
 					});		
 					
-				if(StoredDataSkinsName.ContainsKey(skin))
+				if(StoredDataSkinsName.TryGetValue(skin, out string skinName))
 					container.Add(new CuiLabel
 					{
 						RectTransform = { AnchorMin = "0 1", AnchorMax = "1 1", OffsetMin = "2.5 -12.5", OffsetMax = "-2.5 -2.5" },
-						Text = { Text = StoredDataSkinsName[skin], Align = TextAnchor.MiddleCenter, Font = "robotocondensed-regular.ttf", FontSize = 8, Color = "0.85 0.85 0.85 1" }
+						Text = { Text = skinName, Align = TextAnchor.MiddleCenter, Font = "robotocondensed-regular.ttf", FontSize = 8, Color = "0.85 0.85 0.85 1" }
 					}, ".Skin");
 				
 				container.Add(new CuiButton
@@ -4023,7 +4084,7 @@ namespace Oxide.Plugins
                     Text = { Text = "" }
                 }, ".Skin");
 		   		 		  						  	   		   		 		  		 			   					  	 	 
-				if(permission.UserHasPermission(player.UserIDString, permAdmin) && !_adminUiFD.Contains(player.userID))
+				if(adminUi)
 				{
 					container.Add(new CuiLabel
 					{
