@@ -52,13 +52,28 @@ public class DamageProperties { }
 
 public class EffectData { }
 
-public class Effect : EffectData                       // Assembly-CSharp.cs:278867
+public partial class Effect : EffectData               // Assembly-CSharp.cs:278867
 {
     public Effect() { }
     public Effect(string effectName, Vector3 posWorld, Vector3 normWorld,
         Network.Connection sourceConnection = null) { }                          // :279204
     public Effect(string effectName, BaseEntity ent, uint boneID, Vector3 posLocal,
         Vector3 normLocal, Network.Connection sourceConnection = null) { }        // :279210
+}
+
+public static class EffectServerRuns { }
+
+public partial class Effect
+{
+    public static class server
+    {
+        public static void Run(string strName, BaseEntity ent, uint boneID = 0u, Vector3 posLocal = default(Vector3),
+            Vector3 normLocal = default(Vector3), Network.Connection sourceConnection = null, bool broadcast = false,
+            List<Network.Connection> targets = null, int number = 0) { }
+        public static void Run(string strName, Vector3 posWorld = default(Vector3), Vector3 normWorld = default(Vector3),
+            Vector3 up = default(Vector3), Network.Connection sourceConnection = null, bool broadcast = false,
+            List<Network.Connection> targets = null) { }
+    }
 }
 
 public static class EffectNetwork                      // :279293
@@ -95,13 +110,15 @@ public class BaseNetworkable : Component
     public string ShortPrefabName;
     public string PrefabName;
     public virtual void Kill() { }
+    public virtual void Spawn() { }                          // :290145
 }
 
 public class BaseEntity : BaseNetworkable
 {
     public ulong OwnerID;
-    public ulong skinID;
+    public ulong skinID;                                    // :53175
     public BaseEntity GetParentEntity() { return null; }
+    public void SendNetworkUpdate(BasePlayer.NetworkQueue queue = BasePlayer.NetworkQueue.Update) { }   // :290397
 }
 
 public class BaseCombatEntity : BaseEntity
@@ -169,10 +186,25 @@ public class Item
     public bool isBroken;
     public ItemContainer parent;
     public ItemContainer contents;
+    public int position;                                      // :366125
+    public bool isServer;                                     // :366131
+    public string name;                                       // :366139
+    public string text;                                       // :366143
+    public List<ItemOwnershipShare> ownershipShares;          // :366149
     public int MaxStackable() { return info == null ? 1 : info.stackable; }   // :367875
     public void LoseCondition(float amount) { }
     public void RepairCondition(float amount) { }
     public BasePlayer GetOwnerPlayer() { return null; }
+    public void MarkDirty() { }
+    public BaseEntity GetWorldEntity() { return null; }       // :367685
+    public BaseEntity GetHeldEntity() { return null; }        // :367716
+    public void RemoveFromWorld() { }                         // :366683
+    public void RemoveFromContainer() { }                     // :366715
+    public bool MoveToContainer(ItemContainer newcontainer, int iTargetPos = -1, bool allowStack = true,
+        bool ignoreStackLimit = false, BasePlayer sourcePlayer = null, bool allowSwap = true) { return true; }   // :367037
+    public BaseEntity Drop(Vector3 vPos, Vector3 vVelocity, Quaternion rotation = default(Quaternion)) { return null; }   // :367300
+    public void Remove(float fTime = 0f) { }                  // :367346
+    public Item SplitItem(int split_Amount) { return null; }  // :367446
 }
 
 public static class ItemManager
@@ -181,6 +213,7 @@ public static class ItemManager
     public static ItemDefinition FindItemDefinition(string shortName) { return null; }
     public static List<ItemDefinition> GetItemDefinitions() { return new List<ItemDefinition>(); }
     public static List<ItemDefinition> itemList = new List<ItemDefinition>();   // :374543
+    public static Item CreateByName(string strName, int iAmount = 1, ulong skin = 0UL) { return null; }   // :374766
 }
 
 public class ItemContainer
@@ -188,12 +221,19 @@ public class ItemContainer
     public List<Item> itemList = new List<Item>();
     public int maxStackSize;                              // :183758
     public bool allowItemsToIncreaseToMaxStackSize;
+    public BasePlayer playerOwner;                        // :368141
+    public Vector3 dropPosition;
+    public Vector3 dropVelocity;
+    public void ServerInitialize(Item parentItem, int iMaxCapacity) { }                       // :368331
+    public ProtoBuf.ItemContainer Save(bool bIncludeContainer = true, bool stripBelt = false) { return new ProtoBuf.ItemContainer(); }   // :368964
+    public void Load(ProtoBuf.ItemContainer container) { }                                    // :369008
 }
 public class PlayerInventory
 {
     public ItemContainer containerMain = new ItemContainer();
     public ItemContainer containerBelt = new ItemContainer();
     public ItemContainer containerWear = new ItemContainer();
+    public void FindItemsByItemID(List<Item> list, int itemid) { }   // :368938
 }
 
 public class HeldEntity : BaseEntity
@@ -204,7 +244,17 @@ public class HeldEntity : BaseEntity
 }
 
 public class AttackEntity : HeldEntity { }                             // :288366
-public class BaseProjectile : AttackEntity { }                         // :88425
+public class BaseProjectile : AttackEntity                               // :88425
+{
+    public class Magazine                                                // :88428
+    {
+        public int contents;                                             // :88445
+        public ItemDefinition ammoType;                                  // :88448
+    }
+    public Magazine primaryMagazine;                                     // :88559
+    public void SetAmmoCount(int newCount) { }                           // :89114
+    public void ForceModsChanged() { }                                   // :89523
+}
 public class BaseMelee : AttackEntity { }                              // :62074
 public class ThrownWeapon : AttackEntity { }
 
@@ -222,6 +272,14 @@ public class BasePlayer : BaseCombatEntity
     public bool IsAdmin;
     public bool IsDestroyed;
     public Network.Connection Connection;   // :70917
+    public PlayerEyes eyes;
+    public bool IsReceivingSnapshot;        // :70260
+    public PlayerBlueprints blueprints;     // :70165
+    public ulong currentTeam;               // :69731
+    public RelationshipManager.PlayerTeam Team;   // :70475
+    public bool CanBuild() { return true; } // :78038
+    public Item GetActiveItem() { return null; }  // :75903
+    public enum NetworkQueue { Update, UpdateDistance, Positional }   // :67884
     public void ChatMessage(string message) { }
     public void SendConsoleCommand(string command, params object[] args) { }
     public HeldEntity GetHeldEntity() { return null; }
@@ -244,7 +302,18 @@ public class BuildingGrade
 }
 public class StabilityEntity : BaseCombatEntity { }
 public class DecayEntity : BaseCombatEntity { }
-public class BuildingBlock : StabilityEntity { public BuildingGrade.Enum grade; }
+public class BuildingBlock : StabilityEntity
+{
+    public BuildingGrade.Enum grade;
+    public float wallpaperRotation;
+    public float wallpaperRotation2;                          // :102783
+    public ulong wallpaperID { get; private set; }
+    public ulong wallpaperID2 { get; private set; }           // :102824
+    public bool HasWallpaper() { return false; }              // :103747
+    public bool HasWallpaper(int side) { return false; }      // :103756
+    public void SetWallpaper(ulong id, int side = 0, float rotation = 0f) { }   // :103783
+    public bool CanSeeWallpaperSocket(BasePlayer player, int side = 0) { return false; }   // :103940
+}
 public class Door : DecayEntity { }
 public class BuildingPrivlidge : DecayEntity { }
 public class StorageContainer : DecayEntity { public ItemContainer inventory = new ItemContainer(); }
@@ -274,7 +343,7 @@ public class BaseHelicopter : BaseCombatEntity { }
 public class PatrolHelicopter : BaseHelicopter { }
 public class AutoTurret : BaseCombatEntity { }
 public class Planner : HeldEntity { }
-public class ItemCraftTask { }
+public class ItemCraftTask { public int skinID; }   // :365523
 public class ItemCrafter : Component { public BasePlayer owner; }
 public class ItemModProjectile : MonoBehaviour { }
 public class SupplySignal : BaseEntity { }
@@ -298,11 +367,16 @@ public static class ConsoleSystem
 {
     public class Arg
     {
-        public BasePlayer Player() { return null; }
+        public BasePlayer Caller;
         public string[] Args;
-        public bool HasArgs(int count) { return false; }
-        public string GetString(int index, string def = "") { return def; }
-        public int GetInt(int index, int def = 0) { return def; }
-        public ulong GetUInt64(int index, ulong def = 0UL) { return def; }
+        public Arg() { }
+        public Arg(BasePlayer caller, params string[] args) { Caller = caller; Args = args; }
+        public BasePlayer Player() { return Caller; }
+        public bool HasArgs(int count = 1) { return Args != null && Args.Length >= count; }
+        public string GetString(int index, string def = "") { return Args != null && index < Args.Length ? Args[index] : def; }
+        public int GetInt(int index, int def = 0) { int v; return Args != null && index < Args.Length && int.TryParse(Args[index], out v) ? v : def; }
+        public ulong GetUInt64(int index, ulong def = 0UL) { ulong v; return Args != null && index < Args.Length && ulong.TryParse(Args[index], out v) ? v : def; }
+        public ulong GetULong(int index, ulong def = 0UL) { return GetUInt64(index, def); }   // Facepunch.Console.cs:316
+        public bool GetBool(int index, bool def = false) { bool v; return Args != null && index < Args.Length && bool.TryParse(Args[index], out v) ? v : def; }   // :385
     }
 }

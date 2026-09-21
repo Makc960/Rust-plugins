@@ -33,6 +33,10 @@ public static class Check
 
     public static int Main()
     {
+        string golden = Environment.GetEnvironmentVariable("GOLDEN");
+        if (!string.IsNullOrEmpty(golden))
+            return XSkinGolden.Run(golden, Environment.GetEnvironmentVariable("GOLDEN_FILE") ?? "xskin.golden");
+
         AS = Type.GetType("Oxide.Plugins.AccountSystem");
         StoredT = Nested("StoredData");
         AccT = Nested("AccountData");
@@ -139,6 +143,8 @@ public static class Check
         fails += ChatCheck.Run();
         Console.WriteLine();
         fails += StacksCheck.Run();
+        Console.WriteLine();
+        fails += XSkinHooks.Run();
 
         Console.WriteLine(fails == 0 ? "\nALL PASS" : "\n" + fails + " FAILED");
         return fails;

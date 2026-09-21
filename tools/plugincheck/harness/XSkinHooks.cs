@@ -1,0 +1,128 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using Oxide.Core.Libraries;
+
+// Поведение горячих хуков XSkinMenu: одинаковые входы должны давать одинаковый результат
+// до и после оптимизации. Наблюдаемое: item.skin (ветка SSI без пересоздания предмета).
+public static class XSkinHooks
+{
+    const BindingFlags Any = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+    static Type XS; static object plugin; static int fails;
+
+    static void Ok(string name, bool cond, string detail)
+    {
+        Console.WriteLine((cond ? "  PASS  " : "  FAIL  ") + name + "   " + detail);
+        if (!cond) fails++;
+    }
+    static object F(string n) { return XS.GetField(n, Any).GetValue(plugin); }
+    static object Get(object o, string n) { var f = o.GetType().GetField(n, Any); return f != null ? f.GetValue(o) : o.GetType().GetProperty(n, Any).GetValue(o); }
+    static void Set(object o, string n, object v) { var f = o.GetType().GetField(n, Any); if (f != null) f.SetValue(o, v); else o.GetType().GetProperty(n, Any).SetValue(o, v); }
+    static void Call(string m, params object[] a)
+    {
+        // Перегрузки (AddToBlacklist(ulong) / AddToBlacklist(List<ulong>)): берём ту, чьи параметры принимают аргументы.
+        var mi = XS.GetMethods(Any).First(x => x.Name == m && x.GetParameters().Length >= a.Length &&
+            x.GetParameters().Skip(a.Length).All(p => p.IsOptional) &&
+            x.GetParameters().Take(a.Length).Select((p, i) => a[i] == null || p.ParameterType.IsInstanceOfType(a[i])).All(ok => ok));
+        mi.Invoke(plugin, a.Concat(mi.GetParameters().Skip(a.Length).Select(p => p.DefaultValue)).ToArray());
+    }
+
+    static BasePlayer player;
+    static object Fresh(bool loaded, bool changeSG, bool changeSP, bool changeSC, ulong chosen)
+    {
+        plugin = Activator.CreateInstance(XS, true);
+        Call("LoadDefaultConfig");
+        Permission.Granted.Clear();
+        foreach (var p in new[] { "xskinmenu.give", "xskinmenu.pickup", "xskinmenu.craft" }) Permission.Granted.Add(p);
+        ((IDictionary)F("_items"))["rifle.ak"] = 0UL;
+        ((IDictionary)F("StoredDataSkins"))["rifle.ak"] = new List<ulong> { chosen };
+        Set(plugin, "StoredDataFriends", new Dictionary<ulong, bool>());
+        player = new BasePlayer { userID = 76561198000000088UL, UserIDString = "76561198000000088", displayName = "H", IsConnected = true };
+        player.inventory.containerMain.playerOwner = player;
+        if (!loaded) return null;
+        Call("LoadData", player);
+        object data = ((IDictionary)F("StoredData"))[76561198000000088UL];
+        Set(data, "ChangeSG", changeSG); Set(data, "ChangeSP", changeSP); Set(data, "ChangeSC", changeSC);
+        ((IDictionary)Get(data, "Skins"))["rifle.ak"] = chosen;
+        return data;
+    }
+    static Item Ak(ulong skin) { return new Item { info = new ItemDefinition { shortname = "rifle.ak", itemid = 1545779598 }, skin = skin, amount = 1, parent = player.inventory.containerMain }; }
+
+    public static int Run()
+    {
+        XS = Type.GetType("Oxide.Plugins.XSkinMenu");
+
+        // --- OnItemAddedToContainer ---
+        Fresh(true, true, false, false, 777UL);
+        var it = Ak(0);
+        Call("OnItemAddedToContainer", player.inventory.containerMain, it);
+        Ok("added: ChangeSG + выбран скин -> предмет перекрашен", it.skin == 777UL, "skin=" + it.skin);
+
+        Fresh(true, false, false, false, 777UL); it = Ak(0);
+        Call("OnItemAddedToContainer", player.inventory.containerMain, it);
+        Ok("added: ChangeSG выкл -> без изменений", it.skin == 0UL, "skin=" + it.skin);
+
+        Fresh(false, true, false, false, 777UL); it = Ak(0);
+        Call("OnItemAddedToContainer", player.inventory.containerMain, it);
+        Ok("added: данные игрока не загружены -> без изменений и без исключения", it.skin == 0UL, "skin=" + it.skin);
+
+        Fresh(true, true, false, false, 777UL); Permission.Granted.Remove("xskinmenu.give"); it = Ak(0);
+        Call("OnItemAddedToContainer", player.inventory.containerMain, it);
+        Ok("added: нет права give -> без изменений", it.skin == 0UL, "skin=" + it.skin);
+
+        Fresh(true, true, false, false, 777UL); it = Ak(777UL);
+        Call("OnItemAddedToContainer", player.inventory.containerMain, it);
+        Ok("added: скин уже нужный -> ничего не делает", it.skin == 777UL, "skin=" + it.skin);
+
+        Fresh(true, true, false, false, 777UL); ((HashSet<ulong>)F("_removeATC")).Add(76561198000000088UL); it = Ak(0);
+        Call("OnItemAddedToContainer", player.inventory.containerMain, it);
+        Ok("added: игрок в _removeATC (получает кит) -> без изменений", it.skin == 0UL, "skin=" + it.skin);
+
+        // --- OnItemPickup ---
+        Fresh(true, false, true, false, 555UL); it = Ak(0);
+        Call("OnItemPickup", it, player);
+        Ok("pickup: ChangeSP + скин -> перекрашен", it.skin == 555UL, "skin=" + it.skin);
+
+        Fresh(true, false, false, false, 555UL); it = Ak(0);
+        Call("OnItemPickup", it, player);
+        Ok("pickup: ChangeSP выкл -> без изменений", it.skin == 0UL, "skin=" + it.skin);
+
+        Fresh(false, false, true, false, 555UL); it = Ak(0);
+        Call("OnItemPickup", it, player);
+        Ok("pickup: без данных -> без исключения", it.skin == 0UL, "skin=" + it.skin);
+
+        // --- OnItemCraftFinished ---
+        Fresh(true, false, false, true, 444UL); it = Ak(0);
+        Call("OnItemCraftFinished", new ItemCraftTask { skinID = 0 }, it, new ItemCrafter { owner = player });
+        Ok("craft: ChangeSC (и не ChangeSG) -> перекрашен", it.skin == 444UL, "skin=" + it.skin);
+
+        Fresh(true, true, false, true, 444UL); it = Ak(0);
+        Call("OnItemCraftFinished", new ItemCraftTask { skinID = 0 }, it, new ItemCrafter { owner = player });
+        Ok("craft: ChangeSG вкл -> крафт не красит (это делает added)", it.skin == 0UL, "skin=" + it.skin);
+
+        Fresh(true, false, false, true, 444UL); it = Ak(0);
+        Call("OnItemCraftFinished", new ItemCraftTask { skinID = 123 }, it, new ItemCrafter { owner = player });
+        Ok("craft: у задачи уже есть skinID -> без изменений", it.skin == 0UL, "skin=" + it.skin);
+
+        Fresh(false, false, false, true, 444UL); it = Ak(0);
+        bool threw = false;
+        try { Call("OnItemCraftFinished", new ItemCraftTask { skinID = 0 }, it, new ItemCrafter { owner = player }); }
+        catch (Exception) { threw = true; }
+        Ok("craft: без данных -> не падает", !threw && it.skin == 0UL, threw ? "исключение" : "тихий выход");
+
+        // --- чёрный список: зеркало синхронно с конфигом ---
+        Fresh(true, true, false, false, 777UL);
+        Call("AddToBlacklist", 999UL, "test");
+        var blk = (HashSet<ulong>)F("_blacklist");
+        var cfgBlk = (List<ulong>)Get(Get(F("config"), "Setting"), "Blacklist");
+        Ok("blacklist: AddToBlacklist попадает и в конфиг, и в зеркало", blk.Contains(999UL) && cfgBlk.Contains(999UL), "оба содержат 999");
+        it = Ak(999UL);
+        Call("OnItemAddedToContainer", player.inventory.containerMain, it);
+        Ok("blacklist: предмет с чёрным скином не перекрашивается", it.skin == 999UL, "skin=" + it.skin);
+
+        Console.WriteLine(fails == 0 ? "\nXSKIN HOOKS: ALL PASS" : "\nXSKIN HOOKS: " + fails + " FAILED");
+        return fails;
+    }
+}

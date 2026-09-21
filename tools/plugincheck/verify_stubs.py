@@ -25,7 +25,7 @@ MEMBER_RE = re.compile(
 # Свойство, у которого тело начинается со следующей строки: "public float condition".
 PROPERTY_RE = re.compile(
     r'^\s*public\s+(?:static\s+|virtual\s+|override\s+|abstract\s+|new\s+)*'
-    r'(?:[\w<>\[\]\.,\?]+)\s+(\w+)\s*$')
+    r'(?:[\w<>\[\]\.,\? ]+?)\s+(\w+)\s*$')
 ENUM_MEMBER_RE = re.compile(r'^\s*(\w+)\s*(?:=\s*-?\w+\s*)?,?\s*$')
 
 STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"')
@@ -152,6 +152,9 @@ ALLOWED_MEMBERS = {
     'Timer.Every',                  # вложенный Oxide.Core.Libraries.Timer
     'EncryptedValue.T',             # параметр обобщённого типа
     'Vector3.magnitude',            # свойство структуры Unity
+    'PooledList.Dispose',           # через BasePooledList<T,TSelf> : IDisposable
+    'ServerMgr.StartCoroutine',     # унаследовано от MonoBehaviour (UnityEngine.CoreModule.cs:73654)
+    'ServerMgr.StopCoroutine',
 }
 
 

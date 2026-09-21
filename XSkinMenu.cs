@@ -18,7 +18,7 @@ namespace Oxide.Plugins
     class XSkinMenu : RustPlugin
     {
 		private const bool LanguageEnglish = false;
-		private List<ulong> _adminAndVipSkins = new List<ulong>();
+		private HashSet<ulong> _adminAndVipSkins = new HashSet<ulong>();
 		private Dictionary<string, List<ulong>> StoredDataSkins = new Dictionary<string, List<ulong>>();
 		
 		private void SaveData(BasePlayer player)
@@ -33,18 +33,18 @@ namespace Oxide.Plugins
 		{
 			if(item == null || player == null || player.IsNpc) return;
 			
+			if(!StoredData.TryGetValue(player.userID, out Data data) || !data.ChangeSP) return;
+
 			string shortname = item.info.shortname;
-			
+
+			if(!data.Skins.TryGetValue(shortname, out ulong skin)) return;
 			if(config.Setting.ReskinConfig && !_items.ContainsKey(shortname)) return;
-			if(!permission.UserHasPermission(player.UserIDString, permPickup) || !StoredData.ContainsKey(player.userID) || !StoredData[player.userID].Skins.ContainsKey(shortname)) return;
-			
-			if(StoredData[player.userID].ChangeSP)
-			{
-				if(ersK.ContainsKey(shortname) && ersK[shortname].ContainsKey(StoredData[player.userID].Skins[shortname]))
-					NextTick(() => SetSkinCraftGive(player, item, true));
-				else
-					SetSkinCraftGive(player, item);
-			}
+			if(!permission.UserHasPermission(player.UserIDString, permPickup)) return;
+
+			if(ersK.TryGetValue(shortname, out Dictionary<ulong, string> redirects) && redirects.ContainsKey(skin))
+				NextTick(() => SetSkinCraftGive(player, item, true));
+			else
+				SetSkinCraftGive(player, item);
 		}
 		   		 		  						  	   		   		 		  		 			   					  	 	 
         private class SkinConfig
@@ -325,11 +325,15 @@ namespace Oxide.Plugins
 					}
 				
 				if(_removeATC.Contains(player.userID)) return;
-				if(config.Setting.ReskinConfig && !_items.ContainsKey(item.info.shortname)) return;
-				if(!permission.UserHasPermission(player.UserIDString, permGive) || !StoredData.ContainsKey(player.userID) || !StoredData[player.userID].Skins.ContainsKey(item.info.shortname)) return;
-				
-				if(StoredData[player.userID].ChangeSG)
-					SetSkinCraftGive(player, item, true);
+				if(!StoredData.TryGetValue(player.userID, out Data data) || !data.ChangeSG) return;
+
+				string shortname = item.info.shortname;
+
+				if(!data.Skins.ContainsKey(shortname)) return;
+				if(config.Setting.ReskinConfig && !_items.ContainsKey(shortname)) return;
+				if(!permission.UserHasPermission(player.UserIDString, permGive)) return;
+
+				SetSkinCraftGive(player, item, true);
 			}
 		}
 		
@@ -384,17 +388,18 @@ namespace Oxide.Plugins
 			if(task.skinID == 0)
 			{
 				BasePlayer player = crafter.owner;
-				
+
+				if(player == null || !StoredData.TryGetValue(player.userID, out Data data) || data.ChangeSG || !data.ChangeSC) return;
+
 				string shortname = item.info.shortname;
-				
-				if(!StoredData[player.userID].Skins.ContainsKey(shortname) || !permission.UserHasPermission(player.UserIDString, permCraft)) return;
-				if(!StoredData[player.userID].ChangeSG && StoredData[player.userID].ChangeSC)
-				{
-					if(ersK.ContainsKey(shortname) && ersK[shortname].ContainsKey(StoredData[player.userID].Skins[shortname]))
-						NextTick(() => SetSkinCraftGive(player, item, true));
-					else
-						SetSkinCraftGive(player, item);
-				}
+
+				if(!data.Skins.TryGetValue(shortname, out ulong skin)) return;
+				if(!permission.UserHasPermission(player.UserIDString, permCraft)) return;
+
+				if(ersK.TryGetValue(shortname, out Dictionary<ulong, string> redirects) && redirects.ContainsKey(skin))
+					NextTick(() => SetSkinCraftGive(player, item, true));
+				else
+					SetSkinCraftGive(player, item);
 			}
 		}
 		
@@ -417,7 +422,7 @@ namespace Oxide.Plugins
 		
 				
 		private Dictionary<string, ulong> API_GetSkinsPlayer(ulong userID) => StoredData[userID].Skins;
-		private List<ulong> _vipSkins = new List<ulong>();
+		private HashSet<ulong> _vipSkins = new HashSet<ulong>();
 		private void CanSetAutoKit(BasePlayer player) => _removeATC.Add(player.userID);
 		
 		private void KitInfoGUI(BasePlayer player, string category, string kitname)
@@ -766,7 +771,7 @@ namespace Oxide.Plugins
 						
 						foreach(var i in pooledList)
 						{
-							if(config.Setting.Blacklist.Contains(i.skin)) continue;
+							if(Blacklisted(i.skin)) continue;
 							
 							SSI(player, i, skin, item);
 						}
@@ -777,7 +782,7 @@ namespace Oxide.Plugins
 					
 					foreach(var i in pooledList)
 					{
-						if(i.skin == skin || config.Setting.Blacklist.Contains(i.skin)) continue;
+						if(i.skin == skin || Blacklisted(i.skin)) continue;
 						
 						SSI(player, i, skin, item);
 					}
@@ -788,7 +793,7 @@ namespace Oxide.Plugins
 					
 					foreach(var i in pooledList)
 					{
-						if(i.skin == skin || config.Setting.Blacklist.Contains(i.skin)) continue;
+						if(i.skin == skin || Blacklisted(i.skin)) continue;
 						
 						SSI(player, i, skin);
 					}
@@ -798,7 +803,7 @@ namespace Oxide.Plugins
 		
 		private object OnEntityReskin(BaseEntity entity, ItemSkinDirectory.Skin skin, BasePlayer player)
 		{
-			if(config.Setting.Blacklist.Contains(entity.skinID))
+			if(Blacklisted(entity.skinID))
 			{
 				EffectNetwork.Send(new Effect("assets/bundled/prefabs/fx/invite_notice.prefab", player, 0, new Vector3(), new Vector3()), player.Connection);
 				return false;
@@ -817,9 +822,10 @@ namespace Oxide.Plugins
 				
 				foreach(ulong skinID in skinIDs)
 				{
-					if(skinID != 0 && !config.Setting.Blacklist.Contains(skinID))
+					if(skinID != 0 && !Blacklisted(skinID))
 					{
 						config.Setting.Blacklist.Add(skinID);
+						_blacklist.Add(skinID);
 						msg += $" {skinID}";
 						
 						x++;
@@ -872,7 +878,7 @@ namespace Oxide.Plugins
 		
 		private void OnPlayerInput(BasePlayer player, InputState input)
 		{
-			if(!input.WasJustPressed(BUTTON.FIRE_SECONDARY) || !StoredData[player.userID].UseSprayC) return;
+			if(!input.WasJustPressed(BUTTON.FIRE_SECONDARY) || !StoredData.TryGetValue(player.userID, out Data data) || !data.UseSprayC) return;
 			
 			if(permission.UserHasPermission(player.UserIDString, permSprayC))
 			{
@@ -917,7 +923,7 @@ namespace Oxide.Plugins
             }
         }
 		
-		private List<ulong> _adminUiFD = new List<ulong>();
+		private HashSet<ulong> _adminUiFD = new HashSet<ulong>();
 		
 		private ICuiComponent GetImageComponent(int itemid, ulong skin)
 		{
@@ -2454,7 +2460,7 @@ namespace Oxide.Plugins
 							if(StoredDataSkins.TryGetValue(item.Key, out List<ulong> skins))
 							{
 								foreach(ulong skin in item.Value)
-									if(!skins.Contains(skin) && !_adminAndVipSkins.Contains(skin) && !config.Setting.Blacklist.Contains(skin))
+									if(!skins.Contains(skin) && !_adminAndVipSkins.Contains(skin) && !Blacklisted(skin))
 									{
 										skins.Add(skin);
 										count++;
@@ -2464,7 +2470,7 @@ namespace Oxide.Plugins
 							{
 								skins = new List<ulong>(item.Value);
 								skins.RemoveAll(skin => _adminAndVipSkins.Contains(skin));
-								skins.RemoveAll(skin => config.Setting.Blacklist.Contains(skin));
+								skins.RemoveAll(skin => Blacklisted(skin));
 								
 								StoredDataSkins.Add(item.Key, skins);
 								count += skins.Count;
@@ -2921,7 +2927,7 @@ namespace Oxide.Plugins
 								}
 								else if(_shortnamesEntity.ContainsKey(entity.ShortPrefabName))
 								{
-									if(config.Setting.Blacklist.Contains(entity.skinID))
+									if(Blacklisted(entity.skinID))
 									{
 										EffectNetwork.Send(new Effect("assets/bundled/prefabs/fx/invite_notice.prefab", player, 0, new Vector3(), new Vector3()), player.Connection);
 										return;
@@ -2949,7 +2955,7 @@ namespace Oxide.Plugins
 						string shortname = _redirectSkins.ContainsKey(item.info.shortname) ? _redirectSkins[item.info.shortname] : item.info.shortname, sitem = args.GetString(1);
 						ulong skin = args.GetULong(2);
 						
-						if(config.Setting.Blacklist.Contains(item.skin))
+						if(Blacklisted(item.skin))
 						{
 							EffectNetwork.Send(new Effect("assets/bundled/prefabs/fx/invite_notice.prefab", player, 0, new Vector3(), new Vector3()), player.Connection);
 							Cooldowns[player] = DateTime.Now.AddSeconds(0.5f);
@@ -3185,12 +3191,12 @@ namespace Oxide.Plugins
 			if(player == null || item == null) return;
 			
 			string shortname = item.info.shortname;
-			ulong skin = StoredData[player.userID].Skins[shortname];
-			
+
+			if(!StoredData.TryGetValue(player.userID, out Data data) || !data.Skins.TryGetValue(shortname, out ulong skin)) return;
 			if(config.Setting.ReskinConfig && !_items.ContainsKey(shortname)) return;
-			if(item.skin == skin || config.Setting.Blacklist.Contains(item.skin)) return;
-			
-			if(isgive && skin == 0 && StoredData[player.userID].ChangeSGN) return;
+			if(item.skin == skin || Blacklisted(item.skin)) return;
+
+			if(isgive && skin == 0 && data.ChangeSGN) return;
 			
 			SSI(player, item, skin, ersK.ContainsKey(shortname) ? shortname : "", isgive);
 		}
@@ -3415,7 +3421,21 @@ namespace Oxide.Plugins
 			CuiHelper.AddUi(player, container);
 		}
 		
-		private List<ulong> _adminSkins = new List<ulong>();
+		private HashSet<ulong> _adminSkins = new HashSet<ulong>();
+		private HashSet<ulong> _blacklist = new HashSet<ulong>();
+		
+		private bool Blacklisted(ulong skinID)
+		{
+			List<ulong> source = config.Setting.Blacklist;
+			
+			if(_blacklist.Count != source.Count)
+			{
+				_blacklist.Clear();
+				_blacklist.UnionWith(source);
+			}
+			
+			return _blacklist.Contains(skinID);
+		}
 		
 		private void cmdSetSkinEntity(BasePlayer player, string command, string[] args)
 		{
@@ -3688,11 +3708,12 @@ namespace Oxide.Plugins
 				
 		private void AddToBlacklist(ulong skinID, string pluginName = "Unknown")
 		{
-			if(skinID != 0 && !config.Setting.Blacklist.Contains(skinID))
+			if(skinID != 0 && !Blacklisted(skinID))
 			{
 				PrintWarning(LanguageEnglish ? $"The [ {pluginName} ] plugin has blacklisted the skin - {skinID}" : $"Плагин [ {pluginName} ] добавил в черный список скин - {skinID}");
 				
 				config.Setting.Blacklist.Add(skinID);
+				_blacklist.Add(skinID);
 				SaveConfig();
 			}
 		}
@@ -4058,7 +4079,7 @@ namespace Oxide.Plugins
 			{
 				string shortname = _redirectSkins.ContainsKey(item.info.shortname) ? _redirectSkins[item.info.shortname] : item.info.shortname;
 				
-				if(config.Setting.Blacklist.Contains(item.skin))
+				if(Blacklisted(item.skin))
 				{
 					EffectNetwork.Send(new Effect("assets/bundled/prefabs/fx/invite_notice.prefab", player, 0, new Vector3(), new Vector3()), player.Connection);
 					return;
@@ -4162,7 +4183,7 @@ namespace Oxide.Plugins
 		   		 		  						  	   		   		 		  		 			   					  	 	 
 			foreach(var item in config.Setting.AdminSkins)
 			{
-				_adminSkins.AddRange(item.Value);
+				_adminSkins.UnionWith(item.Value);
 				
 				if(StoredDataSkins.ContainsKey(item.Key))
 						foreach(var skins in item.Value)
@@ -4172,7 +4193,7 @@ namespace Oxide.Plugins
 				
 			foreach(var item in config.Setting.VipSkins)
 			{
-				_vipSkins.AddRange(item.Value);
+				_vipSkins.UnionWith(item.Value);
 				
 				if(StoredDataSkins.ContainsKey(item.Key))
 					foreach(var skins in item.Value)
@@ -4180,8 +4201,8 @@ namespace Oxide.Plugins
 							StoredDataSkins[item.Key].Remove(skins);
 			}
 						
-			_adminAndVipSkins.AddRange(_adminSkins);
-			_adminAndVipSkins.AddRange(_vipSkins);
+			_adminAndVipSkins.UnionWith(_adminSkins);
+			_adminAndVipSkins.UnionWith(_vipSkins);
 			
 			StoredDataSkinsName[0] = "Default";
 			
@@ -4244,7 +4265,7 @@ namespace Oxide.Plugins
 		
 		private object OnItemSkinChange(int skinID, Item item, StorageContainer container, BasePlayer player)
 		{
-			if(config.Setting.Blacklist.Contains(item.skin))
+			if(Blacklisted(item.skin))
 			{
 				EffectNetwork.Send(new Effect("assets/bundled/prefabs/fx/invite_notice.prefab", player, 0, new Vector3(), new Vector3()), player.Connection);
 				
@@ -4559,9 +4580,10 @@ namespace Oxide.Plugins
 			
 			foreach(var category in config.Category)
 				category.Value.Remove("wallpaper");
-			
+
 			///DEL
 			
+			_blacklist = new HashSet<ulong>(config.Setting.Blacklist);
 			SaveConfig();
         }
 		private Dictionary<ulong, string> StoredDataSkinsName = new Dictionary<ulong, string>();
@@ -4600,7 +4622,7 @@ namespace Oxide.Plugins
 					if(entity.OwnerID == player.userID || player.currentTeam != 0 && player.Team.members.Contains(entity.OwnerID) && StoredDataFriends.ContainsKey(entity.OwnerID) && StoredDataFriends[entity.OwnerID])
 						if(_shortnamesEntity.ContainsKey(entity.ShortPrefabName))
 						{
-							if(config.Setting.Blacklist.Contains(entity.skinID))
+							if(Blacklisted(entity.skinID))
 							{
 								EffectNetwork.Send(new Effect("assets/bundled/prefabs/fx/invite_notice.prefab", player, 0, new Vector3(), new Vector3()), player.Connection);
 								return;

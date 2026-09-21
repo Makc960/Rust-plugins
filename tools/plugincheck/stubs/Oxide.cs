@@ -3,6 +3,11 @@ using System.Collections.Generic;
 
 namespace Oxide.Core
 {
+    public static class Utility
+    {
+        public static string GetFileNameWithoutExtension(string value) { return value; }   // Oxide.Core.cs:3787
+    }
+
     // Oxide.Core.cs:3917 - struct с int-полями, не class.
     public struct VersionNumber
     {
@@ -48,6 +53,7 @@ namespace Oxide.Core
         public void LogWarning(string format, params object[] args) { }
         public void LogError(string format, params object[] args) { }
         public void LogException(string message, Exception ex) { }
+        public bool UnloadPlugin(string name) { return true; }   // Oxide.Core.cs:2956
     }
 
     public static class Interface
@@ -69,6 +75,15 @@ namespace Oxide.Core
 
     namespace Libraries
     {
+        public enum RequestMethod { DELETE, GET, PATCH, POST, PUT }   // Oxide.Core.cs:8539
+
+        public class WebRequests
+        {
+            // Oxide.Core.cs:8885
+            public void Enqueue(string url, string body, Action<int, string> callback, Oxide.Core.Plugins.Plugin owner,
+                RequestMethod method = RequestMethod.GET, Dictionary<string, string> headers = null, float timeout = 0f) { }
+        }
+
         public class Timer
         {
             public class TimerInstance { public void Destroy() { } }
@@ -79,8 +94,10 @@ namespace Oxide.Core
 
         public class Permission
         {
+            // Тесты выдают права сюда; ключ - имя права (один игрок на сценарий).
+            public static readonly HashSet<string> Granted = new HashSet<string>();
             public void RegisterPermission(string name, Oxide.Core.Plugins.Plugin owner) { }
-            public bool UserHasPermission(string id, string perm) { return false; }
+            public bool UserHasPermission(string id, string perm) { return Granted.Contains(perm); }
             public bool PermissionExists(string name, Oxide.Core.Plugins.Plugin owner = null) { return false; }
         }
 
@@ -114,6 +131,7 @@ namespace Oxide.Core
             public string Title { get; set; }
             public bool IsLoaded { get; set; }
             public VersionNumber Version { get; set; }
+            public static implicit operator bool(Plugin plugin) { return plugin != null; }   // Oxide.Core.cs:5504
 
             // Настоящая диспетчеризация: ищем метод по имени или по
             // [HookMethod("...")], как это делает Oxide, и зовём его.
@@ -164,11 +182,31 @@ namespace Oxide.Core
     }
 }
 
+namespace Oxide.Game.Rust.Libraries
+{
+    public class Player
+    {
+        public void Message(BasePlayer player, string message, string prefix, ulong userId = 0UL, params object[] args) { }   // Oxide.Rust.cs:3380
+        public void Message(BasePlayer player, string message, ulong userId = 0UL) { }
+        public void Reply(BasePlayer player, string message, string prefix, ulong userId = 0UL, params object[] args) { }
+        public void Reply(BasePlayer player, string message, ulong userId = 0UL) { }
+    }
+
+    public class Command
+    {
+        // Oxide.Rust.cs:2885
+        public void AddChatCommand(string command, Oxide.Core.Plugins.Plugin plugin, Action<BasePlayer, string, string[]> callback) { }
+        public void AddConsoleCommand(string command, Oxide.Core.Plugins.Plugin plugin, Func<ConsoleSystem.Arg, bool> callback) { }
+    }
+}
+
 namespace Oxide.Game.Rust.Cui
 {
     using UnityEngine;
 
-    public class CuiRectTransformComponent
+    public interface ICuiComponent { }   // Oxide.Rust.cs:2028
+
+    public class CuiRectTransformComponent : ICuiComponent
     {
         public string AnchorMin = "0 0";
         public string AnchorMax = "1 1";
@@ -176,7 +214,7 @@ namespace Oxide.Game.Rust.Cui
         public string OffsetMax = "0 0";
     }
 
-    public class CuiImageComponent
+    public class CuiImageComponent : ICuiComponent
     {
         public string Color = "1 1 1 1";
         public string Sprite;
@@ -187,7 +225,7 @@ namespace Oxide.Game.Rust.Cui
         public ulong SkinId;
     }
 
-    public class CuiRawImageComponent
+    public class CuiRawImageComponent : ICuiComponent
     {
         public string Color = "1 1 1 1";
         public string Png;
@@ -197,17 +235,17 @@ namespace Oxide.Game.Rust.Cui
         public string SteamId;
     }
 
-    public class CuiTextComponent
+    public class CuiTextComponent : ICuiComponent
     {
         public string Text = "";
         public int FontSize = 14;
         public string Font;
         public string Color = "1 1 1 1";
         public TextAnchor Align = TextAnchor.UpperLeft;
-        public string FadeIn;
+        public float FadeIn;
     }
 
-    public class CuiButtonComponent
+    public class CuiButtonComponent : ICuiComponent
     {
         public string Command = "";
         public string Close = "";
@@ -225,7 +263,7 @@ namespace Oxide.Game.Rust.Cui
         public string OffsetMax = "0 0";
     }
 
-    public class CuiScrollViewComponent
+    public class CuiScrollViewComponent : ICuiComponent
     {
         public bool Horizontal;
         public bool Vertical;
@@ -239,8 +277,25 @@ namespace Oxide.Game.Rust.Cui
         public object VerticalScrollbar;
     }
 
-    public class CuiOutlineComponent { public string Color; public string Distance; }
-    public class CuiNeedsCursorComponent { }
+    public class CuiOutlineComponent : ICuiComponent { public string Color; public string Distance; }
+
+    // Oxide.Rust.cs:2224
+    public class CuiInputFieldComponent : ICuiComponent
+    {
+        public string Text { get; set; } = string.Empty;
+        public int FontSize { get; set; }
+        public string Font { get; set; }
+        public TextAnchor Align { get; set; }
+        public string Color { get; set; }
+        public int CharsLimit { get; set; }
+        public string Command { get; set; }
+        public bool ReadOnly { get; set; }
+        public string PlaceholderId { get; set; }
+        public bool IsPassword { get; set; }
+        public bool NeedsKeyboard { get; set; }
+    }
+    public class CuiNeedsCursorComponent : ICuiComponent { }
+    public class CuiNeedsKeyboardComponent : ICuiComponent { }   // Oxide.Rust.cs:2560
 
     public class CuiPanel
     {
@@ -271,9 +326,9 @@ namespace Oxide.Game.Rust.Cui
     {
         public string Name;
         public string Parent;
-        public List<object> Components = new List<object>();
+        public List<ICuiComponent> Components { get; } = new List<ICuiComponent>();   // Oxide.Rust.cs:2016
         public float FadeOut;
-        public bool DestroyUi;
+        public string DestroyUi;
     }
 
     // Заглушка повторяет поведение настоящего контейнера: элементы реально
@@ -284,7 +339,7 @@ namespace Oxide.Game.Rust.Cui
         public string Add(CuiPanel panel, string parent = "Hud", string name = null, string destroyUi = null)
         {
             if (string.IsNullOrEmpty(name)) name = CuiHelper.GetGuid();
-            var element = new CuiElement { Name = name, Parent = parent, DestroyUi = destroyUi != null };
+            var element = new CuiElement { Name = name, Parent = parent, DestroyUi = destroyUi };
             element.Components.Add(panel.Image);
             element.Components.Add(panel.RectTransform);
             if (panel.CursorEnabled) element.Components.Add(new CuiNeedsCursorComponent());
@@ -328,22 +383,39 @@ namespace Oxide.Game.Rust.Cui
         public static int LastJsonLength;
         public static int LastElementCount;
 
+        // Транскрипт того, что ушло бы клиенту: "D имя" на DestroyUi, "A json" на AddUi.
+        public static readonly List<string> Transcript = new List<string>();
+
         public static bool AddUi(BasePlayer player, CuiElementContainer container)
         {
             string json = ToJson(container);
             LastJsonLength = json.Length;
             LastElementCount = container.Count;
+            Transcript.Add("A " + json);
             return true;
         }
 
-        public static bool AddUi(BasePlayer player, string json) { return true; }
-        public static bool DestroyUi(BasePlayer player, string name) { return true; }
+        public static bool AddUi(BasePlayer player, string json)
+        {
+            LastJsonLength = json.Length;
+            Transcript.Add("A " + json);
+            return true;
+        }
+
+        public static bool DestroyUi(BasePlayer player, string name)
+        {
+            Transcript.Add("D " + name);
+            return true;
+        }
 
         public static string ToJson(CuiElementContainer container, bool format = false)
         {
             return Newtonsoft.Json.JsonConvert.SerializeObject(container);
         }
 
-        public static string GetGuid() { return Guid.NewGuid().ToString("N"); }
+        // Имена безымянных элементов игроку не видны; для сравнения транскриптов
+        // они должны быть воспроизводимыми, поэтому вместо GUID — счётчик.
+        public static int GuidCounter;
+        public static string GetGuid() { return "auto" + (++GuidCounter).ToString("D6"); }
     }
 }

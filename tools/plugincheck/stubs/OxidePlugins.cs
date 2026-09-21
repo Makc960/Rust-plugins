@@ -21,12 +21,14 @@ namespace Oxide.Plugins
 
     public class ChatCommandAttribute : Attribute
     {
-        public ChatCommandAttribute(string command) { }
+        public string Command { get; }
+        public ChatCommandAttribute(string command) { Command = command; }
     }
 
     public class ConsoleCommandAttribute : Attribute
     {
-        public ConsoleCommandAttribute(string command) { }
+        public string Command { get; }
+        public ConsoleCommandAttribute(string command) { Command = command; }
     }
 
     public class CommandAttribute : Attribute
@@ -64,6 +66,10 @@ namespace Oxide.Plugins
         protected Permission permission = new Permission();
         protected PluginTimers timer = new PluginTimers();
         protected Lang lang = new Lang();
+        protected WebRequests webrequest = new WebRequests();   // Oxide.CSharp.cs:2322
+        protected void Subscribe(string hook) { }                // Oxide.Core.cs:5523
+        protected void Unsubscribe(string hook) { }              // Oxide.Core.cs:5528
+        protected void LogToFile(string filename, string text, Oxide.Core.Plugins.Plugin plugin, bool datedFilename = true, bool timestampPrefix = false) { }   // Oxide.CSharp.cs:2564
 
         // Name/Title/IsLoaded наследуются от Plugin: отдельные new-свойства
         // раздваивали бы состояние и ломали межплагинные проверки.
@@ -87,6 +93,8 @@ namespace Oxide.Plugins
     // Oxide.Rust.cs:65
     public abstract class RustPlugin : CSharpPlugin
     {
+        protected Oxide.Game.Rust.Libraries.Command cmd = new Oxide.Game.Rust.Libraries.Command();   // Oxide.Rust.cs:67
+        protected Oxide.Game.Rust.Libraries.Player Player = new Oxide.Game.Rust.Libraries.Player();     // Oxide.Rust.cs:73
         protected void PrintToChat(string format, params object[] args) { }
         protected void PrintToChat(BasePlayer player, string format, params object[] args) { }
         protected void PrintToConsole(string format, params object[] args) { }

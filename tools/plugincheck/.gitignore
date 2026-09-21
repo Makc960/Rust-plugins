@@ -2,3 +2,4 @@ bin/
 obj/
 plugins/
 __pycache__/
+xskin.golden

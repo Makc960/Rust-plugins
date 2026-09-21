@@ -11,8 +11,23 @@ namespace UnityEngine
     }
     public class Behaviour : Component { }
     public class MonoBehaviour : Behaviour { }
-    public class Transform : Component { public Vector3 position; }
+    public class Transform : Component { public Vector3 position; public Vector3 localPosition; public Quaternion rotation; }
     public class GameObject : Object { }
+    public class ScriptableObject : Object { }
+    public class YieldInstruction { }
+    public class WaitForSeconds : YieldInstruction { }
+    public class Coroutine : YieldInstruction { }
+    public struct Quaternion { public static Quaternion identity; }
+    public struct Ray { }
+    public struct RaycastHit { }
+    public static class Physics
+    {
+        public static bool Raycast(Ray ray, out RaycastHit hitInfo, float maxDistance, int layerMask) { hitInfo = new RaycastHit(); return false; }
+    }
+    public static class LayerMask
+    {
+        public static int GetMask(params string[] layerNames) { return 0; }
+    }
 
     public struct Vector3
     {
@@ -20,6 +35,7 @@ namespace UnityEngine
         public Vector3(float x, float y, float z) { this.x = x; this.y = y; this.z = z; }
         public static Vector3 up = new Vector3(0f, 1f, 0f);
         public static Vector3 zero = new Vector3(0f, 0f, 0f);
+        public static Vector3 forward = new Vector3(0f, 0f, 1f);
         public float magnitude { get { return Mathf.Sqrt(x * x + y * y + z * z); } }
         public static float Distance(Vector3 a, Vector3 b) { return 0f; }
         public static Vector3 operator +(Vector3 a, Vector3 b) { return new Vector3(a.x + b.x, a.y + b.y, a.z + b.z); }
