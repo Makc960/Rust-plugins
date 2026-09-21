@@ -194,7 +194,22 @@ public class StorageContainer : DecayEntity { public ItemContainer inventory = n
 public class LootContainer : StorageContainer { }
 public class HackableLockedCrate : StorageContainer { }
 public class SupplyDrop : StorageContainer { }
-public class CollectibleEntity : BaseEntity { }
+public class ItemAmount
+{
+    public ItemDefinition itemDef;
+    public float amount;        // Assembly-CSharp.cs:374409
+    public int itemid;
+}
+
+public class CollectibleEntity : BaseEntity        // :115839
+{
+    public ItemAmount[] itemList;                  // :115845
+}
+
+public class GrowableEntity : BaseCombatEntity { } // :134439
+public class BaseResourceExtractor : BaseEntity { }
+public class MiningQuarry : BaseResourceExtractor { }   // :301244
+public class ExcavatorArm : BaseEntity { }              // :130591
 public class ResourceDispenser : Component { }
 public class ResourceEntity : BaseEntity { }
 public class BradleyAPC : BaseCombatEntity { }
