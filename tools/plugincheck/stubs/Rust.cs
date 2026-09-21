@@ -54,11 +54,12 @@ public class EffectData { }
 
 public partial class Effect : EffectData               // Assembly-CSharp.cs:278867
 {
+    public string pooledString;                                                  // :279192
     public Effect() { }
     public Effect(string effectName, Vector3 posWorld, Vector3 normWorld,
-        Network.Connection sourceConnection = null) { }                          // :279204
+        Network.Connection sourceConnection = null) { pooledString = effectName; }          // :279204
     public Effect(string effectName, BaseEntity ent, uint boneID, Vector3 posLocal,
-        Vector3 normLocal, Network.Connection sourceConnection = null) { }        // :279210
+        Vector3 normLocal, Network.Connection sourceConnection = null) { pooledString = effectName; }        // :279210
 }
 
 public static class EffectServerRuns { }
@@ -78,8 +79,10 @@ public partial class Effect
 
 public static class EffectNetwork                      // :279293
 {
-    public static void Send(Effect effect) { }
-    public static void Send(Effect effect, Network.Connection target) { }          // :279360
+    // Тесты читают, какие эффекты ушли игроку (pooledString = имя префаба).
+    public static readonly List<string> Sent = new List<string>();
+    public static void Send(Effect effect) { Sent.Add(effect.pooledString); }
+    public static void Send(Effect effect, Network.Connection target) { Sent.Add(effect.pooledString); }   // :279360
 }
 public class Projectile { public float conditionLoss; }
 

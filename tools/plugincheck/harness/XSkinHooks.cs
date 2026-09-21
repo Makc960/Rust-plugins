@@ -165,6 +165,31 @@ public static class XSkinHooks
 
         disk.Clear(); writes.Clear(); Timer.Scheduled.Clear();
 
+        // --- эффекты: создаются и уходят только в той ветке, где нужны ---
+        var sent = EffectNetwork.Sent;
+        object d = Fresh(true, true, false, false, 777UL); Permission.Granted.Add("xskinmenu.setting"); Permission.Granted.Add("xskinmenu.use"); Permission.Granted.Add("xskinmenu.skinchange");
+        Set(d, "UseSoundE", true); sent.Clear();
+        Cmd("skin_s", "inventory");
+        Ok("fx: клик в настройках со звуком -> ровно один эффект клика", sent.Count == 1 && sent[0] == "assets/bundled/prefabs/fx/notice/loot.drag.grab.fx.prefab", string.Join(",", sent));
+        Set(d, "UseSoundE", false); sent.Clear();
+        Cmd("skin_s", "inventory");
+        Ok("fx: звук выключен -> эффектов нет", sent.Count == 0, "sent=" + sent.Count);
+        sent.Clear(); Set(d, "ChangeSCL", false);                                // clear без перерисовки: MainSkin выкл
+        Set(Get(F("config"), "GUI"), "MainSkin", false);
+        Cmd("skin_c", "clear rifle.ak 0 Weapon 0");
+        Ok("fx: clear -> один эффект survey_charge_stick, без клика", sent.Count == 1 && sent[0] == "assets/bundled/prefabs/fx/weapons/survey_charge/survey_charge_stick.prefab", string.Join(",", sent));
+
+        // --- OnPlayerRespawned: снимок контейнера без ToArray ---
+        Fresh(true, true, false, false, 777UL); it = Ak(0); player.inventory.containerMain.itemList.Add(it);
+        Call("OnPlayerRespawned", player);
+        Ok("respawn: предмет в инвентаре перекрашен", it.skin == 777UL && ((List<Item>)F("_respawnItems")).Count == 0, "skin=" + it.skin);
+        Fresh(true, true, false, false, 777UL); it = Ak(0); player.inventory.containerMain.itemList.Add(it); ((HashSet<ulong>)F("_removeATC")).Add(76561198000000088UL);
+        Call("OnPlayerRespawned", player);
+        Ok("respawn: после выдачи кита не трогает и снимает метку", it.skin == 0UL && !((HashSet<ulong>)F("_removeATC")).Contains(76561198000000088UL), "skin=" + it.skin);
+        Fresh(true, true, false, false, 777UL); player.inventory.containerWear = null;
+        bool threwR = false; try { Call("OnPlayerRespawned", player); } catch (Exception) { threwR = true; }
+        Ok("respawn: пустой контейнер (null) -> без исключения", !threwR, threwR ? "исключение" : "ок");
+
         Console.WriteLine(fails == 0 ? "\nXSKIN HOOKS: ALL PASS" : "\nXSKIN HOOKS: " + fails + " FAILED");
         return fails;
     }

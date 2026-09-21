@@ -2654,7 +2654,6 @@ namespace Oxide.Plugins
 			if(Cooldowns.ContainsKey(player))
                 if(Cooldowns[player].Subtract(DateTime.Now).TotalSeconds >= 0) return;
 			
-			Effect x = new Effect("assets/bundled/prefabs/fx/notice/loot.drag.grab.fx.prefab", player, 0, new Vector3(), new Vector3());
 			
 			switch(args.GetString(0))
 			{
@@ -2771,7 +2770,7 @@ namespace Oxide.Plugins
 				}
 			}
 			
-			if(StoredData[player.userID].UseSoundE) EffectNetwork.Send(x, player.Connection);
+			if(StoredData[player.userID].UseSoundE) SendEffect(player, FxClick);
 			Cooldowns[player] = DateTime.Now.AddSeconds(0.5f);
 		}
 		private readonly Dictionary<string, Dictionary<ulong, string>> ersK = new Dictionary<string, Dictionary<ulong, string>>
@@ -2879,9 +2878,6 @@ namespace Oxide.Plugins
 			if(Cooldowns.ContainsKey(player))
                 if(Cooldowns[player].Subtract(DateTime.Now).TotalSeconds >= 0) return;
 			
-			Effect x = new Effect("assets/bundled/prefabs/fx/notice/loot.drag.grab.fx.prefab", player, 0, new Vector3(), new Vector3());
-			Effect z = new Effect("assets/bundled/prefabs/fx/weapons/survey_charge/survey_charge_stick.prefab", player, 0, new Vector3(), new Vector3());
-			Effect y = new Effect("assets/prefabs/deployable/repair bench/effects/skinchange_spraypaint.prefab", player, 0, new Vector3(), new Vector3());
 			
 			switch(args.GetString(0))
 			{
@@ -2889,7 +2885,7 @@ namespace Oxide.Plugins
 				{
 					CategoryGUI(player, args.GetInt(2));
 					ItemGUI(player, args.GetString(1));
-					if(StoredData[player.userID].UseSoundE) EffectNetwork.Send(x, player.Connection);
+					if(StoredData[player.userID].UseSoundE) SendEffect(player, FxClick);
 					
 					Cooldowns[player] = DateTime.Now.AddSeconds(0.5f);
 					break;
@@ -2907,7 +2903,7 @@ namespace Oxide.Plugins
 					else
 						SkinGUI(player, args.GetString(1));
 					
-					if(StoredData[player.userID].UseSoundE) EffectNetwork.Send(x, player.Connection);
+					if(StoredData[player.userID].UseSoundE) SendEffect(player, FxClick);
 					
 					if(!StoredData[player.userID].Comfort) CuiHelper.DestroyUi(player, ".ItemGUI");
 					
@@ -2931,7 +2927,7 @@ namespace Oxide.Plugins
 							SkinGUI(player, args.GetString(1), 0, args.GetString(2), 0);
 					}
 					
-					if(StoredData[player.userID].UseSoundE) EffectNetwork.Send(x, player.Connection);
+					if(StoredData[player.userID].UseSoundE) SendEffect(player, FxClick);
 					
 					Cooldowns[player] = DateTime.Now.AddSeconds(0.5f);
 					
@@ -2944,7 +2940,7 @@ namespace Oxide.Plugins
 					else if(args.Args.Length >= 3)
 						SetItemGUI(player, args.GetString(1), 0, args.GetBool(2));
 					
-					if(StoredData[player.userID].UseSoundE) EffectNetwork.Send(x, player.Connection);
+					if(StoredData[player.userID].UseSoundE) SendEffect(player, FxClick);
 					
 					Cooldowns[player] = DateTime.Now.AddSeconds(0.5f);
 					
@@ -3052,7 +3048,7 @@ namespace Oxide.Plugins
 							else
 								SSI(player, item, skin, shortname, false, config.Setting.ReissueActiveItem);
 							
-							EffectNetwork.Send(y, player.Connection);
+							SendEffect(player, FxSpray);
 						}
 					}
 					
@@ -3102,7 +3098,7 @@ namespace Oxide.Plugins
 						}
 					}
 					
-					EffectNetwork.Send(y, player.Connection);
+					SendEffect(player, FxSpray);
 					
 					Cooldowns[player] = DateTime.Now.AddSeconds(1.5f); // Don't touch here!!!   |   Здесь не трогать!!! =)
 					break;
@@ -3119,7 +3115,7 @@ namespace Oxide.Plugins
 					if(StoredData[player.userID].ChangeSCL) SetSkinItem(player, item, 0);
 					if(config.GUI.MainSkin) ItemGUI(player, args.GetString(3), args.GetInt(4), item);
 					
-					EffectNetwork.Send(z, player.Connection);
+					SendEffect(player, FxStick);
 					
 					Cooldowns[player] = DateTime.Now.AddSeconds(0.5f);
 					break;
@@ -3136,7 +3132,7 @@ namespace Oxide.Plugins
 					MarkDirty(player.userID);
 					
 					GUI(player);
-					EffectNetwork.Send(z, player.Connection);
+					SendEffect(player, FxStick);
 					
 					Cooldowns[player] = DateTime.Now.AddSeconds(2.5f);
 					break;
@@ -3160,7 +3156,7 @@ namespace Oxide.Plugins
 				{
 					ZoomGUI(player, args.GetInt(1), args.GetULong(2), args.GetBool(3));
 					
-					if(StoredData[player.userID].UseSoundE) EffectNetwork.Send(x, player.Connection);
+					if(StoredData[player.userID].UseSoundE) SendEffect(player, FxClick);
 					
 					Cooldowns[player] = DateTime.Now.AddSeconds(0.5f);
 					break;
@@ -3178,7 +3174,7 @@ namespace Oxide.Plugins
 						MarkDirty(player.userID);
 							
 						CustomKitsGUI(player, Page);
-						EffectNetwork.Send(z, player.Connection);
+						SendEffect(player, FxStick);
 					}
 					
 					Cooldowns[player] = DateTime.Now.AddSeconds(0.5f);
@@ -3189,14 +3185,14 @@ namespace Oxide.Plugins
 					if(config.Setting.EnableDefaultKits || config.Setting.EnableCustomKits)
 						KitInfoGUI(player, args.GetString(1), args.GetString(2).Replace("'", ""));
 					
-					if(StoredData[player.userID].UseSoundE) EffectNetwork.Send(x, player.Connection);
+					if(StoredData[player.userID].UseSoundE) SendEffect(player, FxClick);
 					break;
 				}
 				case "createkitui":
 				{
 					CreateKitGUI(player);
 					
-					if(StoredData[player.userID].UseSoundE) EffectNetwork.Send(x, player.Connection);
+					if(StoredData[player.userID].UseSoundE) SendEffect(player, FxClick);
 					break;
 				}
 				case "createkit":
@@ -3263,7 +3259,7 @@ namespace Oxide.Plugins
 					if(offChangeSG)
 						StoredData[player.userID].ChangeSG = true;
 					
-					EffectNetwork.Send(y, player.Connection);
+					SendEffect(player, FxSpray);
 					
 					Cooldowns[player] = DateTime.Now.AddSeconds(2.5f); // Don't touch here!!!   |   Здесь не трогать!!! =)
 					break;
@@ -4361,7 +4357,6 @@ namespace Oxide.Plugins
 		private void ccmdPage(ConsoleSystem.Arg args)
 		{
 			BasePlayer player = args.Player();
-			Effect x = new Effect("assets/bundled/prefabs/fx/notice/loot.drag.grab.fx.prefab", player, 0, new Vector3(), new Vector3());
 			
 			string item = args.GetString(1);
 			int Page = args.GetInt(2);
@@ -4405,7 +4400,7 @@ namespace Oxide.Plugins
 				}
 			}
 			
-			if(StoredData[player.userID].UseSoundE) EffectNetwork.Send(x, player.Connection);
+			if(StoredData[player.userID].UseSoundE) SendEffect(player, FxClick);
 		}
 		protected override void LoadDefaultConfig() => config = SkinConfig.GetNewConfiguration();
 		
@@ -4553,24 +4548,39 @@ namespace Oxide.Plugins
 		}
 		private const string permPlayerAdd = "xskinmenu.playeradd";
 		
+		private const string FxClick = "assets/bundled/prefabs/fx/notice/loot.drag.grab.fx.prefab";
+		private const string FxStick = "assets/bundled/prefabs/fx/weapons/survey_charge/survey_charge_stick.prefab";
+		private const string FxSpray = "assets/prefabs/deployable/repair bench/effects/skinchange_spraypaint.prefab";
+		
+		// Эффект создаётся только в той ветке команды, где он действительно отправляется,
+		// а не три штуки на каждый вызов skin_c.
+		private void SendEffect(BasePlayer player, string prefab) => EffectNetwork.Send(new Effect(prefab, player, 0, new Vector3(), new Vector3()), player.Connection);
+		
+		private readonly List<Item> _respawnItems = new List<Item>();
+		
+		// Снимок содержимого нужен: SetSkinCraftGive может заменить предмет в контейнере.
+		// Один переиспользуемый список вместо ToArray() на каждый из трёх контейнеров.
+		private void ReskinContainer(BasePlayer player, Data data, ItemContainer container)
+		{
+			if(container == null) return;
+			
+			_respawnItems.Clear();
+			_respawnItems.AddRange(container.itemList);
+			
+			foreach(Item item in _respawnItems)
+				if(data.Skins.ContainsKey(item.info.shortname)) 
+					SetSkinCraftGive(player, item, true);
+			
+			_respawnItems.Clear();
+		}
+		
 		private void OnPlayerRespawned(BasePlayer player)
 		{
 			if(StoredData.TryGetValue(player.userID, out Data data) && !_removeATC.Contains(player.userID))
 			{
-				if(player.inventory.containerWear != null)
-					foreach(Item item in player.inventory.containerWear.itemList.ToArray())
-						if(data.Skins.ContainsKey(item.info.shortname)) 
-							SetSkinCraftGive(player, item, true);
-				
-				if(player.inventory.containerMain != null)
-					foreach(Item item in player.inventory.containerMain.itemList.ToArray())
-						if(data.Skins.ContainsKey(item.info.shortname)) 
-							SetSkinCraftGive(player, item, true);
-				
-				if(player.inventory.containerBelt != null)
-					foreach(Item item in player.inventory.containerBelt.itemList.ToArray())
-						if(data.Skins.ContainsKey(item.info.shortname)) 
-							SetSkinCraftGive(player, item, true);
+				ReskinContainer(player, data, player.inventory.containerWear);
+				ReskinContainer(player, data, player.inventory.containerMain);
+				ReskinContainer(player, data, player.inventory.containerBelt);
 			}
 			
 			RemoveATC(player.userID);

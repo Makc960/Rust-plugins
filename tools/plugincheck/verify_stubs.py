@@ -164,6 +164,7 @@ ALLOWED_MEMBERS = {
     'Permission.Granted',
     'Timer.Fire',
     'Timer.Scheduled',
+    'EffectNetwork.Sent',
 }
 
 
