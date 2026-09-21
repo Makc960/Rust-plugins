@@ -9,11 +9,8 @@ namespace Oxide.Plugins
     [Info("Stacks", "Flux", "1.2.1")]
     public class Stacks : RustPlugin
     {
-        #region Fields
         private readonly Dictionary<string, int> _originalStacks = new();
-        #endregion
 
-        #region Oxide-Api
         private void OnServerInitialized()
         {
             foreach (ItemDefinition item in ItemManager.itemList)
@@ -31,9 +28,7 @@ namespace Oxide.Plugins
         }
 
         private object OnMaxStackable(Item item) => item?.info?.stackable;
-        #endregion
 
-        #region Core
         private void ApplyStacks()
         {
             foreach (ItemDefinition item in ItemManager.itemList)
@@ -71,9 +66,6 @@ namespace Oxide.Plugins
             => (item.condition.enabled && item.condition.max > 0f)
                || item.spawnAsBlueprint
                || item.GetComponent<ItemModContainer>() != null;
-        #endregion
-
-        #region API
 
         [HookMethod("GetOriginalStack")]
         private object GetOriginalStack(string shortname)
@@ -84,9 +76,7 @@ namespace Oxide.Plugins
             int original;
             return _originalStacks.TryGetValue(shortname, out original) ? (object)original : null;
         }
-        #endregion
 
-        #region Config
         private Configuration _config;
 
         private class Configuration
@@ -141,6 +131,5 @@ namespace Oxide.Plugins
         protected override void SaveConfig() => Config.WriteObject(_config);
 
         protected override void LoadDefaultConfig() => _config = new Configuration();
-        #endregion
     }
 }

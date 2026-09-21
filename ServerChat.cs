@@ -22,8 +22,6 @@ namespace Oxide.Plugins
         private readonly List<BasePlayer> _matches = new List<BasePlayer>();
         private readonly System.Random _random = new System.Random();
 
-        #region Configuration
-
         private class ConfigData
         {
             [JsonProperty("Префикс системных сообщений")]
@@ -118,10 +116,6 @@ namespace Oxide.Plugins
             Config.WriteObject(_config, true);
         }
 
-        #endregion
-
-        #region Lifecycle
-
         private void Init()
         {
             permission.RegisterPermission(AdminPermission, this);
@@ -173,10 +167,6 @@ namespace Oxide.Plugins
             Broadcast(entry.Text, entry.Prefix, null, entry.Hex);
         }
 
-        #endregion
-
-        #region Sending
-
         private void Send(BasePlayer player, string message, string prefix, string avatar, string hex)
         {
             if (player == null || !player.IsConnected || string.IsNullOrEmpty(message)) return;
@@ -225,10 +215,6 @@ namespace Oxide.Plugins
                 player.Connection);
         }
 
-        #endregion
-
-        #region Public API
-
         [HookMethod("API_ALERT_PLAYER")]
         public void API_ALERT_PLAYER(BasePlayer player, string message, string customPrefix = null,
             string customAvatar = null, string customHex = null)
@@ -242,10 +228,6 @@ namespace Oxide.Plugins
         {
             Broadcast(message, customPrefix, customAvatar, customHex);
         }
-
-        #endregion
-
-        #region Admin commands
 
         [ChatCommand("alert")]
         private void CmdAlert(BasePlayer player, string command, string[] args)
@@ -371,10 +353,6 @@ namespace Oxide.Plugins
                 _config.NewsIntervalSeconds.ToString("0", CultureInfo.InvariantCulture));
         }
 
-        #endregion
-
-        #region Private messages
-
         [ChatCommand("pm")]
         private void CmdPm(BasePlayer player, string command, string[] args)
         {
@@ -463,10 +441,6 @@ namespace Oxide.Plugins
             return true;
         }
 
-        #endregion
-
-        #region Helpers
-
         private BasePlayer FindPlayer(BasePlayer sender, string needle)
         {
             if (string.IsNullOrEmpty(needle)) return null;
@@ -547,10 +521,6 @@ namespace Oxide.Plugins
             Send(player, text, null, null, null);
         }
 
-        #endregion
-
-        #region Lang
-
         protected override void LoadDefaultMessages()
         {
             lang.RegisterMessages(new Dictionary<string, string>
@@ -607,7 +577,5 @@ namespace Oxide.Plugins
                 ["NewsInterval"] = "News interval: {0}s."
             }, this, "en");
         }
-
-        #endregion
     }
 }
