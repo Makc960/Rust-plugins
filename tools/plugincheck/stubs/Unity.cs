@@ -3,7 +3,12 @@ using System;
 namespace UnityEngine
 {
     public class Object { public string name; public static implicit operator bool(Object o) { return !ReferenceEquals(o, null); } }
-    public class Component : Object { public Transform transform; public GameObject gameObject; }
+    public class Component : Object
+    {
+        public Transform transform;
+        public GameObject gameObject;
+        public T GetComponent<T>() where T : class { return null; }
+    }
     public class Behaviour : Component { }
     public class MonoBehaviour : Behaviour { }
     public class Transform : Component { public Vector3 position; }

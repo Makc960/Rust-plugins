@@ -3,10 +3,33 @@ using System.Collections.Generic;
 
 namespace Oxide.Core
 {
-    public class VersionNumber
+    // Oxide.Core.cs:3917 - struct с int-полями, не class.
+    public struct VersionNumber
     {
-        public ushort Major, Minor, Patch;
+        public int Major;
+        public int Minor;
+        public int Patch;
+
+        public VersionNumber(int major, int minor, int patch)
+        {
+            Major = major;
+            Minor = minor;
+            Patch = patch;
+        }
+
         public override string ToString() { return Major + "." + Minor + "." + Patch; }
+
+        private long Weight { get { return Major * 100000L + Minor * 1000L + Patch; } }
+
+        public static bool operator ==(VersionNumber a, VersionNumber b) { return a.Weight == b.Weight; }
+        public static bool operator !=(VersionNumber a, VersionNumber b) { return a.Weight != b.Weight; }
+        public static bool operator >(VersionNumber a, VersionNumber b) { return a.Weight > b.Weight; }
+        public static bool operator <(VersionNumber a, VersionNumber b) { return a.Weight < b.Weight; }
+        public static bool operator >=(VersionNumber a, VersionNumber b) { return a.Weight >= b.Weight; }
+        public static bool operator <=(VersionNumber a, VersionNumber b) { return a.Weight <= b.Weight; }
+
+        public override bool Equals(object obj) { return obj is VersionNumber && this == (VersionNumber)obj; }
+        public override int GetHashCode() { return Weight.GetHashCode(); }
     }
 
     public class DataFileSystem

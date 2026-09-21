@@ -121,11 +121,41 @@ public class Translate
     }
 }
 
+public enum ItemCategory
+{
+    Weapon, Construction, Items, Resources, Attire, Tool, Medical, Food, Ammunition,
+    Traps, Misc, All, Common, Component, Search, Favourite, Electrical, Fun
+}
+
+public class ItemMod : MonoBehaviour { }
+
+public class ItemModContainer : ItemMod                 // Assembly-CSharp.cs:371408
+{
+    public int capacity = 6;
+    public int maxStackSize;
+}
+
+public class ItemBlueprint { public int amountToCreate; }
+
 public class ItemDefinition : MonoBehaviour
 {
     public int itemid;
     public string shortname;
     public Translate.Phrase displayName;   // Assembly-CSharp.cs:370007 - НЕ строка
+    public ItemCategory category;          // :370013
+    public int stackable;                  // :370032
+    public bool spawnAsBlueprint;          // :370059
+    public Condition condition;            // :370069
+    public ItemMod[] itemMods;             // :370109
+
+    // Assembly-CSharp.cs:369922
+    public struct Condition
+    {
+        public bool enabled;
+        public float max;
+        public bool repairable;
+        public bool maintainMaxCondition;
+    }
 }
 
 public class Item
@@ -137,6 +167,9 @@ public class Item
     public ulong skin;
     public bool hasCondition;
     public bool isBroken;
+    public ItemContainer parent;
+    public ItemContainer contents;
+    public int MaxStackable() { return info == null ? 1 : info.stackable; }   // :367875
     public void LoseCondition(float amount) { }
     public void RepairCondition(float amount) { }
     public BasePlayer GetOwnerPlayer() { return null; }
@@ -147,9 +180,15 @@ public static class ItemManager
     public static ItemDefinition FindItemDefinition(int itemID) { return null; }
     public static ItemDefinition FindItemDefinition(string shortName) { return null; }
     public static List<ItemDefinition> GetItemDefinitions() { return new List<ItemDefinition>(); }
+    public static List<ItemDefinition> itemList = new List<ItemDefinition>();   // :374543
 }
 
-public class ItemContainer { public List<Item> itemList = new List<Item>(); }
+public class ItemContainer
+{
+    public List<Item> itemList = new List<Item>();
+    public int maxStackSize;                              // :183758
+    public bool allowItemsToIncreaseToMaxStackSize;
+}
 public class PlayerInventory
 {
     public ItemContainer containerMain = new ItemContainer();
