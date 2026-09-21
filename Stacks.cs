@@ -84,10 +84,11 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Глобальный множитель стаков (0 = выкл)")]
             public int Multiplier = 0;
 
-            [JsonProperty(PropertyName = "Множитель по категориям (0 = использовать глобальный)")]
+            // Replace: словарь из файла должен заменять инициализатор поля, а не дописываться к нему
+            [JsonProperty(PropertyName = "Множитель по категориям (0 = использовать глобальный)", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, int> Categories = new();
 
-            [JsonProperty(PropertyName = "Точечные стаки по предмету (shortname - значение), приоритет над категориями")]
+            [JsonProperty(PropertyName = "Точечные стаки по предмету (shortname - значение), приоритет над категориями", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, int> Stacks = new();
 
             public VersionNumber Version = new VersionNumber(0, 0, 1);

@@ -70,8 +70,28 @@ namespace Oxide.Core
     {
         public class DynamicConfigFile
         {
-            public T ReadObject<T>() { return default(T); }
-            public void WriteObject<T>(T config, bool sync = false) { }
+            // Мини-«диск» конфигов: JSON-строка на файл. Чтение/запись через Newtonsoft с настройками
+            // по умолчанию, как у Oxide (ObjectCreationHandling.Auto) - воспроизводит дописывание
+            // списков из файла к дефолтам из инициализаторов полей.
+            public static readonly Dictionary<string, string> Store = new Dictionary<string, string>();
+            public string Filename { get; private set; }
+            public Newtonsoft.Json.JsonSerializerSettings Settings { get; set; } = new Newtonsoft.Json.JsonSerializerSettings();
+            public DynamicConfigFile() { }
+            public DynamicConfigFile(string filename) { Filename = filename; }        // Oxide.Core.cs:10969
+            public bool Exists(string filename = null) { return Store.ContainsKey(filename ?? Filename ?? ""); }
+            public T ReadObject<T>(string filename = null)                               // Oxide.Core.cs:10985
+            {
+                string json;
+                if (Store.TryGetValue(filename ?? Filename ?? "", out json))
+                    return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(json, Settings);
+                T val = Activator.CreateInstance<T>();
+                WriteObject(val, false, filename);
+                return val;
+            }
+            public void WriteObject<T>(T config, bool sync = false, string filename = null)
+            {
+                Store[filename ?? Filename ?? ""] = Newtonsoft.Json.JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented, Settings);
+            }
             public object this[string key] { get { return null; } set { } }
         }
     }

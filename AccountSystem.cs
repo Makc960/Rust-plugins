@@ -70,7 +70,8 @@ namespace Oxide.Plugins
             [JsonProperty("EXP за действия")]
             public ExpConfig Exp = new ExpConfig();
 
-            [JsonProperty("Правила EXP за контейнеры (первое совпадение сверху вниз)")]
+            // Replace: иначе Newtonsoft дописывает правила из файла к дефолтным из инициализатора
+            [JsonProperty("Правила EXP за контейнеры (первое совпадение сверху вниз)", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<LootRule> LootRules = DefaultLootRules();
 
             [JsonProperty("Сообщение при повышении уровня")]
@@ -169,7 +170,7 @@ namespace Oxide.Plugins
             [JsonProperty("EXP за неизвестный мировой loot-контейнер")]
             public int DefaultLootContainer = 4;
 
-            [JsonProperty("EXP за каждые 100 добытых единиц ресурса")]
+            [JsonProperty("EXP за каждые 100 добытых единиц ресурса", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, int> GatherPer100 = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
             {
                 ["wood"] = 5,
@@ -226,6 +227,11 @@ namespace Oxide.Plugins
             if (_config.LootRules == null || _config.LootRules.Count == 0)
                 _config.LootRules = ConfigData.DefaultLootRules();
 
+            // Файлы, уже раздутые старой ошибкой (правила дописывались к дефолтным при каждой загрузке):
+            // убираем точные повторы, первое вхождение остаётся - порядок «первое совпадение сверху вниз» не меняется.
+            int duplicates = RemoveDuplicateLootRules(_config.LootRules);
+            if (duplicates > 0) PrintWarning($"AccountSystem: из конфига удалено {duplicates} повторяющихся правил EXP за контейнеры.");
+
             _config.SaveIntervalSeconds = Mathf.Clamp(_config.SaveIntervalSeconds, 30f, 1800f);
             _config.SessionFlushSeconds = Mathf.Clamp(_config.SessionFlushSeconds, 60f, 3600f);
             // Миграция старого баланса 1.0.2 -> x1000-safe.
@@ -256,6 +262,31 @@ namespace Oxide.Plugins
         protected override void SaveConfig()
         {
             Config.WriteObject(_config, true);
+        }
+
+        private static int RemoveDuplicateLootRules(List<LootRule> rules)
+        {
+            int removed = 0;
+
+            for (int i = 1; i < rules.Count; i++)
+            {
+                LootRule a = rules[i];
+                bool duplicate = false;
+
+                for (int j = 0; j < i && !duplicate; j++)
+                {
+                    LootRule b = rules[j];
+                    duplicate = a.Contains == b.Contains && a.Exp == b.Exp;
+                }
+
+                if (duplicate)
+                {
+                    rules.RemoveAt(i--);
+                    removed++;
+                }
+            }
+
+            return removed;
         }
 
         #endregion

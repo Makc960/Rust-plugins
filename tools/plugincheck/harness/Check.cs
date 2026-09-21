@@ -145,6 +145,8 @@ public static class Check
         fails += StacksCheck.Run();
         Console.WriteLine();
         fails += XSkinHooks.Run();
+        Console.WriteLine();
+        fails += ConfigCheck.Run();
 
         Console.WriteLine(fails == 0 ? "\nALL PASS" : "\n" + fails + " FAILED");
         return fails;

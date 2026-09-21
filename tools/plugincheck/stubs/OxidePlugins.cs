@@ -62,7 +62,8 @@ namespace Oxide.Plugins
 
     public abstract class CSharpPlugin : Oxide.Core.Plugins.Plugin
     {
-        protected DynamicConfigFile Config = new DynamicConfigFile();
+        protected DynamicConfigFile Config;
+        protected CSharpPlugin() { Config = new DynamicConfigFile(GetType().Name); }   // файл конфига = имя плагина, как у загрузчика Oxide
         protected Permission permission = new Permission();
         protected PluginTimers timer = new PluginTimers();
         protected Lang lang = new Lang();

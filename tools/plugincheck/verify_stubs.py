@@ -165,6 +165,7 @@ ALLOWED_MEMBERS = {
     'Timer.Fire',
     'Timer.Scheduled',
     'EffectNetwork.Sent',
+    'DynamicConfigFile.Store',
 }
 
 

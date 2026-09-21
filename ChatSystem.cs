@@ -37,7 +37,8 @@ namespace Oxide.Plugins
             [JsonProperty("Новости в случайном порядке")]
             public bool NewsRandomOrder;
 
-            [JsonProperty("Новости")]
+            // Replace: иначе Newtonsoft дописывает новости из файла к дефолтным (2 -> 4 -> 8 при каждой загрузке)
+            [JsonProperty("Новости", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<NewsEntry> News = DefaultNews();
 
             [JsonProperty("Звук личного сообщения")]
@@ -98,6 +99,11 @@ namespace Oxide.Plugins
             }
 
             if (_config.News == null) _config.News = ConfigData.DefaultNews();
+
+            // Файлы, уже раздутые старой ошибкой (новости дописывались к дефолтным при каждой загрузке):
+            // убираем точные повторы, первое вхождение остаётся.
+            int duplicates = RemoveDuplicateNews(_config.News);
+            if (duplicates > 0) PrintWarning($"ChatSystem: из конфига удалено {duplicates} повторяющихся новостей.");
             if (string.IsNullOrEmpty(_config.Prefix)) _config.Prefix = "[СЕРВЕР]";
             if (string.IsNullOrEmpty(_config.PrefixHex)) _config.PrefixHex = "#65A30D";
             if (string.IsNullOrEmpty(_config.PmSound)) _config.PmSound = "assets/bundled/prefabs/fx/invite_notice.prefab";
@@ -112,6 +118,31 @@ namespace Oxide.Plugins
         protected override void SaveConfig()
         {
             Config.WriteObject(_config, true);
+        }
+
+        private static int RemoveDuplicateNews(List<NewsEntry> news)
+        {
+            int removed = 0;
+
+            for (int i = 1; i < news.Count; i++)
+            {
+                NewsEntry a = news[i];
+                bool duplicate = false;
+
+                for (int j = 0; j < i && !duplicate; j++)
+                {
+                    NewsEntry b = news[j];
+                    duplicate = a.Text == b.Text && a.Prefix == b.Prefix && a.Hex == b.Hex;
+                }
+
+                if (duplicate)
+                {
+                    news.RemoveAt(i--);
+                    removed++;
+                }
+            }
+
+            return removed;
         }
 
         private void OnServerInitialized()

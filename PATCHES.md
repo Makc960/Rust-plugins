@@ -2232,3 +2232,178 @@ index cbc6958..5bbdb9e 100644
  			bool next = list_skins.Count > ((Page + 1) * count);
  			
 ```
+
+## Конфиги: списки удваивались при каждой загрузке (ChatSystem, AccountSystem)
+
+**Причина.** Поле конфига инициализируется дефолтами в объявлении класса
+(`News = DefaultNews()`, `LootRules = DefaultLootRules()`), а
+`Config.ReadObject<T>()` у Oxide — это `JsonConvert.DeserializeObject<T>` с
+настройками по умолчанию: `ObjectCreationHandling.Auto` не заменяет уже
+существующий список, а дописывает в него элементы из файла. Каждая
+загрузка: дефолты + содержимое файла → 2 → 4 → 6 …, и `SaveConfig()` в конце
+`LoadConfig()` закрепляет результат в файле.
+
+**Исправление.**
+* `[JsonProperty(..., ObjectCreationHandling = ObjectCreationHandling.Replace)]`
+  на всех коллекциях конфигов: `ChatSystem.News`, `AccountSystem.LootRules` и
+  `AccountSystem.Exp.GatherPer100` (словарь — дубли ключей невозможны, но
+  без Replace удалённый админом ключ возвращался бы из дефолтов),
+  `Stacks.Categories` и `Stacks.Stacks` (инициализаторы пустые, ошибки не
+  было — атрибут на будущее). `Rates` конфига не имеет; в `ServerMenu` коллекций
+  в конфиге нет; у `XSkinMenu` (авторский) инициализаторы пустые, дефолты
+  задаются в `GetNewConfiguration()` — не подвержен.
+* Одноразовая чистка уже раздутых файлов: при загрузке из `News` и `LootRules`
+  удаляются точные повторы (все поля равны), первое вхождение остаётся, в
+  консоль пишется количество удалённых; порядок правил не меняется.
+
+**Тест** (`tools/plugincheck/harness/ConfigCheck.cs`): заглушка конфига
+стала настоящим Newtonsoft round-trip; три загрузки подряд — размеры всех
+коллекций конфига не меняются и равны дефолтам; файл с продублированным ×4
+списком после загрузки содержит только уникальные записи. До исправления
+тест давал `ChatSystem.News` 2/4/6 и `AccountSystem.LootRules` 20/40/60.
+
+```diff
+diff --git a/AccountSystem.cs b/AccountSystem.cs
+index 4de39cb..d851890 100644
+--- a/AccountSystem.cs
++++ b/AccountSystem.cs
+@@ -70,7 +70,8 @@ namespace Oxide.Plugins
+             [JsonProperty("EXP за действия")]
+             public ExpConfig Exp = new ExpConfig();
+ 
+-            [JsonProperty("Правила EXP за контейнеры (первое совпадение сверху вниз)")]
++            // Replace: иначе Newtonsoft дописывает правила из файла к дефолтным из инициализатора
++            [JsonProperty("Правила EXP за контейнеры (первое совпадение сверху вниз)", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+             public List<LootRule> LootRules = DefaultLootRules();
+ 
+             [JsonProperty("Сообщение при повышении уровня")]
+@@ -169,7 +170,7 @@ namespace Oxide.Plugins
+             [JsonProperty("EXP за неизвестный мировой loot-контейнер")]
+             public int DefaultLootContainer = 4;
+ 
+-            [JsonProperty("EXP за каждые 100 добытых единиц ресурса")]
++            [JsonProperty("EXP за каждые 100 добытых единиц ресурса", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+             public Dictionary<string, int> GatherPer100 = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+             {
+                 ["wood"] = 5,
+@@ -226,6 +227,11 @@ namespace Oxide.Plugins
+             if (_config.LootRules == null || _config.LootRules.Count == 0)
+                 _config.LootRules = ConfigData.DefaultLootRules();
+ 
++            // Файлы, уже раздутые старой ошибкой (правила дописывались к дефолтным при каждой загрузке):
++            // убираем точные повторы, первое вхождение остаётся - порядок «первое совпадение сверху вниз» не меняется.
++            int duplicates = RemoveDuplicateLootRules(_config.LootRules);
++            if (duplicates > 0) PrintWarning($"AccountSystem: из конфига удалено {duplicates} повторяющихся правил EXP за контейнеры.");
++
+             _config.SaveIntervalSeconds = Mathf.Clamp(_config.SaveIntervalSeconds, 30f, 1800f);
+             _config.SessionFlushSeconds = Mathf.Clamp(_config.SessionFlushSeconds, 60f, 3600f);
+             // Миграция старого баланса 1.0.2 -> x1000-safe.
+@@ -258,6 +264,31 @@ namespace Oxide.Plugins
+             Config.WriteObject(_config, true);
+         }
+ 
++        private static int RemoveDuplicateLootRules(List<LootRule> rules)
++        {
++            int removed = 0;
++
++            for (int i = 1; i < rules.Count; i++)
++            {
++                LootRule a = rules[i];
++                bool duplicate = false;
++
++                for (int j = 0; j < i && !duplicate; j++)
++                {
++                    LootRule b = rules[j];
++                    duplicate = a.Contains == b.Contains && a.Exp == b.Exp;
++                }
++
++                if (duplicate)
++                {
++                    rules.RemoveAt(i--);
++                    removed++;
++                }
++            }
++
++            return removed;
++        }
++
+         #endregion
+ 
+         #region Data
+diff --git a/ChatSystem.cs b/ChatSystem.cs
+index 29f6259..07a1802 100644
+--- a/ChatSystem.cs
++++ b/ChatSystem.cs
+@@ -37,7 +37,8 @@ namespace Oxide.Plugins
+             [JsonProperty("Новости в случайном порядке")]
+             public bool NewsRandomOrder;
+ 
+-            [JsonProperty("Новости")]
++            // Replace: иначе Newtonsoft дописывает новости из файла к дефолтным (2 -> 4 -> 8 при каждой загрузке)
++            [JsonProperty("Новости", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+             public List<NewsEntry> News = DefaultNews();
+ 
+             [JsonProperty("Звук личного сообщения")]
+@@ -98,6 +99,11 @@ namespace Oxide.Plugins
+             }
+ 
+             if (_config.News == null) _config.News = ConfigData.DefaultNews();
++
++            // Файлы, уже раздутые старой ошибкой (новости дописывались к дефолтным при каждой загрузке):
++            // убираем точные повторы, первое вхождение остаётся.
++            int duplicates = RemoveDuplicateNews(_config.News);
++            if (duplicates > 0) PrintWarning($"ChatSystem: из конфига удалено {duplicates} повторяющихся новостей.");
+             if (string.IsNullOrEmpty(_config.Prefix)) _config.Prefix = "[СЕРВЕР]";
+             if (string.IsNullOrEmpty(_config.PrefixHex)) _config.PrefixHex = "#65A30D";
+             if (string.IsNullOrEmpty(_config.PmSound)) _config.PmSound = "assets/bundled/prefabs/fx/invite_notice.prefab";
+@@ -114,6 +120,31 @@ namespace Oxide.Plugins
+             Config.WriteObject(_config, true);
+         }
+ 
++        private static int RemoveDuplicateNews(List<NewsEntry> news)
++        {
++            int removed = 0;
++
++            for (int i = 1; i < news.Count; i++)
++            {
++                NewsEntry a = news[i];
++                bool duplicate = false;
++
++                for (int j = 0; j < i && !duplicate; j++)
++                {
++                    NewsEntry b = news[j];
++                    duplicate = a.Text == b.Text && a.Prefix == b.Prefix && a.Hex == b.Hex;
++                }
++
++                if (duplicate)
++                {
++                    news.RemoveAt(i--);
++                    removed++;
++                }
++            }
++
++            return removed;
++        }
++
+         private void OnServerInitialized()
+         {
+             RestartNewsTimer();
+diff --git a/Stacks.cs b/Stacks.cs
+index 19d3875..38cbd6d 100644
+--- a/Stacks.cs
++++ b/Stacks.cs
+@@ -84,10 +84,11 @@ namespace Oxide.Plugins
+             [JsonProperty(PropertyName = "Глобальный множитель стаков (0 = выкл)")]
+             public int Multiplier = 0;
+ 
+-            [JsonProperty(PropertyName = "Множитель по категориям (0 = использовать глобальный)")]
++            // Replace: словарь из файла должен заменять инициализатор поля, а не дописываться к нему
++            [JsonProperty(PropertyName = "Множитель по категориям (0 = использовать глобальный)", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+             public Dictionary<string, int> Categories = new();
+ 
+-            [JsonProperty(PropertyName = "Точечные стаки по предмету (shortname - значение), приоритет над категориями")]
++            [JsonProperty(PropertyName = "Точечные стаки по предмету (shortname - значение), приоритет над категориями", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+             public Dictionary<string, int> Stacks = new();
+ 
+             public VersionNumber Version = new VersionNumber(0, 0, 1);
+```
