@@ -155,7 +155,14 @@ public class ItemModContainer : ItemMod                 // Assembly-CSharp.cs:37
     public int maxStackSize;
 }
 
-public class ItemBlueprint { public int amountToCreate; }
+public class ItemBlueprint
+{
+    public int amountToCreate = 1;                         // :369813
+    public ItemDefinition targetItem;                      // :369823
+    public float time;                                     // :369806
+    public ItemAmount[] ingredients;                       // :369810
+    public List<ItemAmount> GetIngredients() { return ingredients == null ? new List<ItemAmount>() : new List<ItemAmount>(ingredients); }   // :369837
+}
 
 public class ItemDefinition : MonoBehaviour
 {
@@ -204,9 +211,13 @@ public class Item
     public void RemoveFromWorld() { }                         // :366683
     public void RemoveFromContainer() { }                     // :366715
     public bool MoveToContainer(ItemContainer newcontainer, int iTargetPos = -1, bool allowStack = true,
-        bool ignoreStackLimit = false, BasePlayer sourcePlayer = null, bool allowSwap = true) { return true; }   // :367037
+        bool ignoreStackLimit = false, BasePlayer sourcePlayer = null, bool allowSwap = true)
+    { if (newcontainer == null) return false; if (parent != null) parent.itemList.Remove(this); parent = newcontainer; newcontainer.itemList.Add(this); return true; }   // :367037
     public BaseEntity Drop(Vector3 vPos, Vector3 vVelocity, Quaternion rotation = default(Quaternion)) { return null; }   // :367300
     public void Remove(float fTime = 0f) { }                  // :367346
+    public void UseItem(int amountToConsume = 1) { amount -= amountToConsume; if (amount <= 0) { amount = 0; Remove(); } }   // :367743
+    public bool IsBlueprint() { return false; }               // :366532
+    public ItemDefinition blueprintTargetDef;                 // :366266
     public Item SplitItem(int split_Amount) { return null; }  // :367446
 }
 
@@ -237,6 +248,10 @@ public class PlayerInventory
     public ItemContainer containerBelt = new ItemContainer();
     public ItemContainer containerWear = new ItemContainer();
     public void FindItemsByItemID(List<Item> list, int itemid) { }   // :368938
+    public ItemCrafter crafting = new ItemCrafter();                 // :368093
+    // Тест: GiveItem кладёт в containerMain; false = «инвентарь полон».
+    public bool GiveFails;
+    public bool GiveItem(Item item, ItemContainer container = null) { if (GiveFails) return false; item.parent = containerMain; containerMain.itemList.Add(item); return true; }   // :170085
 }
 
 public class HeldEntity : BaseEntity
@@ -282,6 +297,10 @@ public class BasePlayer : BaseCombatEntity
     public RelationshipManager.PlayerTeam Team;   // :70475
     public bool CanBuild() { return true; } // :78038
     public Item GetActiveItem() { return null; }  // :75903
+    public bool IsTransferring() { return false; }        // :53597
+    public BaseEntity GetCachedCraftLevelWorkbench() { return null; }   // :70706
+    public readonly List<object[]> Commands = new List<object[]>();      // тест: что ушло клиенту через Command
+    public void Command(string strCommand, params object[] arguments) { var a = new List<object> { strCommand }; a.AddRange(arguments); Commands.Add(a.ToArray()); }   // :82683
     public enum NetworkQueue { Update, UpdateDistance, Positional }   // :67884
     public void ChatMessage(string message) { }
     public void SendConsoleCommand(string command, params object[] args) { }
@@ -346,8 +365,56 @@ public class BaseHelicopter : BaseCombatEntity { }
 public class PatrolHelicopter : BaseHelicopter { }
 public class AutoTurret : BaseCombatEntity { }
 public class Planner : HeldEntity { }
-public class ItemCraftTask { public int skinID; }   // :365523
-public class ItemCrafter : Component { public BasePlayer owner; }
+public class ItemCraftTask                              // :365509
+{
+    public ItemBlueprint blueprint;
+    public float endTime;
+    public int taskUID;
+    public bool cancelled;
+    public ProtoBuf.Item.InstanceData instanceData;
+    public int amount = 1;
+    public int skinID;
+    public List<Item> takenItems;
+    public int numCrafted;
+    public float conditionScale = 1f;
+    public BaseEntity workbenchEntity;
+    public int attachmentID;
+}
+
+public class ItemCrafter : Component                    // :365535
+{
+    public List<ItemContainer> containers = new List<ItemContainer>();
+    public LinkedList<ItemCraftTask> queue = new LinkedList<ItemCraftTask>();
+    public int taskUID;
+    public BasePlayer owner;
+    public int Finished;                                // тест: сколько раз вызван FinishCrafting
+    // Повторяет ванильный FinishCrafting (:365700) в части, наблюдаемой тестом: amount--, numCrafted++,
+    // один предмет на вызов, списание ингредиентов из takenItems, note.craft_done, выдача или дроп.
+    public void FinishCrafting(ItemCraftTask task)
+    {
+        Finished++;
+        task.amount--;
+        task.numCrafted++;
+        Item item = new Item { info = task.blueprint.targetItem, amount = task.blueprint.amountToCreate, skin = (ulong)task.skinID };
+        foreach (ItemAmount ingredient in task.blueprint.GetIngredients())
+        {
+            int need = (int)ingredient.amount;
+            if (task.takenItems == null) continue;
+            foreach (Item taken in task.takenItems)
+            {
+                if (taken.info == ingredient.itemDef) { int used = Math.Min(taken.amount, need); taken.UseItem(need); need -= used; }
+                if (need <= 0) break;
+            }
+        }
+        task.takenItems?.RemoveAll(i => i.amount == 0);
+        owner.Command("note.craft_done", task.taskUID, 1, task.amount);
+        Oxide.Core.Interface.CallHook("OnItemCraftFinished", task, item, this);
+        if (owner.inventory.GiveItem(item)) { owner.Command("note.inv", item.info.itemid, item.amount); return; }
+        owner.Command("note.inv", item.info.itemid, item.amount);
+        owner.Command("note.inv", item.info.itemid, -item.amount);
+        item.Drop(containers[0].dropPosition, containers[0].dropVelocity);
+    }
+}
 public class ItemModProjectile : MonoBehaviour { }
 public class SupplySignal : BaseEntity { }
 

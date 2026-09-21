@@ -135,6 +135,15 @@ namespace ProtoBuf
     {
         public int slots;                                    // :143807
     }
+
+    public class Item                                        // Rust.Data.cs
+    {
+        public class InstanceData                            // ProtoBuf.Item.InstanceData
+        {
+            public bool ShouldPool;
+            public int dataInt;
+        }
+    }
 }
 
 public class Skinnable                                       // Rust.Workshop.cs:53, глобальный

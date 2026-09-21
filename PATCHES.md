@@ -2407,3 +2407,74 @@ index 19d3875..38cbd6d 100644
  
              public VersionNumber Version = new VersionNumber(0, 0, 1);
 ```
+
+## InstantCraft 0.0.1 — крафт целиком в момент постановки
+
+**Почему старая версия выдавала по одному предмету за цикл** (Assembly-CSharp.cs):
+* `BasePlayer.InventoryUpdate` :81845 → `inventory.ServerUpdate(0.1f)`; запускается
+  `InvokeRepeating(InventoryUpdate, 1f, 0.1f * Random(0.99..1.01))` :81728 — раз в ~0,1 с.
+* `PlayerInventory.ServerUpdate` :169523 → `crafting.ServerUpdate(delta)` :169528
+  (только если не спит и не переносится).
+* `ItemCrafter.ServerUpdate` :365569–365617 за один вызов делает ровно один шаг
+  первой задачи очереди: `endTime == 0` → старт (`endTime = now + GetScaledDuration`,
+  `note.craft_start`) и выход :365585–365601; иначе, если `endTime <= now` →
+  **один** `FinishCrafting` :365605, `amount--`, и либо `RemoveFirst`, либо
+  `endTime = 0` :365606–365614. При `blueprint.time = 0` и `endTime = 0` это
+  старт на одном тике и один предмет на следующем: ~0,2 с на предмет,
+  100 патронов ≈ 20 с.
+
+**Что делает 0.0.1.** Хук `OnItemCraft(task, owner, fromTempBlueprint)` вызывается
+из `ItemCrafter.CraftItem` :365683 — после `CollectIngredients` :365662 (ингредиенты
+уже сняты в `task.takenItems` :365631–365647), но до `queue.AddLast` :365692 и
+`note.craft_add` :365695. `FinishCrafting` :365700–365761 очередь не трогает
+(только `task`, `owner`, `containers`), поэтому плагин:
+1. ставит `task.workbenchEntity = owner.GetCachedCraftLevelWorkbench()` — как
+   `ServerUpdate` :365588, чтобы `Workbench.ApplyUpgradesToCraftedItem/GiveBonusItems`
+   :365719–365722 работали как в ванили;
+2. шлёт клиенту `note.craft_add` (то, что ваниль шлёт после хука :365695);
+3. вызывает ванильный `FinishCrafting(task)` пока `task.amount > 0` — игра сама
+   создаёт предмет со skin/condition/instanceData :365704–365718, списывает
+   ингредиенты из `takenItems` :365723–365741, шлёт `note.craft_done` :365745,
+   зовёт `OnItemCraftFinished` :365747, кладёт в инвентарь или дропает :365755–365761;
+4. возвращает `true` → `CraftItem` возвращает `true` без постановки в очередь
+   :365684–365691.
+
+Границы: `fromTempBlueprint != null` (крафт из чертежа-образца) и `task.cancelled`
+→ `null`, ваниль. `blueprint.time` не трогается. Уровень верстака проверяется до
+`CraftItem` в `PlayerBlueprints.CanCraft` :312720 (`currentCraftLevel <
+GetWorkbenchLevel` :369900) — без изменений; лимит очереди `ItemCrafter.CanCraft`
+:365874 (`> 8`) — очередь пуста, не мешает.
+
+**Дюп-проверка.**
+* Отмена в момент постановки: `craft.cancel` → `CancelTask` :365762 ищет задачу в
+  `queue` :365771 — нашей там нет никогда, `false`; ингредиенты уже уничтожены
+  `UseItem` :365735, возвращать нечего; клиент получил `craft_done … 0` и убрал
+  запись.
+* Выход с сервера/смерть: очередь пуста (наши задачи не ставятся), предметы уже
+  в инвентаре игрока; `OnDied` :82076 и `OnStartBeingLooted` :87061 зовут
+  `CancelAll` :365830 только для ванильных задач (чертёж-образец).
+* Полный инвентарь: на каждый `FinishCrafting` один `CreateByItemID` :365704 и
+  при неудаче `GiveItem` :365755 один `Drop` :365761 — N предметов под ноги, ни
+  потерь, ни удвоения (то же, что ваниль за N тиков).
+* Два крафта быстрее тика: оба `craft.add` обрабатываются синхронно в главном
+  потоке; второй `CanCraft` :365858 → `DoesHaveUsableItem` :365850 считает уже
+  реальный остаток (первый снял ингредиенты `container.Take` :365625 и потратил
+  их) — либо крафт, либо `false`. Окна между снятием и завершением нет.
+* Остаток в `takenItems` (в ванили невозможен: `Take` снимает ровно
+  `(int)amount * amount` :365643, `FinishCrafting` тратит `(int)amount` на крафт):
+  если появится из-за стороннего плагина — `ReturnLeftovers` возвращает в
+  `containerMain` или дропает с `note.inv`, как `CancelTask` :365780–365792; не
+  уничтожает и не дублирует (те же экземпляры).
+* `oxide.reload` во время крафта: состояния у плагина нет, `Unload` пустой,
+  очередь ванильная.
+
+Конфликт хуков: если другой плагин вернёт из `OnItemCraft` `false` (запрет крафта),
+Oxide залогирует конфликт (Oxide.Core.cs:6149) — такие плагины должны грузиться
+раньше или блокировать через `CanCraft` :365884, который срабатывает до снятия
+ингредиентов.
+
+**Тест** (`tools/plugincheck/harness/InstantCraftCheck.cs`, заглушка `FinishCrafting`
+повторяет :365700 в наблюдаемой части): 100 крафтов → 100 `FinishCrafting`, 100
+предметов, `takenItems` пуст, `note.craft_add` + `craft_done`×100 с остатком до 0;
+10 со скином; полный инвентарь → 5 дропов, 0 в инвентаре; чертёж-образец и
+`cancelled` → `null`; лишний ингредиент возвращён; owner null/destroyed → `null`.

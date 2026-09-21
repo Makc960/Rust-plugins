@@ -166,6 +166,9 @@ ALLOWED_MEMBERS = {
     'Timer.Scheduled',
     'EffectNetwork.Sent',
     'DynamicConfigFile.Store',
+    'ItemCrafter.Finished',
+    'BasePlayer.Commands',
+    'PlayerInventory.GiveFails',
 }
 
 

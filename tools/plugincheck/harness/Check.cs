@@ -147,6 +147,8 @@ public static class Check
         fails += XSkinHooks.Run();
         Console.WriteLine();
         fails += ConfigCheck.Run();
+        Console.WriteLine();
+        fails += InstantCraftCheck.Run();
 
         Console.WriteLine(fails == 0 ? "\nALL PASS" : "\n" + fails + " FAILED");
         return fails;
