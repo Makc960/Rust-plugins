@@ -1,6 +1,6 @@
 namespace Oxide.Plugins
 {
-    [Info("Rates", "Flux", "1.0.0")]
+    [Info("Rates", "Flux", "0.0.1")]
     [Description("Doubles every gathered resource")]
     internal class Rates : RustPlugin
     {

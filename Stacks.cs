@@ -6,7 +6,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Stacks", "Flux", "1.2.1")]
+    [Info("Stacks", "Flux", "0.0.1")]
     public class Stacks : RustPlugin
     {
         private readonly Dictionary<string, int> _originalStacks = new();
@@ -90,7 +90,7 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Точечные стаки по предмету (shortname - значение), приоритет над категориями")]
             public Dictionary<string, int> Stacks = new();
 
-            public VersionNumber Version = new VersionNumber();
+            public VersionNumber Version = new VersionNumber(0, 0, 1);
         }
 
         protected override void LoadConfig()
@@ -101,9 +101,6 @@ namespace Oxide.Plugins
                 _config = Config.ReadObject<Configuration>();
                 if (_config == null) throw new Exception();
 
-                if (_config.Version < Version)
-                    UpdateConfigValues();
-
                 SaveConfig();
             }
             catch (Exception ex)
@@ -112,20 +109,6 @@ namespace Oxide.Plugins
 
                 LoadDefaultConfig();
             }
-        }
-
-        private void UpdateConfigValues()
-        {
-            PrintWarning("Обнаружено обновление конфигурации! Обновление значений конфигурации...");
-
-            if (_config.Version < new VersionNumber(1, 2, 0) && _config.Stacks.Count > 0)
-            {
-                _config.Stacks.Clear();
-                PrintWarning("Список точечных стаков очищен — теперь стаки задаются по категориям (раздел \"Множитель по категориям\").");
-            }
-
-            _config.Version = Version;
-            PrintWarning("Обновление конфигурации завершено!");
         }
 
         protected override void SaveConfig() => Config.WriteObject(_config);

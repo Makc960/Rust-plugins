@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("ServerChat", "Flux", "1.0.0")]
+    [Info("ServerChat", "Flux", "0.0.1")]
     internal class ServerChat : RustPlugin
     {
         private const string AdminPermission = "serverchat.admin";
