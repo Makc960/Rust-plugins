@@ -8,11 +8,9 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("ServerChat", "Flux", "0.0.1")]
-    internal class ServerChat : RustPlugin
+    [Info("ChatSystem", "Flux", "0.0.1")]
+    internal class ChatSystem : RustPlugin
     {
-        private const string AdminPermission = "serverchat.admin";
-
         private ConfigData _config;
         private Timer _newsTimer;
         private int _newsIndex;
@@ -95,7 +93,7 @@ namespace Oxide.Plugins
             }
             catch
             {
-                PrintWarning("Конфиг ServerChat повреждён. Создан новый.");
+                PrintWarning("Конфиг ChatSystem повреждён. Создан новый.");
                 _config = new ConfigData();
             }
 
@@ -114,11 +112,6 @@ namespace Oxide.Plugins
         protected override void SaveConfig()
         {
             Config.WriteObject(_config, true);
-        }
-
-        private void Init()
-        {
-            permission.RegisterPermission(AdminPermission, this);
         }
 
         private void OnServerInitialized()
@@ -227,130 +220,6 @@ namespace Oxide.Plugins
             string customAvatar = null, string customHex = null)
         {
             Broadcast(message, customPrefix, customAvatar, customHex);
-        }
-
-        [ChatCommand("alert")]
-        private void CmdAlert(BasePlayer player, string command, string[] args)
-        {
-            if (!IsAdmin(player)) return;
-
-            string message = Join(args, 0);
-            if (string.IsNullOrEmpty(message))
-            {
-                Reply(player, "UsageAlert");
-                return;
-            }
-
-            Broadcast(message, null, null, null);
-        }
-
-        [ChatCommand("alert.player")]
-        private void CmdAlertPlayer(BasePlayer player, string command, string[] args)
-        {
-            if (!IsAdmin(player)) return;
-
-            if (args == null || args.Length < 2)
-            {
-                Reply(player, "UsageAlertPlayer");
-                return;
-            }
-
-            BasePlayer target = FindPlayer(player, args[0]);
-            if (target == null) return;
-
-            string message = Join(args, 1);
-            if (string.IsNullOrEmpty(message))
-            {
-                Reply(player, "UsageAlertPlayer");
-                return;
-            }
-
-            Send(target, message, null, null, null);
-            Reply(player, "AlertSent", target.displayName);
-        }
-
-        [ChatCommand("news.add")]
-        private void CmdNewsAdd(BasePlayer player, string command, string[] args)
-        {
-            if (!IsAdmin(player)) return;
-
-            string text = Join(args, 0);
-            if (string.IsNullOrEmpty(text))
-            {
-                Reply(player, "UsageNewsAdd");
-                return;
-            }
-
-            _config.News.Add(new NewsEntry(text));
-            SaveConfig();
-            Reply(player, "NewsAdded", _config.News.Count.ToString(CultureInfo.InvariantCulture));
-        }
-
-        [ChatCommand("news.remove")]
-        private void CmdNewsRemove(BasePlayer player, string command, string[] args)
-        {
-            if (!IsAdmin(player)) return;
-
-            int number;
-            if (args == null || args.Length < 1 || !int.TryParse(args[0], out number))
-            {
-                Reply(player, "UsageNewsRemove");
-                return;
-            }
-
-            if (number < 1 || number > _config.News.Count)
-            {
-                Reply(player, "NewsNotFound", number.ToString(CultureInfo.InvariantCulture));
-                return;
-            }
-
-            _config.News.RemoveAt(number - 1);
-            SaveConfig();
-            Reply(player, "NewsRemoved", number.ToString(CultureInfo.InvariantCulture));
-        }
-
-        [ChatCommand("news.list")]
-        private void CmdNewsList(BasePlayer player, string command, string[] args)
-        {
-            if (!IsAdmin(player)) return;
-
-            if (_config.News.Count == 0)
-            {
-                Reply(player, "NewsEmpty");
-                return;
-            }
-
-            Reply(player, "NewsHeader", _config.News.Count.ToString(CultureInfo.InvariantCulture),
-                _config.NewsIntervalSeconds.ToString("0", CultureInfo.InvariantCulture));
-
-            for (int i = 0; i < _config.News.Count; i++)
-            {
-                NewsEntry entry = _config.News[i];
-                if (entry == null) continue;
-
-                Send(player, (i + 1).ToString(CultureInfo.InvariantCulture) + ". " + entry.Text,
-                    string.Empty, null, null);
-            }
-        }
-
-        [ChatCommand("news.interval")]
-        private void CmdNewsInterval(BasePlayer player, string command, string[] args)
-        {
-            if (!IsAdmin(player)) return;
-
-            float seconds;
-            if (args == null || args.Length < 1 ||
-                !float.TryParse(args[0], NumberStyles.Float, CultureInfo.InvariantCulture, out seconds))
-            {
-                Reply(player, "UsageNewsInterval");
-                return;
-            }
-
-            _config.NewsIntervalSeconds = Mathf.Clamp(seconds, 30f, 86400f);
-            SaveConfig();
-            RestartNewsTimer();
-            Reply(player, "NewsInterval",
-                _config.NewsIntervalSeconds.ToString("0", CultureInfo.InvariantCulture));
         }
 
         [ChatCommand("pm")]
@@ -490,15 +359,6 @@ namespace Oxide.Plugins
             return null;
         }
 
-        private bool IsAdmin(BasePlayer player)
-        {
-            if (player == null) return false;
-            if (permission.UserHasPermission(player.UserIDString, AdminPermission)) return true;
-
-            Reply(player, "NoPermission");
-            return false;
-        }
-
         private static string Join(string[] args, int from)
         {
             if (args == null || args.Length <= from) return string.Empty;
@@ -511,12 +371,12 @@ namespace Oxide.Plugins
                 argument);
         }
 
-        private void Reply(BasePlayer player, string key, string first = null, string second = null)
+        private void Reply(BasePlayer player, string key, string argument = null)
         {
             if (player == null) return;
 
             string text = lang.GetMessage(key, this, player.UserIDString);
-            if (first != null) text = string.Format(text, first, second ?? string.Empty);
+            if (argument != null) text = string.Format(text, argument);
 
             Send(player, text, null, null, null);
         }
@@ -534,20 +394,7 @@ namespace Oxide.Plugins
                 ["PlayerOffline"] = "Игрок «{0}» не найден среди тех, кто сейчас на сервере.",
                 ["ManyMatches"] = "Найдено игроков: {0}. Уточните ник.",
                 ["PmSelf"] = "Нельзя написать самому себе.",
-                ["Cooldown"] = "Подождите {0} сек. перед следующим сообщением.",
-                ["NoPermission"] = "У вас нет доступа к этой команде.",
-                ["UsageAlert"] = "Использование: /alert текст",
-                ["UsageAlertPlayer"] = "Использование: /alert.player ник текст",
-                ["AlertSent"] = "Сообщение отправлено игроку {0}.",
-                ["UsageNewsAdd"] = "Использование: /news.add текст",
-                ["UsageNewsRemove"] = "Использование: /news.remove номер",
-                ["UsageNewsInterval"] = "Использование: /news.interval секунды",
-                ["NewsAdded"] = "Новость добавлена под номером {0}.",
-                ["NewsRemoved"] = "Новость {0} удалена.",
-                ["NewsNotFound"] = "Новости с номером {0} нет.",
-                ["NewsEmpty"] = "Список новостей пуст.",
-                ["NewsHeader"] = "Новостей: {0}, интервал {1} сек.",
-                ["NewsInterval"] = "Интервал новостей: {0} сек."
+                ["Cooldown"] = "Подождите {0} сек. перед следующим сообщением."
             }, this, "ru");
 
             lang.RegisterMessages(new Dictionary<string, string>
@@ -561,20 +408,7 @@ namespace Oxide.Plugins
                 ["PlayerOffline"] = "No player named \"{0}\" is online.",
                 ["ManyMatches"] = "Found {0} players. Be more specific.",
                 ["PmSelf"] = "You cannot message yourself.",
-                ["Cooldown"] = "Wait {0}s before sending another message.",
-                ["NoPermission"] = "You do not have access to this command.",
-                ["UsageAlert"] = "Usage: /alert text",
-                ["UsageAlertPlayer"] = "Usage: /alert.player name text",
-                ["AlertSent"] = "Message sent to {0}.",
-                ["UsageNewsAdd"] = "Usage: /news.add text",
-                ["UsageNewsRemove"] = "Usage: /news.remove number",
-                ["UsageNewsInterval"] = "Usage: /news.interval seconds",
-                ["NewsAdded"] = "News item added as number {0}.",
-                ["NewsRemoved"] = "News item {0} removed.",
-                ["NewsNotFound"] = "There is no news item number {0}.",
-                ["NewsEmpty"] = "The news list is empty.",
-                ["NewsHeader"] = "News items: {0}, interval {1}s.",
-                ["NewsInterval"] = "News interval: {0}s."
+                ["Cooldown"] = "Wait {0}s before sending another message."
             }, this, "en");
         }
     }

@@ -32,7 +32,7 @@ public static class ChatCheck
 
     public static int Run()
     {
-        SC = Type.GetType("Oxide.Plugins.ServerChat");
+        SC = Type.GetType("Oxide.Plugins.ChatSystem");
         plugin = Activator.CreateInstance(SC, true);
         Type ConfigT = SC.GetNestedType("ConfigData", BindingFlags.NonPublic);
         Set(plugin, "_config", Activator.CreateInstance(ConfigT, true));
@@ -135,16 +135,18 @@ public static class ChatCheck
                 .Where(a => a.GetType().Name == "ChatCommandAttribute")
                 .Select(a => m.Name))
             .ToArray();
-        Ok("команды объявлены", chatCommands.Length == 8,
+        Ok("остались только /pm и /r", chatCommands.Length == 2,
            chatCommands.Length + ": " + string.Join(", ", chatCommands.OrderBy(x => x)));
 
-        // Форматирование чата, ники, муты и игнор не реализуем.
-        string[] forbidden = { "OnPlayerChat", "OnUserChat", "OnPlayerVoice", "API_MUTE", "API_IGNORE" };
+        // Форматирование чата, ники, муты, игнор — и админские команды — не реализуем.
+        string[] forbidden = { "OnPlayerChat", "OnUserChat", "OnPlayerVoice", "API_MUTE", "API_IGNORE",
+                               "CmdAlert", "CmdAlertPlayer", "CmdNewsAdd", "CmdNewsRemove",
+                               "CmdNewsList", "CmdNewsInterval", "IsAdmin", "Init" };
         var present = forbidden.Where(h => SC.GetMethods(Any).Any(m => m.Name == h)).ToArray();
-        Ok("чат, муты и игнор не трогаем", present.Length == 0,
+        Ok("чат, муты, игнор и админские команды отсутствуют", present.Length == 0,
            present.Length == 0 ? "таких хуков нет" : string.Join(", ", present));
 
-        Console.WriteLine(fails == 0 ? "\nSERVERCHAT: ALL PASS" : "\nSERVERCHAT: " + fails + " FAILED");
+        Console.WriteLine(fails == 0 ? "\nCHATSYSTEM: ALL PASS" : "\nCHATSYSTEM: " + fails + " FAILED");
         return fails;
     }
 }

@@ -566,9 +566,9 @@
              c.Add(new CuiPanel
 ```
 
-## ServerChat вместо IQChat
+## ChatSystem вместо IQChat
 
-`ServerChat` реализует `API_ALERT_PLAYER` с сигнатурой IQChat, но одного API
+`ChatSystem` реализует `API_ALERT_PLAYER` с сигнатурой IQChat, но одного API
 мало. Oxide связывает `[PluginReference]` **по имени поля**
 (`Oxide.CSharp.cs:2351` — `pluginReferenceMembers[attribute.Name ?? member.Name]`),
 поэтому поле `Plugin IQChat` ищет плагин с именем `IQChat` и при его отсутствии
@@ -582,7 +582,7 @@
 
 ```diff
 -		[PluginReference] private Plugin IQChat, RaidableBases, AbandonedBases, Convoy;
-+		[PluginReference("ServerChat")] private Plugin IQChat;
++		[PluginReference("ChatSystem")] private Plugin IQChat;
 +		[PluginReference] private Plugin RaidableBases, AbandonedBases, Convoy;
 ```
 
@@ -590,7 +590,7 @@
 
 ```diff
 -        [PluginReference] Plugin IQChat, SimpleStatus;
-+        [PluginReference("ServerChat")] Plugin IQChat;
++        [PluginReference("ChatSystem")] Plugin IQChat;
 +        [PluginReference] Plugin SimpleStatus;
 ```
 
@@ -598,7 +598,7 @@
 
 ```diff
 -        [PluginReference] Plugin IQChat, nanoModalMenu, nanoSettingModule, nanoChat, Battles, Duel, Duelist, ArenaTournament, AimTraining, XFarmRoom, OneVSOne, EventHelper;
-+        [PluginReference("ServerChat")] Plugin IQChat;
++        [PluginReference("ChatSystem")] Plugin IQChat;
 +        [PluginReference] Plugin nanoModalMenu, nanoSettingModule, nanoChat, Battles, Duel, Duelist, ArenaTournament, AimTraining, XFarmRoom, OneVSOne, EventHelper;
 ```
 
@@ -606,7 +606,7 @@
 
 ```diff
 -        [PluginReference] Plugin IQChat;
-+        [PluginReference("ServerChat")] Plugin IQChat;
++        [PluginReference("ChatSystem")] Plugin IQChat;
 ```
 
 `IQRates` в постановке не упоминался, но зовёт тот же API на строке 1866 —
