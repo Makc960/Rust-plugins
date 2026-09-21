@@ -39,11 +39,30 @@ namespace Oxide.Plugins
         public PermissionAttribute(string permission) { }
     }
 
+    // Oxide.CSharp.cs:2884 - обёртка над Core-таймером, именно её видят плагины.
+    public class Timer
+    {
+        public bool Destroyed { get; private set; }
+        public void Reset(float delay = -1f, int repetitions = 1) { }
+        public void Destroy() { Destroyed = true; }
+        public void DestroyToPool() { Destroyed = true; }
+    }
+
+    // Oxide.CSharp.cs:2918
+    public class PluginTimers
+    {
+        public Timer Once(float seconds, Action callback) { return new Timer(); }
+        public Timer In(float seconds, Action callback) { return new Timer(); }
+        public Timer Every(float interval, Action callback) { return new Timer(); }
+        public Timer Repeat(float interval, int repeats, Action callback) { return new Timer(); }
+        public void Destroy(ref Timer timer) { }
+    }
+
     public abstract class CSharpPlugin : Oxide.Core.Plugins.Plugin
     {
         protected DynamicConfigFile Config = new DynamicConfigFile();
         protected Permission permission = new Permission();
-        protected Timer timer = new Timer();
+        protected PluginTimers timer = new PluginTimers();
         protected Lang lang = new Lang();
 
         // Name/Title/IsLoaded наследуются от Plugin: отдельные new-свойства

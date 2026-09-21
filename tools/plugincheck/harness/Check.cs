@@ -135,6 +135,8 @@ public static class Check
         fails += Integration.Run();
         Console.WriteLine();
         fails += RatesCheck.Run();
+        Console.WriteLine();
+        fails += ChatCheck.Run();
 
         Console.WriteLine(fails == 0 ? "\nALL PASS" : "\n" + fails + " FAILED");
         return fails;

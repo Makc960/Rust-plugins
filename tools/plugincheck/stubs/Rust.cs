@@ -49,6 +49,23 @@ namespace Rust
 public enum HitArea { Head = 1, Chest = 2, Stomach = 4, Arm = 8, Hand = 0x10, Leg = 0x20, Foot = 0x40 }
 
 public class DamageProperties { }
+
+public class EffectData { }
+
+public class Effect : EffectData                       // Assembly-CSharp.cs:278867
+{
+    public Effect() { }
+    public Effect(string effectName, Vector3 posWorld, Vector3 normWorld,
+        Network.Connection sourceConnection = null) { }                          // :279204
+    public Effect(string effectName, BaseEntity ent, uint boneID, Vector3 posLocal,
+        Vector3 normLocal, Network.Connection sourceConnection = null) { }        // :279210
+}
+
+public static class EffectNetwork                      // :279293
+{
+    public static void Send(Effect effect) { }
+    public static void Send(Effect effect, Network.Connection target) { }          // :279360
+}
 public class Projectile { public float conditionLoss; }
 
 // Assembly-CSharp.cs:348683
@@ -165,6 +182,7 @@ public class BasePlayer : BaseCombatEntity
     public PlayerInventory inventory = new PlayerInventory();
     public bool IsAdmin;
     public bool IsDestroyed;
+    public Network.Connection Connection;   // :70917
     public void ChatMessage(string message) { }
     public void SendConsoleCommand(string command, params object[] args) { }
     public HeldEntity GetHeldEntity() { return null; }

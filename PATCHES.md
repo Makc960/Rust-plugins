@@ -565,3 +565,66 @@
          {
              c.Add(new CuiPanel
 ```
+
+## ServerChat вместо IQChat
+
+`ServerChat` реализует `API_ALERT_PLAYER` с сигнатурой IQChat, но одного API
+мало. Oxide связывает `[PluginReference]` **по имени поля**
+(`Oxide.CSharp.cs:2351` — `pluginReferenceMembers[attribute.Name ?? member.Name]`),
+поэтому поле `Plugin IQChat` ищет плагин с именем `IQChat` и при его отсутствии
+остаётся `null`: проверки `if (IQChat)` не проходят и сообщения молча не
+доходят.
+
+Лечится одной строкой в каждом плагине — атрибуту передаётся имя, само поле и
+весь остальной код не меняются.
+
+### XRaidProtection.cs:20
+
+```diff
+-		[PluginReference] private Plugin IQChat, RaidableBases, AbandonedBases, Convoy;
++		[PluginReference("ServerChat")] private Plugin IQChat;
++		[PluginReference] private Plugin RaidableBases, AbandonedBases, Convoy;
+```
+
+### IQSimpleVote.cs:1051
+
+```diff
+-        [PluginReference] Plugin IQChat, SimpleStatus;
++        [PluginReference("ServerChat")] Plugin IQChat;
++        [PluginReference] Plugin SimpleStatus;
+```
+
+### IQWipeBlock.cs:2225
+
+```diff
+-        [PluginReference] Plugin IQChat, nanoModalMenu, nanoSettingModule, nanoChat, Battles, Duel, Duelist, ArenaTournament, AimTraining, XFarmRoom, OneVSOne, EventHelper;
++        [PluginReference("ServerChat")] Plugin IQChat;
++        [PluginReference] Plugin nanoModalMenu, nanoSettingModule, nanoChat, Battles, Duel, Duelist, ArenaTournament, AimTraining, XFarmRoom, OneVSOne, EventHelper;
+```
+
+### IQRates.cs:1618
+
+```diff
+-        [PluginReference] Plugin IQChat;
++        [PluginReference("ServerChat")] Plugin IQChat;
+```
+
+`IQRates` в постановке не упоминался, но зовёт тот же API на строке 1866 —
+без этой правки уведомления о бонусных рейтах перестали бы приходить.
+
+### Что показал grep по сборке
+
+| Обращение | Где | Статус |
+|---|---|---|
+| `API_ALERT_PLAYER` (2 аргумента) | `XRaidProtection.cs:609` | реализован |
+| `API_ALERT_PLAYER` (4 аргумента) | `IQSimpleVote.cs:927` | реализован |
+| `API_ALERT_PLAYER` (4 аргумента) | `IQWipeBlock.cs:1099` | реализован |
+| `API_ALERT_PLAYER` (4 аргумента) | `IQRates.cs:1866` | реализован |
+
+Других вызовов к IQChat в сборке нет: ни `API_ALERT`, ни
+`API_ALERT_PLAYER_UI` (`IQChat.cs:7115`) никто не зовёт. `API_ALERT` реализован
+по постановке, UI-версия — нет, её незачем.
+
+Остальные упоминания IQChat в этих плагинах — поля конфигов с префиксом и
+аватаром (`useIQChat`, `iqchatPreset`, `presetReferenceChat`); они передаются в
+`API_ALERT_PLAYER` как `customPrefix` и `customAvatar` и работают без правок.
