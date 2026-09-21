@@ -29,6 +29,47 @@ namespace Oxide.Plugins
 				Interface.Oxide.DataFileSystem.WriteObject($"XDataSystem/XSkinMenu/UserSettings/{userID}", StoredData[userID]);
 		}
 		
+		private readonly HashSet<ulong> _dirty = new HashSet<ulong>();
+		private bool _friendsDirty, _flushPending;
+		
+		private void MarkDirty(ulong userID)
+		{
+			_dirty.Add(userID);
+			ScheduleFlush();
+		}
+		
+		private void ScheduleFlush()
+		{
+			if(_flushPending) return;
+			
+			_flushPending = true;
+			timer.Once(60f, FlushDirty);
+		}
+		
+		private void FlushDirty()
+		{
+			_flushPending = false;
+			
+			if(_dirty.Count != 0)
+			{
+				foreach(ulong userID in _dirty)
+					if(StoredData.TryGetValue(userID, out Data data))
+						Interface.Oxide.DataFileSystem.WriteObject($"XDataSystem/XSkinMenu/UserSettings/{userID}", data);
+				
+				_dirty.Clear();
+			}
+			
+			if(_friendsDirty)
+			{
+				_friendsDirty = false;
+				
+				if(StoredDataFriends != null && StoredDataFriends.Count != 0)
+					Interface.Oxide.DataFileSystem.WriteObject("XDataSystem/XSkinMenu/Friends", StoredDataFriends);
+			}
+		}
+		
+		private void OnServerSave() => FlushDirty();
+		
 		private void OnItemPickup(Item item, BasePlayer player)
 		{
 			if(item == null || player == null || player.IsNpc) return;
@@ -1244,6 +1285,7 @@ namespace Oxide.Plugins
 			{   
 				SaveData(player);
 				StoredData.Remove(player.userID);
+				_dirty.Remove(player.userID);
 			}			
 			  
 			if(Cooldowns.ContainsKey(player))
@@ -1495,12 +1537,6 @@ namespace Oxide.Plugins
 			GenerateItems();
 				
 			BasePlayer.activePlayerList.ToList().ForEach(OnPlayerConnected);
-			timer.Every(180, () => BasePlayer.activePlayerList.ToList().ForEach(SaveData));
-			timer.Every(200, () =>
-			{
-				if(StoredDataFriends != null && StoredDataFriends.Count != 0)
-					Interface.Oxide.DataFileSystem.WriteObject("XDataSystem/XSkinMenu/Friends", StoredDataFriends);
-			});
 			
 			if(config.Setting.UseImageLibrary && !ImageLibrary)
 			{
@@ -2381,18 +2417,31 @@ namespace Oxide.Plugins
 		private void LoadData(BasePlayer player)
 		{
 			ulong userID = player.userID;
+			bool dirty = false;
 			
 			if(Interface.Oxide.DataFileSystem.ExistsDatafile($"XDataSystem/XSkinMenu/UserSettings/{userID}"))
 			{
 				var Data = Interface.Oxide.DataFileSystem.ReadObject<Data>($"XDataSystem/XSkinMenu/UserSettings/{userID}");
 				
-				StoredData[userID] = Data ?? DATA();
+				if(Data == null)
+				{
+					Data = DATA();
+					dirty = true;
+				}
+				
+				StoredData[userID] = Data;
 			}
 			else
+			{
 				StoredData[userID] = DATA();
+				dirty = true;
+			}
 			
 			if(!StoredDataFriends.ContainsKey(userID))
-                StoredDataFriends.Add(userID, config.PSetting.ChangeF);
+			{
+				StoredDataFriends.Add(userID, config.PSetting.ChangeF);
+				_friendsDirty = true;
+			}
 			
 			var list = StoredData[userID].Skins;
 			
@@ -2401,7 +2450,10 @@ namespace Oxide.Plugins
 				string key = skin.Key;
 				
 				if(!list.ContainsKey(key))
+				{
 					list.Add(key, _items.ContainsKey(key) ? _items[key] : 0);
+					dirty = true;
+				}
 			}
 			
 			//FP_TOS
@@ -2413,20 +2465,30 @@ namespace Oxide.Plugins
 					
 					foreach(var item in items.Keys.ToList())
 						if(_allFPSkins.Contains(items[item]))
+						{
 							items[item] = 0;
+							dirty = true;
+						}
 				}
 				
 				foreach(var item in list.Keys.ToList())
 					if(_allFPSkins.Contains(list[item]))
+					{
 						list[item] = 0;
+						dirty = true;
+					}
 			}
 			
 			///DEL
 			
 			foreach(var kits in StoredData[userID].Kits)
-				kits.Value.Remove("wallpaper");
+				if(kits.Value.Remove("wallpaper"))
+					dirty = true;
 			
 			///DEL
+			
+			if(dirty)
+				MarkDirty(userID);
 		}
 		
 		[ConsoleCommand("xskin_import_file")]
@@ -2605,24 +2667,29 @@ namespace Oxide.Plugins
 				case "inventory":
 				{
 					StoredData[player.userID].ChangeSI = !StoredData[player.userID].ChangeSI;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}
 				case "clear":
 				{
 					StoredData[player.userID].ChangeSCL = !StoredData[player.userID].ChangeSCL;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}
 				case "entity":
 				{
 					StoredData[player.userID].ChangeSE = !StoredData[player.userID].ChangeSE;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}
 				case "friends":
 				{
 					StoredDataFriends[player.userID] = !StoredDataFriends[player.userID];
+					_friendsDirty = true;
+					ScheduleFlush();
 					SettingGUI(player);
 					break;
 				}
@@ -2630,6 +2697,7 @@ namespace Oxide.Plugins
 				{
 					StoredData[player.userID].ChangeSG = !StoredData[player.userID].ChangeSG;
 					StoredData[player.userID].ChangeSP = false;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}				
@@ -2637,30 +2705,35 @@ namespace Oxide.Plugins
 				{
 					StoredData[player.userID].ChangeSP = !StoredData[player.userID].ChangeSP;
 					StoredData[player.userID].ChangeSG = false;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}				
 				case "giveno":
 				{
 					StoredData[player.userID].ChangeSGN = !StoredData[player.userID].ChangeSGN;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}
 				case "craft":
 				{
 					StoredData[player.userID].ChangeSC = !StoredData[player.userID].ChangeSC;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}
 				case "spraycan":
 				{
 					StoredData[player.userID].UseSprayC = !StoredData[player.userID].UseSprayC;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}
 				case "sound":
 				{
 					StoredData[player.userID].UseSoundE = !StoredData[player.userID].UseSoundE;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}
@@ -2668,12 +2741,14 @@ namespace Oxide.Plugins
 				{
 					StoredData[player.userID].Comfort = false;
 					StoredData[player.userID].ComfortP = false;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}				
 				case "comfortmenu":
 				{
 					StoredData[player.userID].Comfort = true;
+					MarkDirty(player.userID);
 					SettingGUI(player);
 					break;
 				}				
@@ -2689,6 +2764,7 @@ namespace Oxide.Plugins
 							StoredData[player.userID].ComfortP = true;
 						}
 						
+						MarkDirty(player.userID);
 						SettingGUI(player);
 					}
 					break;
@@ -2995,6 +3071,7 @@ namespace Oxide.Plugins
 					if(!(StoredDataSkins[item].Contains(skin) || _adminAndVipSkins.Contains(skin))) return;
 					
 					StoredData[player.userID].Skins[item] = skin;
+					MarkDirty(player.userID);
 					
 					if(!permission.UserHasPermission(player.UserIDString, permInv))
 						SendReply(player, lang.GetMessage("NOPERM", this, player.UserIDString));
@@ -3036,6 +3113,7 @@ namespace Oxide.Plugins
 					
 					string item = args.GetString(1);
 					StoredData[player.userID].Skins[item] = 0;
+					MarkDirty(player.userID);
 					
 					CuiHelper.DestroyUi(player, $".I + {args.GetString(2)}");
 					if(StoredData[player.userID].ChangeSCL) SetSkinItem(player, item, 0);
@@ -3054,6 +3132,8 @@ namespace Oxide.Plugins
 					
 					foreach(var skin in StoredDataSkins) 
 						StoredData[player.userID].Skins.Add(skin.Key, 0);
+					
+					MarkDirty(player.userID);
 					
 					GUI(player);
 					EffectNetwork.Send(z, player.Connection);
@@ -3095,6 +3175,7 @@ namespace Oxide.Plugins
 					if(StoredData[player.userID].Kits.ContainsKey(key))
 					{
 						StoredData[player.userID].Kits.Remove(key);
+						MarkDirty(player.userID);
 							
 						CustomKitsGUI(player, Page);
 						EffectNetwork.Send(z, player.Connection);
@@ -3139,6 +3220,7 @@ namespace Oxide.Plugins
 						if(newkit.Count != 0)
 						{
 							StoredData[player.userID].Kits.Add(kitname, newkit);
+							MarkDirty(player.userID);
 							CustomKitsGUI(player);
 						}
 						else
@@ -3169,7 +3251,10 @@ namespace Oxide.Plugins
 						//if(!(StoredDataSkins[skin.Key].Contains(skin.Value) || _adminAndVipSkins.Contains(skin.Value))) continue;
 						
 						if(setK && StoredData[player.userID].Skins.ContainsKey(skin.Key))
+						{
 							StoredData[player.userID].Skins[skin.Key] = skin.Value;
+							MarkDirty(player.userID);
+						}
 						
 						if(invK)
 							SetSkinItem(player, skin.Key, skin.Value);
@@ -4290,17 +4375,29 @@ namespace Oxide.Plugins
 		
 		private void ResetPlayerSkins(BasePlayer player)
 		{
-			if(StoredData.ContainsKey(player.userID))
+			if(StoredData.TryGetValue(player.userID, out Data data))
 			{
+				Dictionary<string, ulong> skins = data.Skins;
+				bool dirty = false;
+				
 				if(!permission.UserHasPermission(player.UserIDString, permAdminS))
 					foreach(var item in config.Setting.AdminSkins)
-						if(StoredData[player.userID].Skins.ContainsKey(item.Key) && item.Value.Contains(StoredData[player.userID].Skins[item.Key]))
-							StoredData[player.userID].Skins[item.Key] = 0;
-					
+						if(skins.TryGetValue(item.Key, out ulong skin) && item.Value.Contains(skin))
+						{
+							skins[item.Key] = 0;
+							dirty = true;
+						}
+				
 				if(!permission.UserHasPermission(player.UserIDString, permVipS))
 					foreach(var item in config.Setting.VipSkins)
-						if(StoredData[player.userID].Skins.ContainsKey(item.Key) && item.Value.Contains(StoredData[player.userID].Skins[item.Key]))
-							StoredData[player.userID].Skins[item.Key] = 0;
+						if(skins.TryGetValue(item.Key, out ulong skin) && item.Value.Contains(skin))
+						{
+							skins[item.Key] = 0;
+							dirty = true;
+						}
+				
+				if(dirty)
+					MarkDirty(player.userID);
 			}
 		}
 		

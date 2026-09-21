@@ -39,9 +39,12 @@ namespace Oxide.Core
 
     public class DataFileSystem
     {
-        public T ReadObject<T>(string name) { return default(T); }
-        public void WriteObject<T>(string name, T obj, bool sync = false) { }
-        public bool ExistsDatafile(string name) { return false; }
+        // Мини-«диск» для тестов: что записали, то и прочитаем; Writes - журнал записей.
+        public static readonly Dictionary<string, object> Store = new Dictionary<string, object>();
+        public static readonly List<string> Writes = new List<string>();
+        public T ReadObject<T>(string name) { object o; return Store.TryGetValue(name, out o) && o is T ? (T)o : default(T); }
+        public void WriteObject<T>(string name, T obj, bool sync = false) { Store[name] = obj; Writes.Add(name); }
+        public bool ExistsDatafile(string name) { return Store.ContainsKey(name); }
     }
 
     public class OxideMod
@@ -86,6 +89,9 @@ namespace Oxide.Core
 
         public class Timer
         {
+            // Отложенные Once-коллбэки; тесты вызывают их сами (Fire).
+            public static readonly List<Action> Scheduled = new List<Action>();
+            public static void Fire() { var l = Scheduled.ToArray(); Scheduled.Clear(); foreach (var a in l) a(); }
             public class TimerInstance { public void Destroy() { } }
             public TimerInstance Once(float delay, Action callback) { return new TimerInstance(); }
             public TimerInstance Every(float interval, Action callback) { return new TimerInstance(); }

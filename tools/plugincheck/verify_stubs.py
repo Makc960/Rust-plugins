@@ -155,6 +155,15 @@ ALLOWED_MEMBERS = {
     'PooledList.Dispose',           # через BasePooledList<T,TSelf> : IDisposable
     'ServerMgr.StartCoroutine',     # унаследовано от MonoBehaviour (UnityEngine.CoreModule.cs:73654)
     'ServerMgr.StopCoroutine',
+    # члены только для тестов: харнес управляет заглушками и читает, что плагин записал
+    'Arg.Caller',
+    'CuiHelper.GuidCounter',
+    'CuiHelper.Transcript',
+    'DataFileSystem.Store',
+    'DataFileSystem.Writes',
+    'Permission.Granted',
+    'Timer.Fire',
+    'Timer.Scheduled',
 }
 
 

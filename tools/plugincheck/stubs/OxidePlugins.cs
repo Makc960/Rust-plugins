@@ -53,8 +53,8 @@ namespace Oxide.Plugins
     // Oxide.CSharp.cs:2918
     public class PluginTimers
     {
-        public Timer Once(float seconds, Action callback) { return new Timer(); }
-        public Timer In(float seconds, Action callback) { return new Timer(); }
+        public Timer Once(float seconds, Action callback) { Oxide.Core.Libraries.Timer.Scheduled.Add(callback); return new Timer(); }
+        public Timer In(float seconds, Action callback) { Oxide.Core.Libraries.Timer.Scheduled.Add(callback); return new Timer(); }
         public Timer Every(float interval, Action callback) { return new Timer(); }
         public Timer Repeat(float interval, int repeats, Action callback) { return new Timer(); }
         public void Destroy(ref Timer timer) { }

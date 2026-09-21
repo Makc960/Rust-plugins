@@ -29,6 +29,13 @@ public static class XSkinHooks
         mi.Invoke(plugin, a.Concat(mi.GetParameters().Skip(a.Length).Select(p => p.DefaultValue)).ToArray());
     }
 
+    static void Cmd(string command, string line)
+    {
+        ((IDictionary)F("Cooldowns")).Clear();
+        var handler = XS.GetMethods(Any).First(m => m.GetCustomAttributes(typeof(Oxide.Plugins.ConsoleCommandAttribute), false).Cast<Oxide.Plugins.ConsoleCommandAttribute>().Any(a => a.Command == command));
+        handler.Invoke(plugin, new object[] { new ConsoleSystem.Arg(player, line.Split(' ')) });
+    }
+
     static BasePlayer player;
     static object Fresh(bool loaded, bool changeSG, bool changeSP, bool changeSC, ulong chosen)
     {
@@ -121,6 +128,42 @@ public static class XSkinHooks
         it = Ak(999UL);
         Call("OnItemAddedToContainer", player.inventory.containerMain, it);
         Ok("blacklist: предмет с чёрным скином не перекрашивается", it.skin == 999UL, "skin=" + it.skin);
+
+        // --- данные: запись на диск только для изменённых игроков ---
+        const string UserFile = "XDataSystem/XSkinMenu/UserSettings/76561198000000088";
+        const string FriendsFile = "XDataSystem/XSkinMenu/Friends";
+        var disk = Oxide.Core.DataFileSystem.Store; var writes = Oxide.Core.DataFileSystem.Writes;
+        Func<string, int> W = name => writes.Count(x => x == name);
+        disk.Clear(); writes.Clear(); Timer.Scheduled.Clear();
+
+        Fresh(true, true, false, false, 777UL);                                   // LoadData: файла нет -> данные новые
+        Ok("data: LoadData без файла -> записи сразу нет", writes.Count == 0, "writes=" + writes.Count);
+        Timer.Fire();                                                            // сработал отложенный сброс
+        Ok("data: отложенный сброс пишет нового игрока и Friends по разу", W(UserFile) == 1 && W(FriendsFile) == 1 && writes.Count == 2, string.Join(",", writes));
+        writes.Clear(); Timer.Fire(); Call("OnServerSave");
+        Ok("data: без изменений OnServerSave/таймер не пишут ничего", writes.Count == 0, "writes=" + writes.Count);
+
+        Permission.Granted.Add("xskinmenu.setting"); Cmd("skin_s", "inventory");             // переключатель в настройках
+        Ok("data: клик в настройках -> запись отложена, не мгновенная", writes.Count == 0 && ((HashSet<ulong>)F("_dirty")).Contains(76561198000000088UL), "writes=" + writes.Count);
+        Call("OnServerSave");
+        Ok("data: OnServerSave пишет только изменённого игрока", W(UserFile) == 1 && writes.Count == 1, string.Join(",", writes));
+        object saved = disk[UserFile];
+        Ok("data: на диск ушёл тот же объект (формат прежний)", ReferenceEquals(saved, ((IDictionary)F("StoredData"))[76561198000000088UL]) && (bool)Get(saved, "ChangeSI") != (bool)Get(Get(F("config"), "PSetting"), "ChangeSI"), "ChangeSI переключён");
+        writes.Clear(); Timer.Fire();
+        Ok("data: повторный сброс после записи пуст", writes.Count == 0, "writes=" + writes.Count);
+
+        Cmd("skin_s", "friends");
+        writes.Clear(); Call("OnServerSave");
+        Ok("data: переключение friends пишет только Friends", W(FriendsFile) == 1 && writes.Count == 1, string.Join(",", writes));
+
+        writes.Clear(); Call("OnPlayerDisconnected", player);
+        Ok("data: выход игрока пишет файл как раньше и снимает флаг", W(UserFile) == 1 && !((HashSet<ulong>)F("_dirty")).Contains(76561198000000088UL), string.Join(",", writes));
+
+        writes.Clear(); Call("LoadData", player);                                // повторный вход: файл есть и полный
+        Timer.Fire(); Call("OnServerSave");
+        Ok("data: повторный вход с полным файлом -> не грязный, записи нет", writes.Count == 0, "writes=" + writes.Count);
+
+        disk.Clear(); writes.Clear(); Timer.Scheduled.Clear();
 
         Console.WriteLine(fails == 0 ? "\nXSKIN HOOKS: ALL PASS" : "\nXSKIN HOOKS: " + fails + " FAILED");
         return fails;
