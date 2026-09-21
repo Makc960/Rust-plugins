@@ -61,7 +61,7 @@ public static class XSkinGolden
         Permission.Granted.Clear();
         foreach (var p in new[] { "xskinmenu.use", "xskinmenu.setting", "xskinmenu.skinitem", "xskinmenu.inventory",
                                   "xskinmenu.craft", "xskinmenu.entity", "xskinmenu.give", "xskinmenu.pickup",
-                                  "xskinmenu.skincraft", "xskinmenu.playeradd", "xskinmenu.defaultkits", "xskinmenu.customkits" })
+                                  "xskinmenu.skincraft", "xskinmenu.playeradd", "xskinmenu.defaultkits", "xskinmenu.customkits", "xskinmenu.skinchange" })
             Permission.Granted.Add(p);
         if (admin) { Permission.Granted.Add("xskinmenu.admin"); Permission.Granted.Add("xskinmenu.adminskins"); }
         if (vip) Permission.Granted.Add("xskinmenu.vipskins");
@@ -122,7 +122,8 @@ public static class XSkinGolden
         Call("LoadData", player);
         object data = ((IDictionary)F("StoredData"))[76561198000000077UL];
         Set(data, "Comfort", comfort); Set(data, "ComfortP", comfortp);
-        ((IDictionary)Get(data, "Skins"))["rifle.ak"] = 100005UL;   // выбранный скин
+        Set(data, "ChangeSI", false); Set(data, "ChangeSCL", false);   // перекраска инвентаря - не UI, в заглушке нет ItemManager
+        ((IDictionary)Get(data, "Skins"))["rifle.ak"] = 104005UL;   // выбранный скин (список rifle.ak: 104000..104060)
         var playerKits = (IDictionary)Get(data, "Kits");
         playerKits["MyKit"] = new Dictionary<string, ulong> { ["rifle.ak"] = 100005UL, ["hoodie"] = 0UL };
     }
@@ -135,6 +136,27 @@ public static class XSkinGolden
         var lines = new List<string> { "### " + label };
         lines.AddRange(CuiHelper.Transcript);
         return lines;
+    }
+
+    static List<Tuple<string, List<string>>> Split(IEnumerable<string> lines)
+    {
+        var res = new List<Tuple<string, List<string>>>();
+        foreach (var l in lines)
+        {
+            if (l.StartsWith("### ")) res.Add(Tuple.Create(l, new List<string>()));
+            else res[res.Count - 1].Item2.Add(l);
+        }
+        return res;
+    }
+
+    static void Report(string screen, string what, string g, string a, ref int mismatched)
+    {
+        mismatched++;
+        if (mismatched > 5) return;
+        Console.WriteLine("  РАСХОЖДЕНИЕ в " + screen + " (" + what + ")");
+        int k = 0; while (k < g.Length && k < a.Length && g[k] == a[k]) k++;
+        Console.WriteLine("    эталон: …" + g.Substring(Math.Max(0, k - 60), Math.Min(140, g.Length - Math.Max(0, k - 60))));
+        Console.WriteLine("    сейчас: …" + a.Substring(Math.Max(0, k - 60), Math.Min(140, a.Length - Math.Max(0, k - 60))));
     }
 
     public static int Run(string mode, string path)
@@ -173,9 +195,18 @@ public static class XSkinGolden
             // Реальные клики через обработчики команд — самый важный путь.
             all.AddRange(Snap(st + " | click category", () => Cmd("skin_c", "category Attire 0")));
             all.AddRange(Snap(st + " | click item", () => Cmd("skin_c", comfort ? "skin rifle.ak Weapon 0" : "skin rifle.ak")));
-            all.AddRange(Snap(st + " | click setskin", () => Cmd("skin_c", comfort ? "setskin rifle.ak 100007 0 Weapon 0" : "setskin rifle.ak 100007 0")));
-            all.AddRange(Snap(st + " | click setskin back", () => Cmd("skin_c", comfort ? "setskin rifle.ak 100005 0 Weapon 0" : "setskin rifle.ak 100005 0")));
+            // Выбор скина перерисовывает не всю сетку, поэтому экраны "click setskin*" сравниваются по итоговому состоянию.
+            all.AddRange(Snap(st + " | click setskin", () => Cmd("skin_c", comfort ? "setskin rifle.ak 104007 0 Weapon 0" : "setskin rifle.ak 104007 0")));
+            all.AddRange(Snap(st + " | click setskin back", () => Cmd("skin_c", comfort ? "setskin rifle.ak 104005 0 Weapon 0" : "setskin rifle.ak 104005 0")));
+            all.AddRange(Snap(st + " | click setskin same", () => Cmd("skin_c", comfort ? "setskin rifle.ak 104005 0 Weapon 0" : "setskin rifle.ak 104005 0")));
             all.AddRange(Snap(st + " | page skin next", () => Cmd("page.xskinmenu", "skin rifle.ak 1 Weapon 0")));
+            all.AddRange(Snap(st + " | click setskin p1 (old on p0)", () => Cmd("skin_c", comfort ? "setskin rifle.ak 104045 1 Weapon 0" : "setskin rifle.ak 104045 1")));
+            // поиск через реальную команду поля ввода: в обычном режиме категория в сетке всегда "null", как её рисуют клики
+            all.AddRange(Snap(st + " | click search", () => Cmd("skin_c", comfort ? "searchskin rifle.ak Weapon 0 skin 1" : "searchskin rifle.ak null skin 1")));
+            all.AddRange(Snap(st + " | click setskin in search", () => Cmd("skin_c", comfort ? "setskin rifle.ak 104012 0 Weapon 0 skin 1" : "setskin rifle.ak 104012 0 skin 1")));
+            all.AddRange(Snap(st + " | click item again", () => Cmd("skin_c", comfort ? "skin rifle.ak Weapon 0" : "skin rifle.ak")));
+            all.AddRange(Snap(st + " | click setskin admin skin", () => Cmd("skin_c", comfort ? "setskin rifle.ak 900001 0 Weapon 0" : "setskin rifle.ak 900001 0")));
+            all.AddRange(Snap(st + " | click setskin from admin", () => Cmd("skin_c", comfort ? "setskin rifle.ak 104003 0 Weapon 0" : "setskin rifle.ak 104003 0")));
             all.AddRange(Snap(st + " | page item next", () => Cmd("page.xskinmenu", "item Weapon 1 null")));
             all.AddRange(Snap(st + " | click clear", () => Cmd("skin_c", "clear rifle.ak rifle.ak Weapon 0")));
             all.AddRange(Snap(st + " | click zoom", () => Cmd("skin_c", "zoomskin 1000 100005 false")));
@@ -192,26 +223,38 @@ public static class XSkinGolden
         }
 
         var golden = File.ReadAllLines(path);
-        int screens = 0, mismatched = 0; string current = "";
-        int max = Math.Max(golden.Length, all.Count);
-        for (int i = 0; i < max; i++)
+        var gs = Split(golden); var cs = Split(all);
+        int screens = 0, byState = 0, mismatched = 0; string cell = null;
+        var vg = new XSkinScreen(); var vc = new XSkinScreen();
+        if (gs.Count != cs.Count) { mismatched++; Console.WriteLine("  РАСХОЖДЕНИЕ: экранов в эталоне " + gs.Count + ", сейчас " + cs.Count); }
+        for (int n = 0; n < Math.Min(gs.Count, cs.Count); n++)
         {
-            string g = i < golden.Length ? golden[i] : "<нет>";
-            string a = i < all.Count ? all[i] : "<нет>";
-            if (g.StartsWith("### ")) { screens++; current = g; }
-            if (g == a) continue;
-            mismatched++;
-            if (mismatched <= 5)
+            var g = gs[n]; var c = cs[n];
+            screens++;
+            if (g.Item1 != c.Item1) { mismatched++; Report(g.Item1, "метка экрана", g.Item1, c.Item1, ref mismatched); continue; }
+            string cellNow = g.Item1.Split('|')[0];
+            if (cellNow != cell) { cell = cellNow; vg = new XSkinScreen(); vc = new XSkinScreen(); }
+            foreach (var l in g.Item2) vg.Apply(l);
+            foreach (var l in c.Item2) vc.Apply(l);
+            if (g.Item1.Contains("click setskin"))
             {
-                Console.WriteLine("  РАСХОЖДЕНИЕ в " + current + " (строка " + i + ")");
-                int k = 0; while (k < g.Length && k < a.Length && g[k] == a[k]) k++;
-                Console.WriteLine("    эталон: …" + g.Substring(Math.Max(0, k - 60), Math.Min(140, g.Length - Math.Max(0, k - 60))));
-                Console.WriteLine("    сейчас: …" + a.Substring(Math.Max(0, k - 60), Math.Min(140, a.Length - Math.Max(0, k - 60))));
+                // частичная перерисовка: сравниваем не команды, а что в итоге на экране
+                byState++;
+                string a = vg.Canonical(), b = vc.Canonical();
+                if (a != b) Report(g.Item1, "состояние экрана", a, b, ref mismatched);
+                continue;
+            }
+            int max = Math.Max(g.Item2.Count, c.Item2.Count);
+            for (int i = 0; i < max; i++)
+            {
+                string a = i < g.Item2.Count ? XSkinScreen.NormLine(g.Item2[i]) : "<нет>";
+                string b = i < c.Item2.Count ? XSkinScreen.NormLine(c.Item2[i]) : "<нет>";
+                if (a != b) Report(g.Item1, "строка " + i, a, b, ref mismatched);
             }
         }
         Console.WriteLine(mismatched == 0
-            ? "  PASS  CUI побайтно совпадает с эталоном: " + screens + " экранов, " + all.Count + " строк транскрипта"
-            : "  FAIL  расхождений: " + mismatched + " из " + max + " строк");
+            ? "  PASS  CUI совпадает с эталоном: " + screens + " экранов, из них " + (screens - byState) + " побайтно (имена плиток нормализованы) и " + byState + " по итоговому состоянию экрана"
+            : "  FAIL  расхождений: " + mismatched);
         return mismatched == 0 ? 0 : 1;
     }
 }

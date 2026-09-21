@@ -3066,6 +3066,8 @@ namespace Oxide.Plugins
 					if(_vipSkins.Contains(skin) && !permission.UserHasPermission(player.UserIDString, permVipS)) return;
 					if(!(StoredDataSkins[item].Contains(skin) || _adminAndVipSkins.Contains(skin))) return;
 					
+					ulong oldSkin = StoredData[player.userID].Skins[item];
+					
 					StoredData[player.userID].Skins[item] = skin;
 					MarkDirty(player.userID);
 					
@@ -3084,16 +3086,16 @@ namespace Oxide.Plugins
 								ItemGUI(player, category, page, item);
 								
 								if(args.Args.Length >= 7)
-									SkinGUI(player, item, args.GetInt(3), category, page, string.Join(" ", args.Args.Skip(6)).ToLower());
+									SkinGUISelect(player, item, oldSkin, skin, args.GetInt(3), category, page, string.Join(" ", args.Args.Skip(6)).ToLower());
 								else
-									SkinGUI(player, item, args.GetInt(3), category, page);
+									SkinGUISelect(player, item, oldSkin, skin, args.GetInt(3), category, page);
 							}
 							else
 							{
 								if(args.Args.Length >= 5)
-									SkinGUI(player, item, args.GetInt(3), "null", 0, string.Join(" ", args.Args.Skip(4)).ToLower());
+									SkinGUISelect(player, item, oldSkin, skin, args.GetInt(3), "null", 0, string.Join(" ", args.Args.Skip(4)).ToLower());
 								else
-									SkinGUI(player, item, args.GetInt(3));
+									SkinGUISelect(player, item, oldSkin, skin, args.GetInt(3));
 							}
 						}
 					}
@@ -3967,7 +3969,7 @@ namespace Oxide.Plugins
 		
 		// Смещения плиток не зависят от игрока и состояния: те же строки, что давали интерполяции
 		// в SkinGUI/ItemGUI, но посчитанные один раз вместо 80 форматирований double на каждый экран.
-		private string[] _tileMinD, _tileMaxD, _skinTileMinC, _skinTileMaxC, _itemTileMinC, _itemTileMaxC, _itemTileMinP, _itemTileMaxP;
+		private string[] _tileMinD, _tileMaxD, _skinTileMinC, _skinTileMaxC, _itemTileMinC, _itemTileMaxC, _itemTileMinP, _itemTileMaxP, _tileNames;
 		
 		private void BuildTileOffsets()
 		{
@@ -3986,6 +3988,11 @@ namespace Oxide.Plugins
 				_skinTileMaxC[i] = $"{-402.5 + (x * 100)} {147.375 - (y * 100)}";
 			}
 			
+			_tileNames = new string[40];
+			
+			for(int i = 0; i < 40; i++)
+				_tileNames[i] = ".Skin" + i;
+			
 			_itemTileMinC = new string[14];
 			_itemTileMaxC = new string[14];
 			_itemTileMinP = new string[14];
@@ -4000,27 +4007,10 @@ namespace Oxide.Plugins
 			}
 		}
 		
-		private void SkinGUI(BasePlayer player, string item, int Page = 0, string category = "null", int PageC = 0, string search = "")
+				// Список скинов предмета для сетки: ссылка на StoredDataSkins[item] без копии; объединённый
+		// список создаётся только когда у предмета есть admin/vip-скины и у игрока есть право на них.
+		private List<ulong> SkinList(BasePlayer player, string item, string search)
 		{
-			Data data = StoredData[player.userID];
-			bool comfort = data.Comfort;
-			
-            CuiElementContainer container = new CuiElementContainer();
-			
-			container.Add(new CuiPanel
-            {
-                RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-502.5 -228.25", OffsetMax = comfort ? "502.5 77.5" : "502.5 177.5" },
-                Image = { Color = "0 0 0 0" }
-            }, ".SGUI", ".SkinGUI", ".SkinGUI");
-			
-			int x = 0, y = 0, count = comfort ? 30 : 40, yN = comfort ? 3 : 4;
-			ulong s = data.Skins[item];
-			int itemid = _itemsId[item];
-			bool adminUi = permission.UserHasPermission(player.UserIDString, permAdmin) && !_adminUiFD.Contains(player.userID);
-			
-			if(_tileMinD == null) BuildTileOffsets();
-			string[] tileMin = comfort ? _skinTileMinC : _tileMinD, tileMax = comfort ? _skinTileMaxC : _tileMaxD;
-			
 			List<ulong> list_skins = StoredDataSkins[item], adminList, vipList;
 			
 			bool hasAdmin = config.Setting.AdminSkins.TryGetValue(item, out adminList) && permission.UserHasPermission(player.UserIDString, permAdminS);
@@ -4045,112 +4035,166 @@ namespace Oxide.Plugins
 					list_skins = list_skins.Where(skinID => StoredDataSkinsName.TryGetValue(skinID, out string name) && name.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
 			}
 			
-			for(int i = Page * count; i < list_skins.Count; i++)
-			{
-				ulong skin = list_skins[i];
-				bool isAdminSkin = _adminSkins.Contains(skin), isVipSkin = _vipSkins.Contains(skin);
+			return list_skins;
+		}
+		
+		// Одна плитка сетки скинов. slot - позиция на странице (0..39), имя плитки .Skin{slot}:
+		// уникально в пределах сетки, чтобы при выборе скина можно было заменить только её.
+		private void AddSkinTile(CuiElementContainer container, BasePlayer player, string item, int itemid, ulong skin, ulong s, int slot, bool comfort, string[] tileMin, string[] tileMax, bool adminUi, int Page, string category, int PageC, string search, bool replace)
+		{
+			bool isAdminSkin = _adminSkins.Contains(skin), isVipSkin = _vipSkins.Contains(skin);
+			string tile = _tileNames[slot];
+			
+		    container.Add(new CuiPanel
+            {
+                RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = tileMin[slot], OffsetMax = tileMax[slot] },
+                Image = { Color = s == skin ? config.GUI.ActiveBlockColor : config.GUI.BlockColor, Material = "assets/icons/greyout.mat" }
+            }, ".SkinGUI", tile, replace ? tile : null);
+			
+				container.Add(new CuiElement
+				{
+					Parent = tile,
+					Components =
+					{
+						GetImageComponent(itemid, skin),
+						new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1", OffsetMin = "10 5", OffsetMax = "-10 -15" }
+					}
+				});		
 				
+			if(StoredDataSkinsName.TryGetValue(skin, out string skinName))
+				container.Add(new CuiLabel
+				{
+					RectTransform = { AnchorMin = "0 1", AnchorMax = "1 1", OffsetMin = "2.5 -12.5", OffsetMax = "-2.5 -2.5" },
+					Text = { Text = skinName, Align = TextAnchor.MiddleCenter, Font = "robotocondensed-regular.ttf", FontSize = 8, Color = "0.85 0.85 0.85 1" }
+				}, tile);
+			
+			container.Add(new CuiButton
+            {
+                RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1", OffsetMax = "0 0" },
+                Button = { Color = "0 0 0 0", Command = comfort ? $"skin_c setskin {item} {skin} {Page} {category} {PageC} {search}" : $"skin_c setskin {item} {skin} {Page} {search}" },
+                Text = { Text = "" }
+            }, tile);
+			
+			if(adminUi)
+			{
+				container.Add(new CuiLabel
+				{
+					RectTransform = { AnchorMin = "0 0", AnchorMax = "1 0", OffsetMin = "2.5 0.5", OffsetMax = "-2.5 10.5" },
+					Text = { Text = $"{skin}", Align = TextAnchor.MiddleCenter, Font = "robotocondensed-regular.ttf", FontSize = 8, Color = "0.85 0.85 0.85 1" }
+				}, tile);
+				
+				if(_adminAndVipSkins.Contains(skin))
+					container.Add(new CuiButton
+					{
+						RectTransform = { AnchorMin = "1 1", AnchorMax = "1 1", OffsetMin = "-17 -27", OffsetMax = "-5 -15" },
+						Button = { Color = "1 1 1 0.75060739", Sprite = "assets/icons/rotate.png", Command = $"xskin refresh_ui {item} {skin} {Page} {(isAdminSkin ? "admin_to_default" : isVipSkin ? "vip_to_default" : "")} {category}" },
+						Text = { Text = "" }
+					}, tile);
+				else
+				{
+					container.Add(new CuiButton
+					{
+						RectTransform = { AnchorMin = "1 1", AnchorMax = "1 1", OffsetMin = "-17 -27", OffsetMax = "-5 -15" },
+						Button = { Color = "0.9 0 0 1", Sprite = "assets/icons/rotate.png", Command = $"xskin refresh_ui {item} {skin} {Page} default_to_admin {category}" },
+						Text = { Text = "" }
+					}, tile);						
+					
+					container.Add(new CuiButton
+					{
+						RectTransform = { AnchorMin = "1 1", AnchorMax = "1 1", OffsetMin = "-17 -42", OffsetMax = "-5 -30" },
+						Button = { Color = "0.9 0.9 0 1", Sprite = "assets/icons/rotate.png", Command = $"xskin refresh_ui {item} {skin} {Page} default_to_vip {category}" },
+						Text = { Text = "" }
+					}, tile);
+				}
+				
+			    container.Add(new CuiButton
+                {
+                    RectTransform = { AnchorMin = "1 0", AnchorMax = "1 0", OffsetMin = "-20 5", OffsetMax = "-5 20" },
+                    Button = { Color = "1 1 1 0.75060739", Sprite = "assets/icons/clear.png", Command = $"xskin remove_ui {item} {skin} {Page} {(isAdminSkin ? "admin" : isVipSkin ? "vip" : "default")} {category}" },
+                    Text = { Text = "" }
+                }, tile);
+			}
+			
+			container.Add(new CuiButton
+            {
+                RectTransform = { AnchorMin = "0 0", AnchorMax = "0 0", OffsetMin = "5 5", OffsetMax = "20 20" },
+                Button = { Color = "1 1 1 0.75060739", Sprite = config.GUI.IconZoom, Command = $"skin_c zoomskin {itemid} {skin} false" },
+                Text = { Text = "" }
+            }, tile);
+			
+			if(isAdminSkin)
 			    container.Add(new CuiPanel
                 {
-                    RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = tileMin[y * 10 + x], OffsetMax = tileMax[y * 10 + x] },
-                    Image = { Color = s == skin ? config.GUI.ActiveBlockColor : config.GUI.BlockColor, Material = "assets/icons/greyout.mat" }
-                }, ".SkinGUI", ".Skin");
-				
-					container.Add(new CuiElement
-					{
-						Parent = ".Skin",
-						Components =
-						{
-							GetImageComponent(itemid, skin),
-							new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1", OffsetMin = "10 5", OffsetMax = "-10 -15" }
-						}
-					});		
-					
-				if(StoredDataSkinsName.TryGetValue(skin, out string skinName))
-					container.Add(new CuiLabel
-					{
-						RectTransform = { AnchorMin = "0 1", AnchorMax = "1 1", OffsetMin = "2.5 -12.5", OffsetMax = "-2.5 -2.5" },
-						Text = { Text = skinName, Align = TextAnchor.MiddleCenter, Font = "robotocondensed-regular.ttf", FontSize = 8, Color = "0.85 0.85 0.85 1" }
-					}, ".Skin");
-				
-				container.Add(new CuiButton
+                    RectTransform = { AnchorMin = "0 1", AnchorMax = "0 1", OffsetMin = "2.5 -25", OffsetMax = "12.5 -15" },
+                    Image = { Color = "0.9 0 0 1", Sprite = "assets/icons/circle_closed.png" },
+                }, tile);
+			else if(isVipSkin)
+			    container.Add(new CuiPanel
                 {
-                    RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1", OffsetMax = "0 0" },
-                    Button = { Color = "0 0 0 0", Command = comfort ? $"skin_c setskin {item} {skin} {Page} {category} {PageC} {search}" : $"skin_c setskin {item} {skin} {Page} {search}" },
-                    Text = { Text = "" }
-                }, ".Skin");
-		   		 		  						  	   		   		 		  		 			   					  	 	 
-				if(adminUi)
-				{
-					container.Add(new CuiLabel
-					{
-						RectTransform = { AnchorMin = "0 0", AnchorMax = "1 0", OffsetMin = "2.5 0.5", OffsetMax = "-2.5 10.5" },
-						Text = { Text = $"{skin}", Align = TextAnchor.MiddleCenter, Font = "robotocondensed-regular.ttf", FontSize = 8, Color = "0.85 0.85 0.85 1" }
-					}, ".Skin");
-					
-					if(_adminAndVipSkins.Contains(skin))
-						container.Add(new CuiButton
-						{
-							RectTransform = { AnchorMin = "1 1", AnchorMax = "1 1", OffsetMin = "-17 -27", OffsetMax = "-5 -15" },
-							Button = { Color = "1 1 1 0.75060739", Sprite = "assets/icons/rotate.png", Command = $"xskin refresh_ui {item} {skin} {Page} {(isAdminSkin ? "admin_to_default" : isVipSkin ? "vip_to_default" : "")} {category}" },
-							Text = { Text = "" }
-						}, ".Skin");
-					else
-					{
-						container.Add(new CuiButton
-						{
-							RectTransform = { AnchorMin = "1 1", AnchorMax = "1 1", OffsetMin = "-17 -27", OffsetMax = "-5 -15" },
-							Button = { Color = "0.9 0 0 1", Sprite = "assets/icons/rotate.png", Command = $"xskin refresh_ui {item} {skin} {Page} default_to_admin {category}" },
-							Text = { Text = "" }
-						}, ".Skin");						
-						
-						container.Add(new CuiButton
-						{
-							RectTransform = { AnchorMin = "1 1", AnchorMax = "1 1", OffsetMin = "-17 -42", OffsetMax = "-5 -30" },
-							Button = { Color = "0.9 0.9 0 1", Sprite = "assets/icons/rotate.png", Command = $"xskin refresh_ui {item} {skin} {Page} default_to_vip {category}" },
-							Text = { Text = "" }
-						}, ".Skin");
-					}
-					
-				    container.Add(new CuiButton
-                    {
-                        RectTransform = { AnchorMin = "1 0", AnchorMax = "1 0", OffsetMin = "-20 5", OffsetMax = "-5 20" },
-                        Button = { Color = "1 1 1 0.75060739", Sprite = "assets/icons/clear.png", Command = $"xskin remove_ui {item} {skin} {Page} {(isAdminSkin ? "admin" : isVipSkin ? "vip" : "default")} {category}" },
-                        Text = { Text = "" }
-                    }, ".Skin");
-				}
+                    RectTransform = { AnchorMin = "0 1", AnchorMax = "0 1", OffsetMin = "2.5 -25", OffsetMax = "12.5 -15" },
+                    Image = { Color = "0.9 0.9 0 1", Sprite = "assets/icons/circle_closed.png" },
+                }, tile);
+		}
+		
+		// Выбор скина: вместо перерисовки всей сетки (до 40 плиток) заменяются только плитки старого и
+		// нового выбора - у остальных ничего не изменилось. Результат на экране тот же.
+		private void SkinGUISelect(BasePlayer player, string item, ulong oldSkin, ulong newSkin, int Page, string category = "null", int PageC = 0, string search = "")
+		{
+			Data data = StoredData[player.userID];
+			bool comfort = data.Comfort;
+			
+			int count = comfort ? 30 : 40;
+			ulong s = data.Skins[item];
+			int itemid = _itemsId[item];
+			bool adminUi = permission.UserHasPermission(player.UserIDString, permAdmin) && !_adminUiFD.Contains(player.userID);
+			
+			if(_tileMinD == null) BuildTileOffsets();
+			string[] tileMin = comfort ? _skinTileMinC : _tileMinD, tileMax = comfort ? _skinTileMaxC : _tileMaxD;
+			
+			List<ulong> list_skins = SkinList(player, item, search);
+			int end = Math.Min(list_skins.Count, (Page + 1) * count);
+			CuiElementContainer container = null;
+			
+			for(int i = Page * count; i < end; i++)
+			{
+				ulong skin = list_skins[i];
 				
-				container.Add(new CuiButton
-                {
-                    RectTransform = { AnchorMin = "0 0", AnchorMax = "0 0", OffsetMin = "5 5", OffsetMax = "20 20" },
-                    Button = { Color = "1 1 1 0.75060739", Sprite = config.GUI.IconZoom, Command = $"skin_c zoomskin {itemid} {skin} false" },
-                    Text = { Text = "" }
-                }, ".Skin");
+				if(skin != oldSkin && skin != newSkin) continue;
+				if(container == null) container = new CuiElementContainer();
 				
-				if(isAdminSkin)
-				    container.Add(new CuiPanel
-                    {
-                        RectTransform = { AnchorMin = "0 1", AnchorMax = "0 1", OffsetMin = "2.5 -25", OffsetMax = "12.5 -15" },
-                        Image = { Color = "0.9 0 0 1", Sprite = "assets/icons/circle_closed.png" },
-                    }, ".Skin");
-				else if(isVipSkin)
-				    container.Add(new CuiPanel
-                    {
-                        RectTransform = { AnchorMin = "0 1", AnchorMax = "0 1", OffsetMin = "2.5 -25", OffsetMax = "12.5 -15" },
-                        Image = { Color = "0.9 0.9 0 1", Sprite = "assets/icons/circle_closed.png" },
-                    }, ".Skin");
-				
-				x++;
-				
-				if(x == 10)
-				{
-					x = 0;
-					y++;
-					
-					if(y == yN)
-						break;
-				}
+				AddSkinTile(container, player, item, itemid, skin, s, i - Page * count, comfort, tileMin, tileMax, adminUi, Page, category, PageC, search, true);
 			}
+			
+			if(container != null)
+				CuiHelper.AddUi(player, container);
+		}
+		
+		private void SkinGUI(BasePlayer player, string item, int Page = 0, string category = "null", int PageC = 0, string search = "")
+		{
+			Data data = StoredData[player.userID];
+			bool comfort = data.Comfort;
+			
+            CuiElementContainer container = new CuiElementContainer();
+			
+			container.Add(new CuiPanel
+            {
+                RectTransform = { AnchorMin = "0.5 0.5", AnchorMax = "0.5 0.5", OffsetMin = "-502.5 -228.25", OffsetMax = comfort ? "502.5 77.5" : "502.5 177.5" },
+                Image = { Color = "0 0 0 0" }
+            }, ".SGUI", ".SkinGUI", ".SkinGUI");
+			
+			int count = comfort ? 30 : 40;
+			ulong s = data.Skins[item];
+			int itemid = _itemsId[item];
+			bool adminUi = permission.UserHasPermission(player.UserIDString, permAdmin) && !_adminUiFD.Contains(player.userID);
+			
+			if(_tileMinD == null) BuildTileOffsets();
+			string[] tileMin = comfort ? _skinTileMinC : _tileMinD, tileMax = comfort ? _skinTileMaxC : _tileMaxD;
+			
+			List<ulong> list_skins = SkinList(player, item, search);
+			int end = Math.Min(list_skins.Count, (Page + 1) * count);
+			
+			for(int i = Page * count; i < end; i++)
+				AddSkinTile(container, player, item, itemid, list_skins[i], s, i - Page * count, comfort, tileMin, tileMax, adminUi, Page, category, PageC, search, false);
 			
 			bool back = Page != 0;
 			bool next = list_skins.Count > ((Page + 1) * count);
