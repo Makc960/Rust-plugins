@@ -267,6 +267,7 @@ class ScreensTest {
     @Test
     fun menusAndSettings() {
         val platform = SilentPlatform()
+        platform.supportUrl = "https://example.org/support"
         unlockAll(platform)
         val g = game(tall, platform)
         g.profile.addStat(Stat.KILLS, 1500)
@@ -301,6 +302,8 @@ class ScreensTest {
 
         press(g, tall, "settings")
         shot(g, tall, "tall_46_settings")
+        press(g, tall, "support", 0f)
+        assertEquals(listOf("https://example.org/support"), platform.opened, "the support button opens the author's page")
         val r = assertNotNull(g.ui.sliderRect("music"))
         g.touch(Touch.DOWN, r[0] + r[2] * 0.25f, r[1] + r[3] / 2f)
         g.touch(Touch.UP, r[0] + r[2] * 0.25f, r[1] + r[3] / 2f)

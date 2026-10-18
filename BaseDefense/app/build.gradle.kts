@@ -8,6 +8,10 @@ plugins {
 // secret and points UPLOAD_KEYSTORE_FILE at it. Without it, builds use the shared key.
 val uploadKey = System.getenv("UPLOAD_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
 
+// The page where players can support the author; empty hides the button in the settings.
+// Google Play rejects apps with donation links, so its bundle (signed with the upload key) goes without.
+val supportUrl = ""
+
 android {
     namespace = "com.makc.basedefense"
     compileSdk = 36
@@ -18,7 +22,12 @@ android {
         targetSdk = 36
         // Every CI build counts up, so each one installs over the last and Play accepts it.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100) ?: 2
-        versionName = "2.3"
+        versionName = "2.3.1"
+        buildConfigField("String", "SUPPORT_URL", "\"${if (uploadKey != null) "" else supportUrl}\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     signingConfigs {

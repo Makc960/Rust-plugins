@@ -1,9 +1,12 @@
 package com.makc.basedefense
 
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.SoundPool
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -158,6 +161,16 @@ class AndroidPlatform(context: Context) : Platform {
     override fun today(): Int = LocalDate.now().toEpochDay().toInt()
 
     override fun systemLanguage(): String = Locale.getDefault().language
+
+    override val supportUrl: String? get() = BuildConfig.SUPPORT_URL.ifBlank { null }
+
+    override fun openUrl(url: String) {
+        try {
+            app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: ActivityNotFoundException) {
+            // No browser on the phone: nothing to open the page with.
+        }
+    }
 
     fun release() {
         released = true

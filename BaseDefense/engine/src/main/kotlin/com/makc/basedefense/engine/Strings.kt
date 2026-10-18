@@ -149,19 +149,8 @@ object Tx {
     val TIPS = L("Подсказки", "Tips")
     val RESET = L("СБРОСИТЬ ПРОГРЕСС", "RESET PROGRESS")
     val RESET_SURE = L("ТОЧНО? НАЖМИ ЕЩЁ РАЗ", "SURE? TAP AGAIN")
-    val PRIVACY = L("Конфиденциальность", "Privacy")
-    val PRIVACY_TEXT = L(
-        "Игра не собирает и никуда не отправляет данные. Прогресс хранится только на этом телефоне.",
-        "The game collects no data and sends nothing anywhere. Progress is stored only on this phone.",
-    )
     val VERSION = L("Версия %s", "Version %s")
-    val CREDITS = L("Графика и шрифты", "Art and fonts")
-    val CREDITS_TEXT = L(
-        "Kenney (kenney.nl): паки Tower Defense, Top-down Shooter, Top-down Tanks и Game Icons, лицензия CC0. " +
-            "Шрифты Russo One (Jovanny Lemonad) и Play (Jonas Hecksher), лицензия SIL Open Font License 1.1. Спасибо!",
-        "Kenney (kenney.nl): the Tower Defense, Top-down Shooter, Top-down Tanks and Game Icons packs, CC0 license. " +
-            "Fonts Russo One (Jovanny Lemonad) and Play (Jonas Hecksher), SIL Open Font License 1.1. Thank you!",
-    )
+    val SUPPORT = L("ПОДДЕРЖАТЬ АВТОРА", "SUPPORT THE AUTHOR")
 
     // Perks
     val POINTS = L("Свободно очков: %d", "Points to spend: %d")

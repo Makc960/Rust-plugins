@@ -367,13 +367,18 @@ internal class Menus(private val game: Game) {
         val w = ui.w - d(32f)
         val viewH = ui.h - ui.bottom - top
         val rows = settingsHeight()
-        // The texts below the controls wrap differently on every phone: last frame's height is used.
-        val content = if (settingsBottom > 0f) settingsBottom else rows + d(390f)
+        // What follows the controls depends on the phone: last frame's height is used.
+        val content = if (settingsBottom > 0f) settingsBottom else rows + d(250f)
         val off = ui.beginScroll(g, Screen.SETTINGS.name, 0f, top, ui.w, viewH, content)
         var y = top - off + d(2f)
         ui.panel(g, x - d(4f), y, w + d(8f), rows + d(26f))
         settingsRows(g, x + d(10f), y + d(14f), w - d(20f))
         y += rows + d(40f)
+        val support = game.supportUrl
+        if (support != null) {
+            ui.button(g, "support", x, y, w, d(54f), Tx.SUPPORT.t, Style.PRIMARY, size = 16f, icon = Icon.HEART) { game.openUrl(support) }
+            y += d(72f)
+        }
         val armed = clock - resetArmedAt < 3f
         ui.button(g, "reset", x, y, w, d(46f), if (armed) Tx.RESET_SURE.t else Tx.RESET.t, if (armed) Style.DANGER else Style.GHOST, size = 14f) {
             if (armed) {
@@ -385,13 +390,7 @@ internal class Menus(private val game: Game) {
             }
         }
         y += d(66f)
-        for ((title, text) in listOf(Tx.PRIVACY to Tx.PRIVACY_TEXT, Tx.CREDITS to Tx.CREDITS_TEXT)) {
-            ui.caption(g, title.t, x + d(4f), y + d(12f), Ui.ACCENT)
-            y += d(20f)
-            y += ui.paragraph(g, text.t, x + d(4f), y, w - d(8f), d(12.5f), Ui.DIM)
-            y += d(16f)
-        }
-        ui.text(g, Tx.VERSION.f(Game.VERSION), x + d(4f), y + d(12f), d(12f), Ui.FADED)
+        ui.textMid(g, Tx.VERSION.f(Game.VERSION), ui.w / 2f, y + d(6f), d(12f), Ui.FADED)
         settingsBottom = y + d(36f) - (top - off)
         ui.endScroll(g, Screen.SETTINGS.name)
     }

@@ -32,6 +32,12 @@ interface Platform {
 
     /** A store with online achievements can mirror ours here. */
     fun achievement(id: String) = Unit
+
+    /** Where players can support the author; null hides the button (Google Play allows no such links). */
+    val supportUrl: String? get() = null
+
+    /** Opens [url] in the browser. */
+    fun openUrl(url: String) = Unit
 }
 
 /** No sound, memory-only saves: the tests run on this. */
@@ -41,6 +47,8 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
     val played = ArrayList<Sfx>()
     val vibrations = ArrayList<Int>()
     val achievements = ArrayList<String>()
+    val opened = ArrayList<String>()
+    override var supportUrl: String? = null
     var track: Track? = null
         private set
     var musicVolume = 0f
@@ -77,5 +85,9 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
 
     override fun achievement(id: String) {
         achievements += id
+    }
+
+    override fun openUrl(url: String) {
+        opened += url
     }
 }
