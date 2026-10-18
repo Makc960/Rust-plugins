@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Tower plate -->
+    <path
+        android:fillColor="#262B30"
+        android:pathData="M41,33 H71 A9,9 0 0 1 80,42 V72 A9,9 0 0 1 71,81 H41 A9,9 0 0 1 32,72 V42 A9,9 0 0 1 41,33 Z" />
+    <path
+        android:fillColor="#3B4148"
+        android:pathData="M40,30 H68 A9,9 0 0 1 77,39 V67 A9,9 0 0 1 68,76 H40 A9,9 0 0 1 31,67 V39 A9,9 0 0 1 40,30 Z" />
+    <!-- Barrels -->
+    <path
+        android:fillColor="#1B1F23"
+        android:pathData="M47,18 H52 V50 H47 Z M56,18 H61 V50 H56 Z" />
+    <!-- Turret head -->
+    <path
+        android:fillColor="#FF9F1A"
+        android:pathData="M54,40 A13,13 0 1 1 54,66 A13,13 0 1 1 54,40 Z" />
+    <path
+        android:fillColor="#FFC870"
+        android:pathData="M50,45 A5,5 0 1 1 50,55 A5,5 0 1 1 50,45 Z" />
+    <!-- Level pips -->
+    <path
+        android:fillColor="#FFD54A"
+        android:pathData="M45,70 A2,2 0 1 1 45,74 A2,2 0 1 1 45,70 Z M54,70 A2,2 0 1 1 54,74 A2,2 0 1 1 54,70 Z M63,70 A2,2 0 1 1 63,74 A2,2 0 1 1 63,70 Z" />
+</vector>
