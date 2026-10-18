@@ -179,8 +179,8 @@ class Vision(private val context: Context, private val listener: Listener) : Aut
         val w = image.width.toFloat()
         val h = image.height.toFloat()
         val poses = result.landmarks().map { landmarks ->
-            val packed = FloatArray(Skeleton.LANDMARKS * 3)
-            for (i in 0 until min(landmarks.size, Skeleton.LANDMARKS)) {
+            val packed = FloatArray(SkeletonTracker.LANDMARKS * 3)
+            for (i in 0 until min(landmarks.size, SkeletonTracker.LANDMARKS)) {
                 val lm = landmarks[i]
                 packed[i * 3] = lm.x() * w
                 packed[i * 3 + 1] = lm.y() * h
