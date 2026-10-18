@@ -3,7 +3,7 @@ package com.makc.basedefense.engine
 import kotlin.math.abs
 import kotlin.math.min
 
-internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY }
+internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP }
 
 enum class Mode { CAMPAIGN, ENDLESS, DAILY }
 
@@ -16,15 +16,16 @@ internal class Session(
     val day: Int,
     val progress: Int,
     val perks: Perks,
+    val vip: Boolean,
     listener: WorldListener,
 ) {
     val mods: List<Mod> = if (mode == Mode.DAILY) Mod.forDay(day) else emptyList()
-    val rules = Rules(difficulty, if (challenge) level.challenge else null, perks, mods, progress)
+    val rules = Rules(difficulty, if (challenge) level.challenge else null, perks, mods, progress, vip)
     val world = World(level, rules, listener)
 
     fun save(): String =
         "game=2\nmode=${mode.name}\nlevel=${level.id}\ndifficulty=${difficulty.name}\nchallenge=${if (challenge) 1 else 0}\n" +
-            "day=$day\nprogress=$progress\nperks=${perks.encode()}\n" + world.save()
+            "day=$day\nprogress=$progress\nperks=${perks.encode()}\nvip=${if (vip) 1 else 0}\n" + world.save()
 
     companion object {
         /** Rebuilds a battle from [save], or null when the text is not a usable save. */
@@ -47,7 +48,7 @@ internal class Session(
                 }
                 val s = Session(
                     mode, level, Difficulty.valueOf(head.getValue("difficulty")), head["challenge"] == "1", day, progress,
-                    Perks.decode(head["perks"] ?: ""), listener,
+                    Perks.decode(head["perks"] ?: ""), head["vip"] == "1", listener,
                 )
                 s.world.restore(text)
                 if (s.world.over) null else s
@@ -81,15 +82,42 @@ class Game(private val platform: Platform) {
     private var track: Track? = null
     private var trackVolume = -1f
 
-    private class Toast(val text: String, var life: Float)
+    private class Toast(val text: String, var life: Float, val icon: Icon)
 
     private val toasts = ArrayList<Toast>()
 
     init {
         I18n.lang = profile.language
+        checkVip()
     }
 
     internal val today: Int get() = platform.today()
+
+    internal val vipShop: VipShop get() = platform.vipShop
+
+    internal val vip: Boolean get() = profile.vip(today)
+
+    /** Asks the store whether VIP was paid, maybe on another phone or after a renewal. */
+    internal fun checkVip(onDone: ((Boolean) -> Unit)? = null) {
+        platform.checkVip { until ->
+            if (until != null) profile.grantVip(until)
+            onDone?.invoke(until != null && until >= today)
+        }
+    }
+
+    /** Buys VIP through the store; [onDone] hears whether it went through. */
+    internal fun buyVip(onDone: (Payment) -> Unit) {
+        platform.buyVip { payment, until ->
+            if (payment == Payment.PAID) {
+                profile.grantVip(if (until >= today) until else today + Vip.DAYS)
+                toast(Tx.VIP_THANKS.t, Icon.CROWN)
+                sound(Sfx.ACHIEVEMENT, 0.8f)
+            } else if (payment == Payment.FAILED) {
+                toast(Tx.VIP_FAILED.t, Icon.WARNING)
+            }
+            onDone(payment)
+        }
+    }
 
     internal val supportUrl: String? get() = platform.supportUrl
 
@@ -149,6 +177,7 @@ class Game(private val platform: Platform) {
             Screen.ACHIEVEMENTS -> menus.achievements(g)
             Screen.CODEX -> menus.codex(g)
             Screen.DAILY -> menus.daily(g)
+            Screen.VIP -> menus.vip(g)
             Screen.PLAY -> play.render(g)
         }
         drawToasts(g)
@@ -167,7 +196,7 @@ class Game(private val platform: Platform) {
             val x = (ui.w - tw) / 2f
             ui.chamfer(g, x, y, tw, th, ui.d(9f), Colors.alpha(Ui.GOLD, a))
             ui.chamfer(g, x + ui.d(2f), y + ui.d(2f), tw - ui.d(4f), th - ui.d(4f), ui.d(8f), Colors.alpha(Ui.BAND, a))
-            ui.icon(g, Icon.MEDAL, x + ui.d(24f), y + th / 2f, ui.d(22f), Colors.alpha(Ui.GOLD, a))
+            ui.icon(g, t.icon, x + ui.d(24f), y + th / 2f, ui.d(22f), Colors.alpha(Ui.GOLD, a))
             ui.textMid(g, t.text, x + ui.d(44f), y + th / 2f, ui.d(13f), Colors.alpha(Ui.TEXT, a), Align.LEFT, maxW = tw - ui.d(56f))
             y += ui.d(48f)
         }
@@ -238,8 +267,8 @@ class Game(private val platform: Platform) {
         if (profile.vibration) platform.vibrate(ms)
     }
 
-    internal fun toast(text: String) {
-        toasts += Toast(text, TOAST_TIME)
+    internal fun toast(text: String, icon: Icon = Icon.MEDAL) {
+        toasts += Toast(text, TOAST_TIME, icon)
         if (toasts.size > 3) toasts.removeAt(0)
     }
 
@@ -256,22 +285,22 @@ class Game(private val platform: Platform) {
     // --- battles --------------------------------------------------------------------------
 
     internal fun startCampaign(level: LevelDef, difficulty: Difficulty, challenge: Boolean) {
-        begin(Session(Mode.CAMPAIGN, level, difficulty, challenge, today, profile.progress, profile.perks, play))
+        begin(Session(Mode.CAMPAIGN, level, difficulty, challenge, today, profile.progress, profile.perks, vip, play))
     }
 
     internal fun startEndless() {
-        begin(Session(Mode.ENDLESS, Levels.endless(profile.progress), Difficulty.NORMAL, false, today, profile.progress, profile.perks, play))
+        begin(Session(Mode.ENDLESS, Levels.endless(profile.progress), Difficulty.NORMAL, false, today, profile.progress, profile.perks, vip, play))
     }
 
     internal fun startDaily() {
         val day = today
-        begin(Session(Mode.DAILY, Levels.daily(day, profile.progress), Difficulty.NORMAL, false, day, profile.progress, profile.perks, play))
+        begin(Session(Mode.DAILY, Levels.daily(day, profile.progress), Difficulty.NORMAL, false, day, profile.progress, profile.perks, vip, play))
     }
 
     internal fun restart() {
         val s = session ?: return
         play.flushStats()
-        begin(Session(s.mode, s.level, s.difficulty, s.challenge, s.day, s.progress, profile.perks, play))
+        begin(Session(s.mode, s.level, s.difficulty, s.challenge, s.day, s.progress, profile.perks, vip, play))
     }
 
     /** The saved battle, if there is one that still loads. */
@@ -313,7 +342,7 @@ class Game(private val platform: Platform) {
 
     companion object {
         const val STEP = 1f / 60f
-        const val VERSION = "2.3.2"
+        const val VERSION = "2.4"
         const val FADE_TIME = 0.28f
         const val TOAST_TIME = 3.2f
     }

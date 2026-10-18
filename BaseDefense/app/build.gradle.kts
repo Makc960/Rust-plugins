@@ -4,12 +4,20 @@ plugins {
     id("com.android.application")
 }
 
-// The Google Play upload key never lives in the repository: CI writes it from a
+// The private upload key (Google Play, RuStore) never lives in the repository: CI writes it from a
 // secret and points UPLOAD_KEYSTORE_FILE at it. Without it, builds use the shared key.
 val uploadKey = System.getenv("UPLOAD_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
 
+// Which store a build is for: "github" (the APK in the repository's releases), "rustore" or "play".
+// Only RuStore builds sell VIP: they carry RuStore's Pay SDK (src/rustore). Google Play allows no
+// payments outside its own billing and rejects donation links, so its bundle has neither.
+val store = (findProperty("store") as String?) ?: "github"
+
+// The app's ID in the RuStore Console (the number in the console's address after /apps/).
+val rustoreAppId = (findProperty("rustoreAppId") as String?) ?: ""
+if (store == "rustore") require(rustoreAppId.isNotEmpty()) { "A RuStore build needs rustoreAppId in app/build.gradle.kts" }
+
 // The page where players can support the author; empty hides the button in the settings.
-// Google Play rejects apps with donation links, so its bundle (signed with the upload key) goes without.
 val supportUrl = "https://pay.cloudtips.ru/p/5b9bb7e3"
 
 android {
@@ -22,13 +30,25 @@ android {
         targetSdk = 36
         // Every CI build counts up, so each one installs over the last and Play accepts it.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100) ?: 2
-        versionName = "2.3.2"
-        buildConfigField("String", "SUPPORT_URL", "\"${if (uploadKey != null) "" else supportUrl}\"")
+        versionName = "2.4"
+        buildConfigField("String", "SUPPORT_URL", "\"${if (store == "play") "" else supportUrl}\"")
+        val shop = when (store) {
+            "rustore" -> "HERE"
+            "play" -> "NONE"
+            else -> "ELSEWHERE"
+        }
+        buildConfigField("String", "VIP_SHOP", "\"$shop\"")
+        resValue("string", "rustore_app_id", rustoreAppId)
+        // Payment apps open this scheme to come back to the game.
+        manifestPlaceholders["payScheme"] = "com.makc.basedefense"
     }
 
     buildFeatures {
         buildConfig = true
+        resValues = true
     }
+
+    sourceSets.getByName("main").java.srcDir(if (store == "rustore") "src/rustore/java" else "src/nostore/java")
 
     signingConfigs {
         // One public key for builds installed by hand, so a new APK installs over the old one.
@@ -79,4 +99,8 @@ dependencies {
     implementation(project(":engine"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
+    if (store == "rustore") {
+        implementation(platform("ru.rustore.sdk:bom:2026.10.01"))
+        implementation("ru.rustore.sdk:pay")
+    }
 }

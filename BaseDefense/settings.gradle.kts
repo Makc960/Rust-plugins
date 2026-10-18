@@ -11,6 +11,13 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // RuStore's SDKs, for RuStore builds only.
+        maven("https://nexus-external.rustore.ru/repository/maven-rustore-exposed") {
+            content {
+                includeGroupByRegex("ru\\.rustore.*")
+                includeGroupByRegex("ru\\.ok.*")
+            }
+        }
     }
 }
 

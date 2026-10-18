@@ -90,7 +90,7 @@ class Profile(private val p: Platform) {
     val perks: Perks get() = Perks.decode(Perk.entries.joinToString(".") { perk(it).toString() })
 
     /** Stars, hard wins, medals and daily wins all count. */
-    val points: Int get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS)
+    val points: Int get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS) + stat(Stat.VIP_POINTS)
 
     val spent: Int get() = Perk.entries.sumOf { perk(it) * it.cost }
 
@@ -160,7 +160,7 @@ class Profile(private val p: Platform) {
     fun dailyWon(day: Int): Boolean = p.getInt("daily_won", -1) == day
 
     /** Records a daily attempt; a win extends the streak once a day. */
-    fun recordDaily(day: Int, waves: Int, won: Boolean) {
+    fun recordDaily(day: Int, waves: Int, won: Boolean, vip: Boolean = false) {
         if (waves > dailyBest(day)) {
             p.putInt("daily_day", day)
             p.putInt("daily_best", waves)
@@ -172,6 +172,7 @@ class Profile(private val p: Platform) {
             p.putInt("daily_streak", streak)
             maxStat(Stat.DAILY_STREAK, streak)
             addStat(Stat.DAILY_WINS, 1)
+            if (vip) addStat(Stat.VIP_POINTS, Vip.DAILY_POINTS - 1)
         }
     }
 
@@ -179,6 +180,18 @@ class Profile(private val p: Platform) {
     fun dailyStreak(today: Int): Int {
         val last = p.getInt("daily_won", -10)
         return if (last >= today - 1) p.getInt("daily_streak", 0) else 0
+    }
+
+    // --- VIP ------------------------------------------------------------------------------
+
+    /** The last day VIP is paid for, in days since 1970; 0 when never. Resetting progress keeps it. */
+    val vipUntil: Int get() = p.getInt("vip_until", 0)
+
+    fun vip(today: Int): Boolean = today <= vipUntil
+
+    /** VIP is paid up to [until]; a paid period is never cut short. */
+    fun grantVip(until: Int) {
+        if (until > vipUntil) p.putInt("vip_until", until)
     }
 
     // --- the game in progress -------------------------------------------------------------

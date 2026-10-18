@@ -1,5 +1,6 @@
 package com.makc.basedefense
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -15,6 +16,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var platform: AndroidPlatform
     private lateinit var game: Game
     private lateinit var view: GameView
+    private val store = VipStores.create()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,7 +24,9 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         AndroidGfx.preload(cacheDir)
-        platform = AndroidPlatform(this)
+        // A payment app may have opened the game to say how a payment went.
+        if (savedInstanceState == null) store.handleIntent(intent)
+        platform = AndroidPlatform(this, store)
         game = Game(platform)
         view = GameView(this, game)
         setContentView(view)
@@ -45,6 +49,11 @@ class MainActivity : ComponentActivity() {
                 }
             },
         )
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        store.handleIntent(intent)
     }
 
     override fun onResume() {

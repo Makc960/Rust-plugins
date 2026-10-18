@@ -22,7 +22,8 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private var session: Session? = null
     internal val world: World? get() = session?.world
 
-    private var speed = 1
+    internal var speed = 1
+        private set
     private var acc = 0f
     internal var placing: TowerType? = null
     internal var selected: Tower? = null
@@ -241,7 +242,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             Mode.DAILY -> {
                 val waves = if (won) wd.totalWaves else max(0, wd.wavesStarted - 1)
                 resultRecord = won && !profile.dailyWon(s.day)
-                profile.recordDaily(s.day, waves, won)
+                profile.recordDaily(s.day, waves, won, s.vip)
                 if (won && wd.leaked == 0) profile.addStat(Stat.FLAWLESS, 1)
             }
         }
@@ -507,7 +508,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         get() {
             val t = lastBuilt ?: return null
             val wd = world ?: return null
-            if (t !in wd.towers || t.level != 0 || t.branch != null || clock - lastBuiltAt > UNDO_TIME) return null
+            if (t !in wd.towers || t.level != 0 || t.branch != null || clock - lastBuiltAt > wd.rules.undoTime) return null
             return t
         }
 
@@ -719,6 +720,10 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             badges -= d(24f)
             ui.skull(g, badges + d(12f), cy, d(20f), Ui.RED)
         }
+        if (s.vip) {
+            badges -= d(26f)
+            ui.icon(g, Icon.CROWN, badges + d(13f), cy, d(21f), Ui.GOLD)
+        }
         val wave = max(1, wd.wavesStarted)
         val waveText = if (wd.endless) "$wave" else "$wave/${wd.totalWaves}"
         val room = badges - d(6f) - x
@@ -729,7 +734,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             ui.textMid(g, waveText, x + d(29f), cy + d(1f), d(17f), Ui.TEXT, Align.LEFT, maxW = ww - d(36f), font = Font.DISPLAY)
         }
         ui.button(g, "speed", speedX, cy - d(17f), d(48f), d(33f), "×$speed", if (speed > 1) Style.PRIMARY else Style.NORMAL, size = 15f) {
-            speed = if (speed >= 3) 1 else speed + 1
+            speed = if (speed >= wd.rules.maxSpeed) 1 else speed + 1
         }
         ui.button(g, "pause", pauseX, cy - d(17f), d(40f), d(33f), "", icon = Icon.PAUSE) { openPause() }
     }
@@ -808,7 +813,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 world?.undo(undo)
                 lastBuilt = null
             }
-            val f = 1f - (clock - lastBuiltAt) / UNDO_TIME
+            val f = 1f - (clock - lastBuiltAt) / wd.rules.undoTime
             val sink = if (ui.down("undo")) d(2f) else 0f
             g.fillRect(left + d(7f), cy + bh / 2f - d(6f) + sink, (width - d(14f)) * f, d(2.5f), Ui.ACCENT)
             return
@@ -1265,7 +1270,6 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     companion object {
         const val MAX_ZOOM = 2.5f
         const val MAX_TERRAIN_PX = 190f
-        const val UNDO_TIME = 4f
         const val SELL_CONFIRM = 150
         const val SELL_WINDOW = 2.5f
         const val NOTICE_TIME = 2.5f

@@ -14,10 +14,12 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import com.makc.basedefense.engine.Music
+import com.makc.basedefense.engine.Payment
 import com.makc.basedefense.engine.Platform
 import com.makc.basedefense.engine.Sfx
 import com.makc.basedefense.engine.Synth
 import com.makc.basedefense.engine.Track
+import com.makc.basedefense.engine.VipShop
 import java.io.File
 import java.time.LocalDate
 import java.util.Locale
@@ -25,9 +27,9 @@ import java.util.concurrent.atomic.AtomicIntegerArray
 
 /**
  * Sound through SoundPool and MediaPlayer (effects and music are synthesized once
- * into WAV files), vibration, saves and the date.
+ * into WAV files), vibration, saves, the date and the [VipStore].
  */
-class AndroidPlatform(context: Context) : Platform {
+class AndroidPlatform(context: Context, private val store: VipStore) : Platform {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("base_defense", Context.MODE_PRIVATE)
     private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -163,6 +165,12 @@ class AndroidPlatform(context: Context) : Platform {
     override fun systemLanguage(): String = Locale.getDefault().language
 
     override val supportUrl: String? get() = BuildConfig.SUPPORT_URL.ifBlank { null }
+
+    override val vipShop: VipShop get() = store.shop
+
+    override fun buyVip(done: (Payment, Int) -> Unit) = store.buy(done)
+
+    override fun checkVip(done: (Int?) -> Unit) = store.check(done)
 
     override fun openUrl(url: String) {
         try {

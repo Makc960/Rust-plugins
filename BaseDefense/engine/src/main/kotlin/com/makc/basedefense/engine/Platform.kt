@@ -10,6 +10,21 @@ enum class Track { MENU, BATTLE, BOSS }
 
 enum class Touch { DOWN, MOVE, UP, CANCEL }
 
+/** Where this build lets players buy VIP. */
+enum class VipShop {
+    /** Nowhere, and the VIP screen stays hidden: Google Play allows no outside payments. */
+    NONE,
+
+    /** In the game's RuStore version; this build only shows what VIP gives. */
+    ELSEWHERE,
+
+    /** Right here, through RuStore. */
+    HERE,
+}
+
+/** How buying VIP ended. */
+enum class Payment { PAID, CANCELLED, FAILED }
+
 /** What the game needs from the phone: sound, music, vibration, saves and the date. */
 interface Platform {
     fun play(sfx: Sfx, volume: Float)
@@ -38,6 +53,14 @@ interface Platform {
 
     /** Opens [url] in the browser. */
     fun openUrl(url: String) = Unit
+
+    val vipShop: VipShop get() = VipShop.NONE
+
+    /** Starts buying VIP; [done] gets how it ended and, when paid, the last paid day (days since 1970, 0 if unknown). */
+    fun buyVip(done: (Payment, Int) -> Unit) = Unit
+
+    /** Asks the store about VIP; [done] gets the last paid day, or null when nothing is paid or the store cannot tell. */
+    fun checkVip(done: (Int?) -> Unit) = Unit
 }
 
 /** No sound, memory-only saves: the tests run on this. */
@@ -49,6 +72,11 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
     val achievements = ArrayList<String>()
     val opened = ArrayList<String>()
     override var supportUrl: String? = null
+    override var vipShop = VipShop.NONE
+
+    /** How the next VIP purchase ends, and the last day the store says VIP is paid for. */
+    var payment = Payment.PAID
+    var vipPaidUntil: Int? = null
     var track: Track? = null
         private set
     var musicVolume = 0f
@@ -90,4 +118,11 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
     override fun openUrl(url: String) {
         opened += url
     }
+
+    override fun buyVip(done: (Payment, Int) -> Unit) {
+        if (payment == Payment.PAID) vipPaidUntil = day + 30
+        done(payment, if (payment == Payment.PAID) day + 30 else 0)
+    }
+
+    override fun checkVip(done: (Int?) -> Unit) = done(vipPaidUntil)
 }

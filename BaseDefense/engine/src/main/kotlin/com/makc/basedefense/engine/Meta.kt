@@ -98,6 +98,25 @@ enum class Mod(val title: L, val hint: L) {
 enum class Stat {
     KILLS, BOSS_KILLS, GHOST_KILLS, BUILT, BRANCHES, TOWER_TYPES, AIRSTRIKES, OBSTACLES,
     WINS, FLAWLESS, MAX_MONEY, ENDLESS_BEST, DAILY_STREAK, DAILY_WINS,
+
+    /** Extra upgrade points from daily wins with VIP. */
+    VIP_POINTS,
+}
+
+/** What the VIP subscription gives; the rules and the comparison screen both read it here. */
+object Vip {
+    /** The subscription's product ID in the RuStore Console. */
+    const val PRODUCT = "vip_month"
+    const val PRICE_RUBLES = 50
+    const val START_MONEY = 1.2f
+    const val BOUNTY = 1.1f
+    const val COOLDOWN = 0.8f
+    const val MAX_SPEED = 4
+    const val UNDO_TIME = 8f
+    const val DAILY_POINTS = 2
+
+    /** How long VIP lasts when a store says it is paid but not until when. */
+    const val DAYS = 31
 }
 
 enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (Profile) -> Int) {
@@ -139,6 +158,7 @@ class Rules(
     val mods: List<Mod> = emptyList(),
     /** Highest campaign level reached: towers and abilities unlock with it. */
     val progress: Int = 99,
+    val vip: Boolean = false,
 ) {
     val towers: List<TowerType> = TowerType.entries.filter {
         it.unlock <= progress && (challenge?.kind != ChallengeKind.ONLY || it in challenge.types)
@@ -166,14 +186,17 @@ class Rules(
         if (challenge?.kind == ChallengeKind.LOW_BUDGET) k *= 0.6f
         if (Mod.RICH in mods) k *= 1.5f
         if (Mod.POOR in mods) k *= 0.7f
+        if (vip) k *= Vip.START_MONEY
         return Math.round(base * k / 5f) * 5 + 30 * perks[Perk.START_MONEY]
     }
 
-    val rewardMul: Float = (1f + 0.1f * perks[Perk.BOUNTY]) * (if (difficulty == Difficulty.EASY) 1.1f else 1f)
+    val rewardMul: Float = (1f + 0.1f * perks[Perk.BOUNTY]) * (if (difficulty == Difficulty.EASY) 1.1f else 1f) * (if (vip) Vip.BOUNTY else 1f)
     val damageMul: Float = 1f + 0.05f * perks[Perk.DAMAGE]
     val rangeMul: Float = 1f + 0.05f * perks[Perk.RANGE]
     val buildMul: Float = 1f - 0.05f * perks[Perk.DISCOUNT]
     val upgradeMul: Float = buildMul * (if (Mod.CHEAP_UPGRADES in mods) 0.7f else 1f)
     val refund: Float = 0.7f + 0.05f * perks[Perk.REFUND]
-    val cooldownMul: Float = max(0.4f, 1f - 0.12f * perks[Perk.COOLDOWN])
+    val cooldownMul: Float = max(0.4f, 1f - 0.12f * perks[Perk.COOLDOWN]) * (if (vip) Vip.COOLDOWN else 1f)
+    val maxSpeed: Int = if (vip) Vip.MAX_SPEED else 3
+    val undoTime: Float = if (vip) Vip.UNDO_TIME else 4f
 }

@@ -334,6 +334,50 @@ class ScreensTest {
     }
 
     @Test
+    fun vipIsShownComparedAndBought() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.vipShop = VipShop.HERE
+        val g = game(tall, platform)
+        run(g, 1f)
+        shot(g, tall, "tall_80_menu_vip")
+        press(g, tall, "vip")
+        assertEquals(Screen.VIP, g.screen)
+        shot(g, tall, "tall_81_vip")
+        press(g, tall, "vipbuy", 0.5f)
+        assertTrue(g.vip, "paying turns VIP on")
+        assertTrue(!has(g, tall, "vipbuy"), "nothing to buy while VIP is on")
+        shot(g, tall, "tall_82_vip_on")
+        g.back()
+        run(g, 0.4f)
+        shot(g, tall, "tall_83_menu_vip_on")
+
+        g.startCampaign(Levels.all.first { it.id == 5 }, Difficulty.NORMAL, false)
+        run(g, 0.5f)
+        repeat(3) { press(g, tall, "speed", 0f) }
+        assertEquals(Vip.MAX_SPEED, g.play.speed, "VIP adds a fourth speed")
+        press(g, tall, "speed", 0f)
+        assertEquals(1, g.play.speed)
+        g.profile.tips = false
+        botPlay(g, 40f)
+        shot(g, tall, "tall_84_battle_vip")
+
+        // The APK from GitHub shows VIP but sends players to RuStore for it.
+        val github = SilentPlatform()
+        github.vipShop = VipShop.ELSEWHERE
+        val g2 = game(small, github)
+        run(g2, 1f)
+        press(g2, small, "vip")
+        shot(g2, small, "small_81_vip_elsewhere")
+        assertTrue(!has(g2, small, "viprestore"))
+
+        // The Google Play build has no VIP at all.
+        val play = game(tall, SilentPlatform())
+        run(play, 1f)
+        assertTrue(!has(play, tall, "vip"), "no VIP on Google Play")
+    }
+
+    @Test
     fun aBattleSurvivesTheAppClosing() {
         val platform = SilentPlatform()
         unlockAll(platform)

@@ -13,7 +13,7 @@ internal enum class Style { PRIMARY, NORMAL, GHOST, DANGER }
 /** A white picture in the atlas that the interface paints in any colour. */
 internal enum class Icon {
     BACK, GEAR, TROPHY, BOOK, RANKS, CALENDAR, INFINITY, PLAY, PAUSE, CROSS, UNDO, LOCK, STAR, MEDAL,
-    SPEED, FLAG, TARGET, SOUND, MUSIC, WARNING, HOME, CHECK, INFO, HEART, SKULL,
+    SPEED, FLAG, TARGET, SOUND, MUSIC, WARNING, HOME, CHECK, INFO, HEART, SKULL, CROWN,
     ;
 
     val sprite = "icon." + name.lowercase()
@@ -899,6 +899,16 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
             }
             Icon.HEART -> heartShape(g, cx, cy, s, color)
             Icon.SKULL -> skullShape(g, cx, cy, s, color)
+            Icon.CROWN -> {
+                px[0] = cx - s * 0.45f; py[0] = cy + s * 0.3f
+                px[1] = cx - s * 0.45f; py[1] = cy - s * 0.3f
+                px[2] = cx - s * 0.2f; py[2] = cy
+                px[3] = cx; py[3] = cy - s * 0.42f
+                px[4] = cx + s * 0.2f; py[4] = cy
+                px[5] = cx + s * 0.45f; py[5] = cy - s * 0.3f
+                px[6] = cx + s * 0.45f; py[6] = cy + s * 0.3f
+                g.fillPolygon(px, py, 7, color)
+            }
         }
     }
 

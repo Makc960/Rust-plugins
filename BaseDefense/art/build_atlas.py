@@ -1144,6 +1144,17 @@ def ranks_icon(d, k):
                    (16 * k, (y + 31) * k), (16 * k, (y + 20) * k)], fill=255)
 
 
+def crown_icon(d, k):
+    # A band with three points, a ball on each, and three jewels cut out of the band.
+    d.polygon([(18 * k, 74 * k), (18 * k, 40 * k), (34 * k, 55 * k), (50 * k, 30 * k), (66 * k, 55 * k),
+               (82 * k, 40 * k), (82 * k, 74 * k)], fill=255)
+    d.rounded_rectangle(ib(k, 18, 77, 82, 85), 2 * k, fill=255)
+    for x, y, r in ((18, 36, 5.5), (50, 26, 6), (82, 36, 5.5)):
+        d.ellipse(ib(k, x - r, y - r, x + r, y + r), fill=255)
+    for x in (34, 50, 66):
+        d.ellipse(ib(k, x - 4, 61, x + 4, 69), fill=0)
+
+
 for name, src in {
     'back': 'arrowLeft', 'gear': 'gear', 'trophy': 'trophy', 'play': 'right', 'pause': 'pause', 'cross': 'cross',
     'undo': 'return', 'lock': 'locked', 'star': 'star', 'medal': 'medal1', 'speed': 'fastForward',
@@ -1158,6 +1169,7 @@ S['icon.book'] = glyph(book_icon)
 S['icon.calendar'] = glyph(calendar_icon)
 S['icon.infinity'] = glyph(infinity_icon)
 S['icon.ranks'] = glyph(ranks_icon)
+S['icon.crown'] = glyph(crown_icon)
 
 
 # --- packing -----------------------------------------------------------------------------

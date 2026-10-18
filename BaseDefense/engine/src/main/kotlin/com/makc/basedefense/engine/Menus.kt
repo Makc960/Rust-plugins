@@ -1,6 +1,7 @@
 package com.makc.basedefense.engine
 
 import java.time.LocalDate
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -25,6 +26,8 @@ internal class Menus(private val game: Game) {
     private var codexPick = -1
     private var resetArmedAt = -10f
     private var settingsBottom = 0f
+    private var vipBottom = 0f
+    private var vipBusyAt = -100f
     private var cameFrom = Screen.MENU
 
     private fun d(v: Float) = ui.d(v)
@@ -96,6 +99,11 @@ internal class Menus(private val game: Game) {
 
     private fun number(id: Int): String = id.toString().padStart(2, '0')
 
+    private fun date(day: Int): String {
+        val d = LocalDate.ofEpochDay(day.toLong())
+        return "${d.dayOfMonth.toString().padStart(2, '0')}.${d.monthValue.toString().padStart(2, '0')}.${d.year}"
+    }
+
     /** Stars won out of all there are, in a slot ending at [right]. */
     private fun starTotal(g: Gfx, right: Float, cy: Float) {
         val text = "${profile.totalStars}/${Levels.all.size * 3}"
@@ -128,6 +136,7 @@ internal class Menus(private val game: Game) {
         ui.text(g, Tx.TITLE_1.t, cx, ty, big, Ui.TEXT, Align.CENTER, maxW, Font.DISPLAY)
         ui.tape(g, Tx.TITLE_2.t, cx, ty + big * 0.8f, ui.fit(g, Tx.TITLE_2.t, big * 0.9f, maxW - big, Font.DISPLAY), -3f)
         ui.textMid(g, Tx.TAGLINE.t.uppercase(), cx, ty + big * 1.82f, d(12f), Ui.DIM, maxW = maxW)
+        if (game.vipShop != VipShop.NONE || game.vip) vipBadge(g)
 
         val saved = savedBattle()
         val bottomRow = ui.h - ui.bottom - d(128f)
@@ -648,8 +657,7 @@ internal class Menus(private val game: Game) {
         val day = game.today
         val level = Levels.daily(day, profile.progress)
         val mods = Mod.forDay(day)
-        val date = LocalDate.ofEpochDay(day.toLong())
-        val dateText = "${date.dayOfMonth.toString().padStart(2, '0')}.${date.monthValue.toString().padStart(2, '0')}.${date.year}"
+        val dateText = date(day)
         ui.tag(g, dateText, ui.w - d(12f), ui.top + d(30f), d(12f), Ui.PANEL_HI, Ui.TEXT, right = true)
         val x = d(14f)
         val w = ui.w - d(28f)
@@ -678,8 +686,128 @@ internal class Menus(private val game: Game) {
         y += d(24f)
         val streak = Tx.STREAK.f(profile.dailyStreak(day))
         y += ui.chips(g, listOf(streak), (ui.w - g.textWidth(streak, d(11f)) - d(12f)) / 2f, y, w, Ui.ACCENT) + d(6f)
-        ui.textMid(g, Tx.DAILY_REWARD.t, ui.w / 2f, y + d(8f), d(11.5f), Ui.DIM, maxW = w, font = Font.BODY)
+        val reward = if (game.vip) Tx.DAILY_REWARD_VIP.t else Tx.DAILY_REWARD.t
+        ui.textMid(g, reward, ui.w / 2f, y + d(8f), d(11.5f), Ui.DIM, maxW = w, font = Font.BODY)
         val by = max(y + d(26f), ui.h - ui.bottom - d(72f))
         ui.button(g, "dstart", x, by, w, d(56f), Tx.START.t, Style.PRIMARY, size = 20f, icon = Icon.PLAY) { game.startDaily() }
+    }
+
+    // --- VIP ------------------------------------------------------------------------------
+
+    /** The crown in the main menu's corner: gold when VIP is on. */
+    private fun vipBadge(g: Gfx) {
+        val on = game.vip
+        val bw = d(84f)
+        val bh = d(32f)
+        val bx = ui.w - d(12f) - bw
+        val top = ui.top + d(8f)
+        ui.area("vip", bx, top, bw, bh) {
+            game.checkVip()
+            open(Screen.VIP)
+        }
+        val by = top + if (ui.down("vip")) d(2f) else 0f
+        ui.chamfer(g, bx, by, bw, bh, d(7f), Ui.EDGE)
+        if (on) {
+            ui.chamfer(g, bx + d(1f), by + d(1f), bw - d(2f), bh - d(2f), d(7f), Ui.ACCENT_LIT)
+            ui.chamfer(g, bx + d(1f), by + d(2.5f), bw - d(2f), bh - d(3.5f), d(7f), Ui.GOLD)
+        } else {
+            ui.chamfer(g, bx + d(1f), by + d(1f), bw - d(2f), bh - d(2f), d(7f), Ui.BAND)
+            ui.outline(g, bx + d(2.5f), by + d(2.5f), bw - d(5f), bh - d(5f), d(6f), Ui.GOLD, d(1.5f))
+        }
+        val ink = if (on) Ui.DARK_TEXT else Ui.GOLD
+        ui.icon(g, Icon.CROWN, bx + d(24f), by + bh / 2f, d(18f), ink)
+        ui.textMid(g, Tx.VIP.t, bx + d(38f), by + bh / 2f, d(15f), ink, Align.LEFT, font = Font.DISPLAY)
+    }
+
+    /** What VIP changes, row by row: the name, without VIP, with VIP (null draws a tick). */
+    private fun vipRows(): List<Triple<String, String, String?>> {
+        val free = Rules()
+        val vip = Rules(vip = true)
+        fun percent(k: Float): Int = Math.round(abs(k - 1f) * 100f)
+        return listOf(
+            Triple(Tx.VIP_ROW_START.t, "—", "+${percent(Vip.START_MONEY)}%"),
+            Triple(Tx.VIP_ROW_BOUNTY.t, "—", "+${percent(Vip.BOUNTY)}%"),
+            Triple(Tx.VIP_ROW_COOLDOWN.t, "—", "−${percent(Vip.COOLDOWN)}%"),
+            Triple(Tx.VIP_ROW_SPEED.t, Tx.VIP_UP_TO.f(free.maxSpeed), Tx.VIP_UP_TO.f(vip.maxSpeed)),
+            Triple(Tx.VIP_ROW_UNDO.t, Tx.VIP_SECONDS.f(free.undoTime.toInt()), Tx.VIP_SECONDS.f(vip.undoTime.toInt())),
+            Triple(Tx.VIP_ROW_DAILY.t, "1", "${Vip.DAILY_POINTS}"),
+            Triple(Tx.VIP_ROW_CROWN.t, "—", null),
+        )
+    }
+
+    fun vip(g: Gfx) {
+        val top = ui.header(g, Tx.VIP.t) { game.go(Screen.MENU) }
+        val active = game.vip
+        val shop = game.vipShop
+        val busy = clock - vipBusyAt < VIP_WAIT
+        val x = d(14f)
+        val w = ui.w - d(28f)
+        val cx = ui.w / 2f
+        val viewH = ui.h - ui.bottom - top
+        val off = ui.beginScroll(g, Screen.VIP.name, 0f, top, ui.w, viewH, if (vipBottom > 0f) vipBottom else viewH)
+        var y = top - off
+
+        // The crown, and the price or how long VIP lasts.
+        g.glow(cx, y + d(42f), d(74f), Colors.alpha(Ui.GOLD, 0.22f))
+        ui.icon(g, Icon.CROWN, cx, y + d(42f), d(60f), Ui.GOLD)
+        ui.textMid(g, Tx.VIP_TITLE.t, cx, y + d(96f), d(24f), Ui.GOLD, font = Font.DISPLAY)
+        val line = if (active) Tx.VIP_ACTIVE.f(date(profile.vipUntil)) else Tx.VIP_PRICE.f(Vip.PRICE_RUBLES)
+        ui.textMid(g, line, cx, y + d(124f), d(16f), if (active) Ui.GREEN else Ui.TEXT)
+        y += d(146f)
+
+        // Without and with VIP, side by side.
+        val rows = vipRows()
+        val rowH = d(40f)
+        val headH = d(38f)
+        val tableH = headH + rows.size * rowH + d(12f)
+        ui.panel(g, x, y, w, tableH)
+        val freeX = x + w * 0.62f
+        val vipX = x + w * 0.85f
+        val colW = w * 0.25f
+        ui.chamfer(g, vipX - colW / 2f, y + d(8f), colW, tableH - d(16f), d(6f), Colors.alpha(Ui.GOLD, 0.1f))
+        ui.outline(g, vipX - colW / 2f, y + d(8f), colW, tableH - d(16f), d(6f), Colors.alpha(Ui.GOLD, 0.55f), d(1.5f))
+        ui.textMid(g, Tx.VIP_WITHOUT.t.uppercase(), freeX, y + d(25f), d(11f), Ui.DIM, maxW = colW)
+        ui.icon(g, Icon.CROWN, vipX - d(16f), y + d(24f), d(15f), Ui.GOLD)
+        ui.textMid(g, Tx.VIP.t, vipX + d(9f), y + d(25f), d(14f), Ui.GOLD, font = Font.DISPLAY)
+        var ry = y + headH
+        for ((i, row) in rows.withIndex()) {
+            if (i > 0) g.fillRect(x + d(14f), ry, w - d(28f), max(1f, d(1f)), Colors.alpha(Ui.PANEL_HI, 0.7f))
+            val my = ry + rowH / 2f
+            ui.textMid(g, row.first, x + d(16f), my, d(13f), Ui.TEXT, Align.LEFT, maxW = freeX - colW / 2f - x - d(20f))
+            ui.textMid(g, row.second, freeX, my, d(13.5f), Ui.DIM, maxW = colW - d(8f))
+            val with = row.third
+            if (with == null) ui.icon(g, Icon.CHECK, vipX, my, d(18f), Ui.GOLD) else ui.textMid(g, with, vipX, my, d(15f), Ui.GOLD, maxW = colW - d(8f))
+            ry += rowH
+        }
+        y += tableH + d(16f)
+
+        // Buying it, or getting back one paid before.
+        if (!active) {
+            val here = shop == VipShop.HERE
+            val sub = if (here) Tx.VIP_PRICE.f(Vip.PRICE_RUBLES) else Tx.VIP_ELSEWHERE.t
+            ui.button(g, "vipbuy", x, y, w, d(58f), Tx.VIP_BUY.t, Style.PRIMARY, here && !busy, size = 19f, icon = Icon.CROWN, sub = sub) {
+                vipBusyAt = clock
+                game.buyVip { vipBusyAt = -100f }
+            }
+            y += d(74f)
+        }
+        if (shop == VipShop.HERE) {
+            ui.button(g, "viprestore", x, y, w, d(44f), Tx.VIP_RESTORE.t, Style.GHOST, !busy, size = 13f, icon = Icon.UNDO) {
+                vipBusyAt = clock
+                game.checkVip { found ->
+                    vipBusyAt = -100f
+                    game.toast(if (found) Tx.VIP_RESTORED.t else Tx.VIP_NOT_FOUND.t, if (found) Icon.CROWN else Icon.WARNING)
+                }
+            }
+            y += d(58f)
+            y += ui.paragraph(g, Tx.VIP_NOTE.t, cx, y, w - d(16f), d(11.5f), Ui.DIM, Align.CENTER)
+        }
+        vipBottom = y + d(20f) - (top - off)
+        ui.endScroll(g, Screen.VIP.name)
+    }
+
+    private companion object {
+        /** Seconds the store gets to answer before the VIP buttons work again. */
+        const val VIP_WAIT = 30f
     }
 }

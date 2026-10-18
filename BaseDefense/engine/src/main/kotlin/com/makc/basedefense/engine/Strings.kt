@@ -191,6 +191,34 @@ object Tx {
     val DAILY_WON = L("Сегодня выполнено", "Done for today")
     val DAILY_REWARD = L("Победа приносит очко улучшений, раз в день", "A win gives one upgrade point, once a day")
     val START = L("НАЧАТЬ", "START")
+    val DAILY_REWARD_VIP = L("Победа приносит 2 очка улучшений (VIP), раз в день", "A win gives 2 upgrade points (VIP), once a day")
+
+    // VIP
+    val VIP = L("VIP", "VIP")
+    val VIP_TITLE = L("VIP-СТАТУС", "VIP STATUS")
+    val VIP_PRICE = L("%d ₽ в месяц", "%d ₽ a month")
+    val VIP_ACTIVE = L("Активен до %s", "Active until %s")
+    val VIP_WITHOUT = L("Без VIP", "Without")
+    val VIP_ROW_START = L("Монеты на старте боя", "Starting coins")
+    val VIP_ROW_BOUNTY = L("Монеты за врагов", "Coins per kill")
+    val VIP_ROW_COOLDOWN = L("Перезарядка способностей", "Ability recharge")
+    val VIP_ROW_SPEED = L("Скорость боя", "Battle speed")
+    val VIP_ROW_UNDO = L("Отмена постройки", "Undo a new squad")
+    val VIP_ROW_DAILY = L("Очки за задание дня", "Points for the daily")
+    val VIP_ROW_CROWN = L("Корона в меню и в бою", "Crown in menus and battle")
+    val VIP_UP_TO = L("до ×%d", "up to ×%d")
+    val VIP_SECONDS = L("%d с", "%d s")
+    val VIP_BUY = L("ОФОРМИТЬ VIP", "GET VIP")
+    val VIP_ELSEWHERE = L("в версии игры из RuStore", "in the game's RuStore version")
+    val VIP_RESTORE = L("ВОССТАНОВИТЬ ПОКУПКУ", "RESTORE PURCHASE")
+    val VIP_NOTE = L(
+        "Подписка оформляется через RuStore и продлевается каждый месяц. Отменить её можно в любой момент в RuStore, в разделе «Подписки».",
+        "The subscription goes through RuStore and renews every month. You can cancel it any time in RuStore, under Subscriptions.",
+    )
+    val VIP_THANKS = L("VIP включён. Спасибо за поддержку!", "VIP is on. Thank you for the support!")
+    val VIP_FAILED = L("Оплата не прошла", "The payment did not go through")
+    val VIP_NOT_FOUND = L("Подписка VIP не найдена", "No VIP subscription found")
+    val VIP_RESTORED = L("VIP восстановлен", "VIP restored")
 
     /** Everything above, for the translation test. */
     val all: List<L>

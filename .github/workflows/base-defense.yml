@@ -21,7 +21,7 @@ jobs:
       run:
         working-directory: BaseDefense
     env:
-      # The Play upload key is optional: without these secrets only the APK is built.
+      # The private upload key is optional: without these secrets only the GitHub APK is built.
       HAS_UPLOAD_KEY: ${{ secrets.UPLOAD_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -48,8 +48,25 @@ jobs:
           UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
         run: |
           echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
-          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:bundleRelease
+          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:bundleRelease -Pstore=play
           cp app/build/outputs/bundle/release/app-release.aab BaseDefense.aab
+          rm "$RUNNER_TEMP/upload.jks"
+
+      - name: Build the RuStore APK
+        if: env.HAS_UPLOAD_KEY == 'true'
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+        run: |
+          if ! grep -Eq 'rustoreAppId = .*\?: "[0-9]+"' app/build.gradle.kts; then
+            echo "No RuStore app ID in app/build.gradle.kts yet"
+            exit 0
+          fi
+          echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore
+          cp app/build/outputs/apk/release/app-release.apk BaseDefense-RuStore.apk
           rm "$RUNNER_TEMP/upload.jks"
 
       - uses: actions/upload-artifact@v4
@@ -62,6 +79,13 @@ jobs:
         with:
           name: BaseDefense-GooglePlay
           path: BaseDefense/BaseDefense.aab
+
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_UPLOAD_KEY == 'true'
+        with:
+          name: BaseDefense-RuStore
+          path: BaseDefense/BaseDefense-RuStore.apk
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -79,5 +103,25 @@ jobs:
           gh release create base-defense BaseDefense.apk \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "Оборона базы 2.3.2" \
+            --title "Оборона базы 2.4" \
             --notes "Сборка из ${GITHUB_SHA::7}. Скачай BaseDefense.apk на телефон и установи поверх старой версии (прогресс сохранится). Поддержать автора: https://pay.cloudtips.ru/p/5b9bb7e3"
+
+  # RuStore builds pull in RuStore's Pay SDK; this checks they still compile against it,
+  # even before the app has its RuStore Console ID (a stand-in ID is used here).
+  rustore-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BaseDefense
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build a RuStore APK with a stand-in ID
+        run: ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore -PrustoreAppId=1

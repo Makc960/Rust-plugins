@@ -4,16 +4,22 @@
 
 ## Русский
 
-- Игра не собирает, не хранит у себя на серверах и никому не передаёт никаких данных. У неё нет доступа в интернет: в приложении нет разрешения INTERNET.
+- Игра не собирает, не хранит у себя на серверах и никому не передаёт никаких данных. Версии из Google Play и с GitHub не выходят в интернет: в них нет разрешения INTERNET.
 - Прогресс (звёзды, улучшения, настройки, сохранённый бой) хранится только на телефоне. Если на телефоне включено резервное копирование Android, система может сохранить эти данные в вашем аккаунте Google; этим управляете вы в настройках телефона.
-- В игре нет рекламы, покупок, аналитики и сторонних библиотек, которые собирают данные.
+- В игре нет рекламы и аналитики. Покупка только одна, подписка VIP, и только в версии из RuStore (см. ниже).
 - Единственное разрешение — вибрация.
-- По вопросам пишите на адрес разработчика, указанный в карточке игры в Google Play.
+- **Версия из RuStore** дополнительно продаёт необязательную подписку VIP. Для оплаты в неё встроен платёжный SDK RuStore
+  (ООО «ВК»), поэтому у неё есть доступ в интернет. Оплатой, данными карты и чеками занимается RuStore по своей политике
+  конфиденциальности; игра получает от RuStore только ответ, оплачена ли подписка и до какого числа, и хранит его на телефоне.
+- По вопросам пишите на адрес разработчика, указанный в карточке игры в магазине.
 
 ## English
 
-- The game does not collect, store on any server or share any data. It cannot reach the internet: the app has no INTERNET permission.
+- The game does not collect, store on any server or share any data. The Google Play and GitHub versions cannot reach the internet: they have no INTERNET permission.
 - Progress (stars, upgrades, settings, a saved battle) is kept only on the phone. If Android backup is turned on, the system may back this data up to your Google account; you control that in the phone's settings.
-- There are no ads, purchases, analytics or third-party libraries that collect data.
+- There are no ads and no analytics. The only purchase is the VIP subscription, in the RuStore version only (see below).
 - The only permission is vibration.
-- For questions, write to the developer address shown on the game's Google Play page.
+- **The RuStore version** also sells an optional VIP subscription. It includes RuStore's payment SDK (VK LLC) for that,
+  so it can reach the internet. RuStore handles the payment, card details and receipts under its own privacy policy;
+  the game only learns from RuStore whether the subscription is paid and until when, and keeps that on the phone.
+- For questions, write to the developer address shown on the game's store page.
