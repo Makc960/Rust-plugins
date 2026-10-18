@@ -36,25 +36,45 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:paddingStart="9dp"
         android:paddingEnd="9dp"
         android:paddingBottom="12dp">
 
-        <TextView
-            android:id="@+id/btnFilter"
-            style="@style/HudButton" />
+        <!-- Settings grid, filled in code: 2 columns in portrait, 5 in landscape. -->
+        <LinearLayout
+            android:id="@+id/menuPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:orientation="vertical"
+            android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/btnBoxes"
-            style="@style/HudButton" />
+        <LinearLayout
+            android:id="@+id/bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/btnLines"
-            style="@style/HudButton" />
+            <TextView
+                android:id="@+id/btnVision"
+                style="@style/HudButton" />
 
-        <TextView
-            android:id="@+id/btnCamera"
-            style="@style/HudButton" />
+            <TextView
+                android:id="@+id/btnPhoto"
+                style="@style/HudButton" />
+
+            <TextView
+                android:id="@+id/btnRecord"
+                style="@style/HudButton" />
+
+            <TextView
+                android:id="@+id/btnCamera"
+                style="@style/HudButton" />
+
+            <TextView
+                android:id="@+id/btnMenu"
+                style="@style/HudButton" />
+        </LinearLayout>
     </LinearLayout>
 </FrameLayout>

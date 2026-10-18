@@ -17,7 +17,28 @@ class Track(
     /** Box that is drawn; eases towards [target] every frame. */
     val shown: RectF,
     var lastSeen: Long,
-)
+) {
+    /** Recent box centres, oldest first, as a ring buffer of x, y pairs. */
+    private val trail = FloatArray(TRAIL_POINTS * 2)
+    private var trailStart = 0
+    var trailSize = 0
+        private set
+
+    fun addTrailPoint(x: Float, y: Float) {
+        val slot = (trailStart + trailSize) % TRAIL_POINTS
+        trail[slot * 2] = x
+        trail[slot * 2 + 1] = y
+        if (trailSize < TRAIL_POINTS) trailSize++ else trailStart = (trailStart + 1) % TRAIL_POINTS
+    }
+
+    fun trailX(i: Int): Float = trail[((trailStart + i) % TRAIL_POINTS) * 2]
+
+    fun trailY(i: Int): Float = trail[((trailStart + i) % TRAIL_POINTS) * 2 + 1]
+
+    companion object {
+        const val TRAIL_POINTS = 28
+    }
+}
 
 /**
  * Keeps boxes alive between detector frames, so they glide instead of
@@ -40,14 +61,16 @@ class Tracker {
                     best = t
                 }
             }
-            if (best != null) {
+            val track = if (best != null) {
                 best.target.set(det.box)
                 best.score = det.score
                 best.lastSeen = now
                 free.remove(best)
+                best
             } else {
-                tracks += Track(nextId++, det.label, det.score, RectF(det.box), RectF(det.box), now)
+                Track(nextId++, det.label, det.score, RectF(det.box), RectF(det.box), now).also { tracks += it }
             }
+            track.addTrailPoint(det.box.centerX(), det.box.centerY())
         }
         tracks.removeAll { now - it.lastSeen > LOST_MS }
     }
@@ -73,6 +96,8 @@ class Tracker {
         if (age <= HOLD_MS) return 1f
         return (1f - (age - HOLD_MS).toFloat() / (LOST_MS - HOLD_MS)).coerceIn(0f, 1f)
     }
+
+    fun isActive(id: Int): Boolean = tracks.any { it.id == id }
 
     fun clear() {
         tracks.clear()
