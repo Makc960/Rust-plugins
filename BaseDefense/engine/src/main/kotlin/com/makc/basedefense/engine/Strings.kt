@@ -5,14 +5,14 @@ object Tx {
     // Menu
     val TITLE_1 = L("ОБОРОНА", "BASE")
     val TITLE_2 = L("БАЗЫ", "DEFENSE")
-    val TAGLINE = L("отряды · волны · боссы", "squads · waves · bosses")
+    val TAGLINE = L("Удержи базу любой ценой", "Hold the base at any cost")
     val CONTINUE = L("ПРОДОЛЖИТЬ БОЙ", "CONTINUE BATTLE")
-    val CONTINUE_SUB = L("%s · волна %d", "%s · wave %d")
+    val CONTINUE_SUB = L("%s, волна %d", "%s, wave %d")
     val CAMPAIGN = L("КАМПАНИЯ", "CAMPAIGN")
     val DAILY = L("ЗАДАНИЕ ДНЯ", "DAILY CHALLENGE")
-    val DAILY_LOCKED = L("ЗАДАНИЕ ДНЯ · ПОСЛЕ 2 УРОВНЯ", "DAILY · AFTER LEVEL 2")
+    val DAILY_LOCKED = L("откроется после 2 уровня", "opens after level 2")
     val ENDLESS = L("БЕСКОНЕЧНЫЙ РЕЖИМ", "ENDLESS MODE")
-    val ENDLESS_LOCKED = L("БЕСКОНЕЧНЫЙ · ПОСЛЕ 3 УРОВНЯ", "ENDLESS · AFTER LEVEL 3")
+    val ENDLESS_LOCKED = L("откроется после 3 уровня", "opens after level 3")
     val UPGRADES = L("УЛУЧШЕНИЯ", "UPGRADES")
     val CODEX = L("Энциклопедия", "Codex")
     val ACHIEVEMENTS = L("Достижения", "Achievements")
@@ -34,9 +34,8 @@ object Tx {
 
     // Battle
     val WAVE_N = L("ВОЛНА %d", "WAVE %d")
-    val WAVE_N_OF = L("ВОЛНА %d/%d", "WAVE %d/%d")
     val START_WAVE = L("НАЧАТЬ ВОЛНУ", "START WAVE")
-    val NEXT_WAVE_IN = L("ВОЛНА %d · %dс · +%d", "WAVE %d · %ds · +%d")
+    val NEXT_WAVE_IN = L("через %d с, бонус +%d", "in %d s, bonus +%d")
     val FINAL = L("ФИНАЛ", "FINAL")
     val FIGHTING = L("ВОЛНА ИДЁТ…", "FIGHTING…")
     val NEXT = L("ДАЛЕЕ", "NEXT")
@@ -52,7 +51,6 @@ object Tx {
     val ROAD = L("дорога", "road")
 
     // Tower panel
-    val LEVEL_N = L("ур. %d", "lvl %d")
     val UPGRADE = L("УЛУЧШИТЬ %d", "UPGRADE %d")
     val SELL = L("ПРОДАТЬ %d", "SELL %d")
     val SELL_SURE = L("ТОЧНО? +%d", "SURE? +%d")
@@ -115,7 +113,6 @@ object Tx {
     val CARD_ABILITY = L("НОВАЯ СПОСОБНОСТЬ", "NEW ABILITY")
     val CARD_TIP = L("СОВЕТ", "TIP")
     val GOT_IT = L("ПОНЯТНО", "GOT IT")
-    val ENEMY_STATS = L("Здоровье %d · Скорость %s · Броня %d", "Health %d · Speed %s · Armor %d")
     val TIP_BRANCHES = L("Специализации", "Specialisations")
     val TIP_BRANCHES_TEXT = L(
         "Отряд 3 уровня можно превратить в одну из двух специализаций. Выбери ту, что лучше против врагов этого уровня.",
@@ -158,10 +155,12 @@ object Tx {
         "The game collects no data and sends nothing anywhere. Progress is stored only on this phone.",
     )
     val VERSION = L("Версия %s", "Version %s")
-    val CREDITS = L("Графика", "Graphics")
+    val CREDITS = L("Графика и шрифты", "Art and fonts")
     val CREDITS_TEXT = L(
-        "Kenney (kenney.nl): паки Tower Defense, Top-down Shooter и Top-down Tanks, лицензия CC0. Спасибо!",
-        "Kenney (kenney.nl): the Tower Defense, Top-down Shooter and Top-down Tanks packs, CC0 license. Thank you!",
+        "Kenney (kenney.nl): паки Tower Defense, Top-down Shooter, Top-down Tanks и Game Icons, лицензия CC0. " +
+            "Шрифты Russo One (Jovanny Lemonad) и Play (Jonas Hecksher), лицензия SIL Open Font License 1.1. Спасибо!",
+        "Kenney (kenney.nl): the Tower Defense, Top-down Shooter, Top-down Tanks and Game Icons packs, CC0 license. " +
+            "Fonts Russo One (Jovanny Lemonad) and Play (Jonas Hecksher), SIL Open Font License 1.1. Thank you!",
     )
 
     // Perks

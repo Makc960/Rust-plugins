@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        AndroidGfx.preload()
+        AndroidGfx.preload(cacheDir)
         platform = AndroidPlatform(this)
         game = Game(platform)
         view = GameView(this, game)

@@ -24,6 +24,7 @@ internal class Menus(private val game: Game) {
     private var codexTab = 0
     private var codexPick = -1
     private var resetArmedAt = -10f
+    private var settingsBottom = 0f
     private var cameFrom = Screen.MENU
 
     private fun d(v: Float) = ui.d(v)
@@ -78,6 +79,32 @@ internal class Menus(private val game: Game) {
 
     private fun thumb(level: LevelDef): GameMap = thumbs.getOrPut("${level.id}-${level.plan.seed}") { GameMap(level) }
 
+    /** The map in a dark frame, fitted into the box; returns the map's own x, y, width and height. */
+    private fun framedThumb(g: Gfx, map: GameMap, x: Float, y: Float, w: Float, h: Float): FloatArray {
+        val cell = min(w / COLS, h / ROWS)
+        val mw = cell * COLS
+        val mh = cell * ROWS
+        val mx = x + (w - mw) / 2f
+        val my = y + (h - mh) / 2f
+        g.fillRect(mx - d(2f), my - d(2f), mw + d(4f), mh + d(4f), Ui.EDGE)
+        g.save()
+        g.clip(mx, my, mw, mh)
+        renderer.drawMapThumb(g, map, mx, my, mw, mh)
+        g.restore()
+        return floatArrayOf(mx, my, mw, mh)
+    }
+
+    private fun number(id: Int): String = id.toString().padStart(2, '0')
+
+    /** Stars won out of all there are, in a slot ending at [right]. */
+    private fun starTotal(g: Gfx, right: Float, cy: Float) {
+        val text = "${profile.totalStars}/${Levels.all.size * 3}"
+        val tw = d(30f) + g.textWidth(text, d(13f), Font.DISPLAY) + d(10f)
+        ui.well(g, right - tw, cy - d(14f), tw, d(28f))
+        ui.star(g, right - tw + d(16f), cy + d(1f), d(8f), true)
+        ui.textMid(g, text, right - d(10f), cy + d(1f), d(13f), Ui.TEXT, Align.RIGHT, font = Font.DISPLAY)
+    }
+
     // --- main menu ------------------------------------------------------------------------
 
     private fun drawDemoBackground(g: Gfx) {
@@ -88,76 +115,73 @@ internal class Menus(private val game: Game) {
         g.scale(c)
         renderer.drawWorld(g, d0, clock, c)
         g.restore()
-        g.fillRect(0f, 0f, ui.w, ui.h, 0xA6080B0A.toInt())
+        g.fillRect(0f, 0f, ui.w, ui.h, 0xC20E1009.toInt())
     }
 
     fun menu(g: Gfx) {
         drawDemoBackground(g)
         val cx = ui.w / 2f
-        val big = min(d(46f), ui.w / 6.5f)
-        val ty = ui.top + max(d(70f), ui.h * 0.14f)
-        for ((i, line) in listOf(Tx.TITLE_1.t, Tx.TITLE_2.t).withIndex()) {
-            val y = ty + i * big
-            ui.text(g, line, cx + d(3f), y + d(3f), big, 0xFF000000.toInt(), Align.CENTER, maxW = ui.w - d(40f))
-            ui.text(g, line, cx, y, big, if (i == 0) Ui.ACCENT else Ui.TEXT, Align.CENTER, maxW = ui.w - d(40f))
-        }
-        ui.text(g, Tx.TAGLINE.t, cx, ty + big + d(30f), d(14f), Ui.DIM, Align.CENTER)
+        val big = min(d(52f), ui.w / 6.6f)
+        val ty = ui.top + max(d(70f), ui.h * 0.125f)
+        val maxW = ui.w - d(48f)
+        ui.text(g, Tx.TITLE_1.t, cx + d(3f), ty + d(4f), big, Ui.EDGE, Align.CENTER, maxW, Font.DISPLAY)
+        ui.text(g, Tx.TITLE_1.t, cx, ty, big, Ui.TEXT, Align.CENTER, maxW, Font.DISPLAY)
+        ui.tape(g, Tx.TITLE_2.t, cx, ty + big * 0.8f, ui.fit(g, Tx.TITLE_2.t, big * 0.9f, maxW - big, Font.DISPLAY), -3f)
+        ui.textMid(g, Tx.TAGLINE.t.uppercase(), cx, ty + big * 1.82f, d(12f), Ui.DIM, maxW = maxW)
 
         val saved = savedBattle()
-        val bottomRow = ui.h - ui.bottom - d(118f)
-        val top = ty + big + d(56f)
+        val bottomRow = ui.h - ui.bottom - d(128f)
+        val top = ty + big * 2.3f
         val count = if (saved != null) 5 else 4
-        val gap = d(10f)
-        val bh = min(d(54f), (bottomRow - top - d(10f) - gap * (count - 1)) / count)
-        val bw = min(ui.w - d(64f), d(320f))
+        val gap = d(11f)
+        val bh = min(d(58f), (bottomRow - top - d(12f) - gap * (count - 1)) / count)
+        val bw = min(ui.w - d(56f), d(330f))
         val bx = (ui.w - bw) / 2f
         var y = top
         if (saved != null) {
-            ui.button(g, "continue", bx, y, bw, bh, Tx.CONTINUE.t, Style.PRIMARY, size = 17f, icon = { gg, x, yy, s, c -> ui.play(gg, x, yy, s, c) }) {
+            val sub = Tx.CONTINUE_SUB.f(saved.level.name.t, max(1, saved.world.wavesStarted))
+            ui.button(g, "continue", bx, y, bw, bh, Tx.CONTINUE.t, Style.PRIMARY, size = 17f, icon = Icon.PLAY, sub = sub) {
                 game.resumeSaved()
             }
-            val sub = Tx.CONTINUE_SUB.f(saved.level.name.t, max(1, saved.world.wavesStarted))
-            ui.textMid(g, sub, cx, y + bh + d(7f), d(10.5f), Ui.DIM, maxW = bw)
-            y += bh + gap + d(8f)
+            y += bh + gap
         }
-        ui.button(g, "play", bx, y, bw, bh, Tx.CAMPAIGN.t, if (saved == null) Style.PRIMARY else Style.NORMAL, size = 18f) {
+        ui.button(g, "play", bx, y, bw, bh, Tx.CAMPAIGN.t, if (saved == null) Style.PRIMARY else Style.NORMAL, size = 18f, icon = Icon.FLAG) {
             world = ((profile.progress - 1) / Levels.PER_WORLD).coerceIn(0, 2)
             sheet = null
             open(Screen.LEVELS)
         }
         y += bh + gap
-        val dailyLabel = if (profile.dailyUnlocked) Tx.DAILY.t else Tx.DAILY_LOCKED.t
-        ui.button(g, "daily", bx, y, bw, bh, dailyLabel, enabled = profile.dailyUnlocked, size = 15f, icon = { gg, x, yy, s, c -> ui.calendar(gg, x, yy, s, c) }) {
-            open(Screen.DAILY)
+        val dailyOpen = profile.dailyUnlocked
+        ui.button(
+            g, "daily", bx, y, bw, bh, Tx.DAILY.t, enabled = dailyOpen, size = 16f,
+            icon = if (dailyOpen) Icon.CALENDAR else Icon.LOCK, sub = if (dailyOpen) null else Tx.DAILY_LOCKED.t,
+        ) { open(Screen.DAILY) }
+        if (dailyOpen && !profile.dailyWon(game.today)) {
+            g.fillCircle(bx + bw - d(4f), y + d(4f), d(7f), Ui.EDGE)
+            g.fillCircle(bx + bw - d(4f), y + d(4f), d(5f), Ui.RED)
         }
-        if (profile.dailyUnlocked && !profile.dailyWon(game.today)) g.fillCircle(bx + bw - d(14f), y + d(14f), d(5f), Ui.RED)
         y += bh + gap
-        val endlessLabel = if (profile.endlessUnlocked) Tx.ENDLESS.t else Tx.ENDLESS_LOCKED.t
-        ui.button(g, "endless", bx, y, bw, bh, endlessLabel, enabled = profile.endlessUnlocked, size = 15f, icon = { gg, x, yy, s, c -> ui.infinity(gg, x, yy, s, c) }) {
-            game.startEndless()
-        }
+        val endlessOpen = profile.endlessUnlocked
+        ui.button(
+            g, "endless", bx, y, bw, bh, Tx.ENDLESS.t, enabled = endlessOpen, size = 16f,
+            icon = if (endlessOpen) Icon.INFINITY else Icon.LOCK, sub = if (endlessOpen) null else Tx.ENDLESS_LOCKED.t,
+        ) { game.startEndless() }
         y += bh + gap
-        ui.button(g, "perks", bx, y, bw, bh, Tx.UPGRADES.t, size = 15f, icon = { gg, x, yy, s, c -> ui.upgradeArrow(gg, x, yy, s, c) }) {
-            open(Screen.PERKS)
-        }
+        ui.button(g, "perks", bx, y, bw, bh, Tx.UPGRADES.t, size = 16f, icon = Icon.RANKS) { open(Screen.PERKS) }
         val free = profile.freePoints
-        if (free > 0) {
-            val label = Tx.FREE_POINTS.f(free)
-            val tw = g.textWidth(label, d(12f)) + d(14f)
-            g.fillRoundRect(bx + bw - tw - d(8f), y + bh / 2f - d(11f), tw, d(22f), d(11f), Ui.ACCENT)
-            ui.textMid(g, label, bx + bw - tw / 2f - d(8f), y + bh / 2f, d(12f), 0xFF1E1404.toInt())
-        }
+        if (free > 0) ui.tag(g, Tx.FREE_POINTS.f(free), bx + bw - d(12f), y + bh / 2f + (if (ui.down("perks")) d(2f) else 0f), d(13f), right = true)
 
         // Codex, achievements and settings along the bottom.
-        val iconW = min(d(96f), (ui.w - d(48f)) / 3f)
-        val rowX = (ui.w - iconW * 3 - d(16f)) / 2f
-        val icons = listOf<Triple<String, String, (Gfx, Float, Float, Float, Int) -> Unit>>(
-            Triple("codex", Tx.CODEX.t) { gg, x, yy, s, c -> ui.book(gg, x, yy, s, c) },
-            Triple("ach", Tx.ACHIEVEMENTS.t) { gg, x, yy, s, c -> ui.trophy(gg, x, yy, s, c) },
-            Triple("settings", Tx.SETTINGS.t) { gg, x, yy, s, c -> ui.gear(gg, x, yy, s, c) },
+        val iconW = min(d(96f), (ui.w - d(64f)) / 3f)
+        val gapX = d(12f)
+        val rowX = (ui.w - iconW * 3 - gapX * 2) / 2f
+        val icons = listOf(
+            Triple("codex", Tx.CODEX.t, Icon.BOOK),
+            Triple("ach", Tx.ACHIEVEMENTS.t, Icon.TROPHY),
+            Triple("settings", Tx.SETTINGS.t, Icon.GEAR),
         )
         for ((i, item) in icons.withIndex()) {
-            val x = rowX + i * (iconW + d(8f))
+            val x = rowX + i * (iconW + gapX)
             ui.button(g, item.first, x, bottomRow, iconW, d(52f), "", icon = item.third) {
                 when (item.first) {
                     "codex" -> {
@@ -168,12 +192,19 @@ internal class Menus(private val game: Game) {
                     else -> open(Screen.SETTINGS)
                 }
             }
-            ui.textMid(g, item.second, x + iconW / 2f, bottomRow + d(64f), d(11f), Ui.DIM, maxW = iconW + d(6f))
+            ui.textMid(g, item.second, x + iconW / 2f, bottomRow + d(70f), d(11.5f), Ui.DIM, maxW = iconW + d(10f))
         }
-        val fy = ui.h - ui.bottom - d(20f)
-        ui.star(g, cx - d(56f), fy - d(5f), d(9f), true)
-        ui.text(g, "${profile.totalStars} / ${Levels.all.size * 3}", cx - d(42f), fy, d(13f), Ui.TEXT)
-        if (profile.bestEndless > 0) ui.text(g, Tx.BEST_WAVES.f(profile.bestEndless), cx + d(28f), fy, d(12f), Ui.DIM, maxW = ui.w / 2f - d(36f))
+        val fy = ui.h - ui.bottom - d(24f)
+        val record = if (profile.bestEndless > 0) Tx.BEST_WAVES.f(profile.bestEndless) else null
+        if (record == null) {
+            starTotal(g, cx + d(48f), fy)
+        } else {
+            starTotal(g, cx - d(4f), fy)
+            val rw = d(30f) + g.textWidth(record, d(12f)) + d(10f)
+            ui.well(g, cx + d(4f), fy - d(14f), rw, d(28f))
+            ui.icon(g, Icon.INFINITY, cx + d(20f), fy + d(1f), d(16f), Ui.DIM)
+            ui.textMid(g, record, cx + d(34f), fy + d(1f), d(12f), Ui.DIM, Align.LEFT)
+        }
     }
 
     // --- levels ---------------------------------------------------------------------------
@@ -182,16 +213,15 @@ internal class Menus(private val game: Game) {
 
     fun levels(g: Gfx) {
         val headerBottom = ui.header(g, Tx.CAMPAIGN.t) { game.go(Screen.MENU) }
-        ui.star(g, ui.w - d(70f), ui.top + d(30f), d(9f), true)
-        ui.textMid(g, "${profile.totalStars}/${Levels.all.size * 3}", ui.w - d(56f), ui.top + d(31f), d(13f), Ui.TEXT, Align.LEFT)
+        starTotal(g, ui.w - d(12f), ui.top + d(30f))
 
         val tabs = Biome.entries.map { it.title.t }
-        ui.segmented(g, "world", d(12f), headerBottom, ui.w - d(24f), d(38f), tabs, world, { worldOpen(it) }, size = 13f) {
+        ui.segmented(g, "world", d(12f), headerBottom, ui.w - d(24f), d(40f), tabs, world, { worldOpen(it) }, size = 13f) {
             world = it
         }
         val margin = d(12f)
         val gap = d(10f)
-        val gridTop = headerBottom + d(50f)
+        val gridTop = headerBottom + d(54f)
         val list = Levels.all.filter { it.world == world }
         val cols = if (ui.w > ui.h) 4 else 2
         val rows = (list.size + cols - 1) / cols
@@ -208,29 +238,35 @@ internal class Menus(private val game: Game) {
                 sheetDifficulty = Difficulty.NORMAL
                 sheetChallenge = false
             }
-            val down = ui.down(id)
-            g.fillRoundRect(x, y + d(3f), cw, ch, d(12f), 0xFF0A0E0C.toInt())
-            g.fillRoundRect(x, y + (if (down) d(2f) else 0f), cw, ch, d(12f), Ui.PANEL_LIGHT)
-            g.strokeRoundRect(x, y, cw, ch, d(12f), if (open) Ui.EDGE else Ui.PANEL, d(1f))
-            ui.text(g, "${lvl.id} · ${lvl.name.t}", x + d(10f), y + d(21f), d(13.5f), if (open) Ui.TEXT else Ui.DIM, maxW = cw - d(20f))
-            val thumbTop = y + d(30f)
-            val thumbH = ch - d(30f) - d(28f)
-            renderer.drawMapThumb(g, thumb(lvl), x + d(8f), thumbTop, cw - d(16f), thumbH)
-            if (!open) {
-                g.fillRoundRect(x, y, cw, ch, d(12f), 0xB30E1412.toInt())
-                ui.lock(g, x + cw / 2f, y + ch / 2f, d(34f))
-            } else {
-                val s = profile.stars(lvl.id)
-                for (k in 0 until 3) ui.star(g, x + d(18f) + k * d(19f), y + ch - d(14f), d(8f), k < s)
-                if (profile.hardWon(lvl.id)) ui.skull(g, x + cw - d(42f), y + ch - d(14f), d(15f), Ui.RED)
-                ui.medal(g, x + cw - d(18f), y + ch - d(16f), d(17f), profile.medal(lvl.id))
-            }
+            levelCard(g, lvl, x, y + (if (ui.down(id)) d(2f) else 0f), cw, ch, open)
         }
         if (!worldOpen(world)) {
-            val prev = Biome.entries[max(0, world - 1)].title.t
-            ui.textMid(g, Tx.WORLD_LOCKED.f(prev), ui.w / 2f, gridTop - d(4f), d(12f), Ui.DIM)
+            val text = Tx.WORLD_LOCKED.f(Biome.entries[max(0, world - 1)].title.t)
+            val tw = min(ui.w - d(40f), g.textWidth(text, d(13f)) + d(44f))
+            val ty = gridTop - d(6f) + (rows * (ch + gap)) / 2f
+            ui.plate(g, (ui.w - tw) / 2f, ty - d(22f), tw, d(44f), Ui.PANEL_DARK)
+            ui.lock(g, (ui.w - tw) / 2f + d(20f), ty, d(16f), Ui.ACCENT)
+            ui.textMid(g, text, (ui.w - tw) / 2f + d(34f), ty, d(13f), Ui.TEXT, Align.LEFT, maxW = tw - d(44f))
         }
         sheet?.let { drawSheet(g, it) }
+    }
+
+    private fun levelCard(g: Gfx, lvl: LevelDef, x: Float, y: Float, cw: Float, ch: Float, open: Boolean) {
+        ui.plate(g, x, y, cw, ch, if (open) Ui.PANEL else Ui.PANEL_DARK, cut = d(8f))
+        val tagW = ui.tag(g, number(lvl.id), x + d(8f), y + d(18f), d(12f), if (open) Ui.ACCENT else Ui.PANEL_HI, if (open) Ui.DARK_TEXT else Ui.FADED)
+        ui.textMid(g, lvl.name.t, x + d(14f) + tagW, y + d(18f), d(13.5f), if (open) Ui.TEXT else Ui.FADED, Align.LEFT, maxW = cw - tagW - d(24f))
+        val thumbTop = y + d(36f)
+        val thumbH = ch - d(36f) - d(32f)
+        val r = framedThumb(g, thumb(lvl), x + d(10f), thumbTop, cw - d(20f), thumbH)
+        if (!open) {
+            g.fillRect(r[0], r[1], r[2], r[3], 0xC0141710.toInt())
+            ui.lock(g, x + cw / 2f, thumbTop + thumbH / 2f, d(26f), Ui.FADED)
+            return
+        }
+        val s = profile.stars(lvl.id)
+        for (k in 0 until 3) ui.star(g, x + d(20f) + k * d(21f), y + ch - d(16f), d(9f), k < s)
+        if (profile.hardWon(lvl.id)) ui.skull(g, x + cw - d(44f), y + ch - d(16f), d(17f), Ui.RED)
+        ui.medal(g, x + cw - d(20f), y + ch - d(16f), d(19f), profile.medal(lvl.id))
     }
 
     private fun drawSheet(g: Gfx, lvl: LevelDef) {
@@ -238,74 +274,85 @@ internal class Menus(private val game: Game) {
         g.fillRect(0f, 0f, ui.w, ui.h, Ui.SCRIM)
         ui.area("scrim", 0f, 0f, ui.w, ui.h, silent = true) { sheet = null }
         val pw = min(ui.w - d(28f), d(380f))
-        val ph = min(ui.h - ui.top - ui.bottom - d(20f), d(560f))
+        val ph = min(ui.h - ui.top - ui.bottom - d(20f), d(580f))
         val px = (ui.w - pw) / 2f
         val py = ui.top + (ui.h - ui.top - ui.bottom - ph) / 2f
         ui.area("sheet", px, py, pw, ph, silent = true) {}
-        ui.panel(g, px, py, pw, ph)
-        ui.text(g, "${lvl.id} · ${lvl.name.t}", px + d(18f), py + d(34f), d(19f), Ui.TEXT, maxW = pw - d(80f))
-        ui.button(g, "sheetclose", px + pw - d(52f), py + d(10f), d(40f), d(36f), "", Style.GHOST, icon = { gg, cx, cy, s, c -> ui.cross(gg, cx, cy, s * 0.8f, c) }) {
+        val top = ui.panel(g, px, py, pw, ph, title = lvl.name.t)
+        ui.tag(g, number(lvl.id), px + d(20f), py + d(26f), d(13f))
+        ui.button(g, "sheetclose", px + pw - d(58f), py + d(9f), d(40f), d(34f), "", Style.GHOST, icon = Icon.CROSS) {
             sheet = null
         }
         // The map on the left, what is new on the right.
-        val thumbW = pw * 0.36f
+        val thumbW = pw * 0.38f
         val thumbH = thumbW * ROWS / COLS
-        val ty = py + d(50f)
-        renderer.drawMapThumb(g, thumb(lvl), px + d(16f), ty, thumbW, thumbH)
-        val ix = px + d(28f) + thumbW
+        val ty = top + d(16f)
+        framedThumb(g, thumb(lvl), px + d(18f), ty, thumbW, thumbH)
+        val ix = px + d(32f) + thumbW
         val iw = px + pw - d(16f) - ix
-        var iy = ty + d(6f)
-        ui.text(g, Tx.WAVES_COUNT.f(lvl.plan.count), ix, iy + d(10f), d(14f), Ui.TEXT, maxW = iw)
-        iy += d(24f)
+        var iy = ty
+        ui.icon(g, Icon.FLAG, ix + d(9f), iy + d(10f), d(17f), Ui.ACCENT)
+        ui.textMid(g, Tx.WAVES_COUNT.f(lvl.plan.count), ix + d(24f), iy + d(10f), d(16f), Ui.TEXT, Align.LEFT, maxW = iw - d(24f), font = Font.DISPLAY)
+        iy += d(30f)
         val stars = profile.stars(lvl.id)
-        for (k in 0 until 3) ui.star(g, ix + d(9f) + k * d(20f), iy + d(4f), d(8.5f), k < stars)
-        if (profile.hardWon(lvl.id)) ui.skull(g, ix + d(78f), iy + d(4f), d(15f), Ui.RED)
-        ui.medal(g, ix + d(100f), iy + d(2f), d(17f), profile.medal(lvl.id))
+        for (k in 0 until 3) ui.star(g, ix + d(10f) + k * d(21f), iy + d(4f), d(9f), k < stars)
+        if (profile.hardWon(lvl.id)) ui.skull(g, ix + d(80f), iy + d(4f), d(16f), Ui.RED)
+        ui.medal(g, ix + d(102f), iy + d(4f), d(18f), profile.medal(lvl.id))
         iy += d(26f)
         val fresh = EnemyType.entries.filter { it.campaign == lvl.id }
         if (fresh.isNotEmpty()) {
-            ui.text(g, Tx.NEW_ENEMIES.t, ix, iy + d(10f), d(11f), Ui.DIM, maxW = iw)
-            iy += d(16f)
-            for ((k, e) in fresh.withIndex()) renderer.drawEnemyIcon(g, e, ix + d(14f) + k * d(32f), iy + d(14f), d(26f), clock)
-            iy += d(34f)
+            ui.caption(g, Tx.NEW_ENEMIES.t, ix, iy + d(10f), maxW = iw)
+            iy += d(18f)
+            for ((k, e) in fresh.withIndex()) {
+                val ex = ix + k * d(38f)
+                ui.well(g, ex, iy, d(34f), d(34f))
+                renderer.drawEnemyIcon(g, e, ex + d(17f), iy + d(18f), d(26f), clock)
+            }
+            iy += d(44f)
         }
         val tower = TowerType.entries.firstOrNull { it.unlock == lvl.id && lvl.id > 1 }
         if (tower != null) {
-            ui.text(g, Tx.NEW_TOWER.t, ix, iy + d(10f), d(11f), Ui.DIM, maxW = iw)
-            renderer.drawTowerIcon(g, tower, 0, ix + d(16f), iy + d(32f), d(28f), clock)
-            ui.text(g, tower.title.t, ix + d(36f), iy + d(36f), d(12f), Ui.TEXT, maxW = iw - d(36f))
-            iy += d(52f)
+            ui.caption(g, Tx.NEW_TOWER.t, ix, iy + d(10f), maxW = iw)
+            iy += d(18f)
+            ui.well(g, ix, iy, d(34f), d(34f))
+            renderer.drawTowerIcon(g, tower, 0, ix + d(17f), iy + d(18f), d(28f), clock)
+            ui.textMid(g, tower.title.t, ix + d(42f), iy + d(17f), d(12.5f), Ui.TEXT, Align.LEFT, maxW = iw - d(42f))
+            iy += d(44f)
         }
         val ability = Ability.entries.firstOrNull { it.unlock == lvl.id }
         if (ability != null) {
-            ui.text(g, Tx.NEW_ABILITY.t, ix, iy + d(10f), d(11f), Ui.DIM, maxW = iw)
-            renderer.drawAbilityIcon(g, ability, ix + d(14f), iy + d(30f), d(22f), Ui.TEXT)
-            ui.text(g, ability.title.t, ix + d(36f), iy + d(34f), d(12f), Ui.TEXT, maxW = iw - d(36f))
+            ui.caption(g, Tx.NEW_ABILITY.t, ix, iy + d(10f), maxW = iw)
+            iy += d(18f)
+            ui.well(g, ix, iy, d(34f), d(34f))
+            renderer.drawAbilityIcon(g, ability, ix + d(17f), iy + d(18f), d(20f), Ui.TEXT)
+            ui.textMid(g, ability.title.t, ix + d(42f), iy + d(17f), d(12.5f), Ui.TEXT, Align.LEFT, maxW = iw - d(42f))
+            iy += d(44f)
         }
 
-        var y = ty + thumbH + d(16f)
-        ui.text(g, Tx.DIFFICULTY.t, px + d(18f), y + d(12f), d(12f), Ui.DIM)
-        y += d(20f)
+        var y = max(ty + thumbH, iy) + d(18f)
+        ui.caption(g, Tx.DIFFICULTY.t, px + d(18f), y + d(10f))
+        y += d(18f)
         val hardOpen = stars > 0
         ui.segmented(
             g, "diff", px + d(16f), y, pw - d(32f), d(40f), Difficulty.entries.map { it.title.t }, sheetDifficulty.ordinal,
             { it != Difficulty.HARD.ordinal || hardOpen }, size = 13f,
         ) { sheetDifficulty = Difficulty.entries[it] }
-        y += d(46f)
+        y += d(48f)
         val diffHint = if (!hardOpen && sheetDifficulty != Difficulty.HARD) Tx.HARD_LOCKED.t else sheetDifficulty.hint.t
-        ui.textMid(g, diffHint, px + pw / 2f, y + d(6f), d(11f), Ui.DIM, maxW = pw - d(32f))
-        y += d(20f)
+        ui.textMid(g, diffHint, px + pw / 2f, y + d(6f), d(11.5f), Ui.DIM, maxW = pw - d(32f), font = Font.BODY)
+        y += d(22f)
         val challenge = lvl.challenge
         if (challenge != null) {
-            val rowH = d(58f)
-            ui.toggle(g, "chal", px + d(12f), y, pw - d(24f), rowH, "", sheetChallenge) { sheetChallenge = it }
-            ui.medal(g, px + d(32f), y + rowH / 2f, d(26f), profile.medal(lvl.id))
-            ui.text(g, Tx.CHALLENGE.t + ": " + challenge.title, px + d(52f), y + d(24f), d(13f), Ui.TEXT, maxW = pw - d(130f))
-            ui.text(g, Tx.CHALLENGE_HINT.t, px + d(52f), y + d(42f), d(10.5f), Ui.DIM, maxW = pw - d(130f))
+            val rowH = d(60f)
+            ui.plate(g, px + d(16f), y, pw - d(32f), rowH, Ui.PANEL_LIGHT)
+            ui.toggle(g, "chal", px + d(16f), y, pw - d(32f), rowH, "", sheetChallenge) { sheetChallenge = it }
+            ui.medal(g, px + d(38f), y + rowH / 2f, d(28f), profile.medal(lvl.id))
+            ui.text(g, Tx.CHALLENGE.t + ": " + challenge.title, px + d(60f), y + d(26f), d(13f), Ui.TEXT, maxW = pw - d(140f))
+            ui.text(g, Tx.CHALLENGE_HINT.t, px + d(60f), y + d(44f), d(10.5f), Ui.DIM, maxW = pw - d(140f), font = Font.BODY)
             y += rowH + d(8f)
         }
-        val by = max(y + d(4f), py + ph - d(70f))
-        ui.button(g, "fight", px + d(16f), by, pw - d(32f), d(52f), Tx.FIGHT.t, Style.PRIMARY, size = 18f) {
+        val by = max(y + d(4f), py + ph - d(72f))
+        ui.button(g, "fight", px + d(16f), by, pw - d(32f), d(54f), Tx.FIGHT.t, Style.PRIMARY, size = 21f) {
             val diff = if (sheetDifficulty == Difficulty.HARD && !hardOpen) Difficulty.NORMAL else sheetDifficulty
             sheet = null
             game.startCampaign(lvl, diff, sheetChallenge)
@@ -319,11 +366,14 @@ internal class Menus(private val game: Game) {
         val x = d(16f)
         val w = ui.w - d(32f)
         val viewH = ui.h - ui.bottom - top
-        val content = settingsHeight(false) + d(300f)
+        val rows = settingsHeight()
+        // The texts below the controls wrap differently on every phone: last frame's height is used.
+        val content = if (settingsBottom > 0f) settingsBottom else rows + d(390f)
         val off = ui.beginScroll(g, Screen.SETTINGS.name, 0f, top, ui.w, viewH, content)
-        var y = top - off + d(4f)
-        y += settingsRows(g, x, y, w, inBattle = false)
-        y += d(12f)
+        var y = top - off + d(2f)
+        ui.panel(g, x - d(4f), y, w + d(8f), rows + d(26f))
+        settingsRows(g, x + d(10f), y + d(14f), w - d(20f))
+        y += rows + d(40f)
         val armed = clock - resetArmedAt < 3f
         ui.button(g, "reset", x, y, w, d(46f), if (armed) Tx.RESET_SURE.t else Tx.RESET.t, if (armed) Style.DANGER else Style.GHOST, size = 14f) {
             if (armed) {
@@ -334,32 +384,31 @@ internal class Menus(private val game: Game) {
                 resetArmedAt = clock
             }
         }
-        y += d(64f)
-        ui.text(g, Tx.PRIVACY.t, x + d(4f), y + d(14f), d(15f), Ui.TEXT)
-        y += d(24f)
-        y += ui.paragraph(g, Tx.PRIVACY_TEXT.t, x + d(4f), y, w - d(8f), d(12.5f), Ui.DIM)
-        y += d(14f)
-        ui.text(g, Tx.CREDITS.t, x + d(4f), y + d(14f), d(15f), Ui.TEXT)
-        y += d(24f)
-        y += ui.paragraph(g, Tx.CREDITS_TEXT.t, x + d(4f), y, w - d(8f), d(12.5f), Ui.DIM)
-        y += d(14f)
-        ui.text(g, Tx.VERSION.f(Game.VERSION), x + d(4f), y + d(12f), d(12f), Ui.DIM)
+        y += d(66f)
+        for ((title, text) in listOf(Tx.PRIVACY to Tx.PRIVACY_TEXT, Tx.CREDITS to Tx.CREDITS_TEXT)) {
+            ui.caption(g, title.t, x + d(4f), y + d(12f), Ui.ACCENT)
+            y += d(20f)
+            y += ui.paragraph(g, text.t, x + d(4f), y, w - d(8f), d(12.5f), Ui.DIM)
+            y += d(16f)
+        }
+        ui.text(g, Tx.VERSION.f(Game.VERSION), x + d(4f), y + d(12f), d(12f), Ui.FADED)
+        settingsBottom = y + d(36f) - (top - off)
         ui.endScroll(g, Screen.SETTINGS.name)
     }
 
-    private fun settingsHeight(inBattle: Boolean): Float = d(70f) + d(62f) * 2 + d(52f) * 4 + (if (inBattle) 0f else 0f)
+    private fun settingsHeight(): Float = d(70f) + d(64f) * 2 + d(52f) * 4
 
-    /** The settings rows from the top at [y]; returns their height. */
-    private fun settingsRows(g: Gfx, x: Float, y0: Float, w: Float, inBattle: Boolean): Float {
+    /** The settings rows from the top at [y0]. */
+    private fun settingsRows(g: Gfx, x: Float, y0: Float, w: Float) {
         var y = y0
-        ui.text(g, Tx.LANGUAGE.t, x + d(4f), y + d(14f), d(15f), Ui.TEXT)
-        ui.segmented(g, "lang", x, y + d(24f), w, d(38f), listOf("Русский", "English"), I18n.lang.ordinal) {
+        ui.caption(g, Tx.LANGUAGE.t, x + d(4f), y + d(12f))
+        ui.segmented(g, "lang", x, y + d(22f), w, d(40f), listOf("Русский", "English"), I18n.lang.ordinal) {
             game.setLanguage(Language.entries[it])
         }
-        y += d(70f)
-        ui.slider(g, "sfx", x, y, w, d(56f), Tx.SOUND.t, profile.sound) { profile.sound = it }
-        y += d(62f)
-        ui.slider(g, "music", x, y, w, d(56f), Tx.MUSIC.t, profile.music) { profile.music = it }
+        y += d(72f)
+        ui.slider(g, "sfx", x, y, w, d(58f), Tx.SOUND.t, profile.sound, Icon.SOUND) { profile.sound = it }
+        y += d(64f)
+        ui.slider(g, "music", x, y, w, d(58f), Tx.MUSIC.t, profile.music, Icon.MUSIC) { profile.music = it }
         y += d(62f)
         ui.toggle(g, "vibe", x, y, w, d(46f), Tx.VIBRATION.t, profile.vibration) { profile.vibration = it }
         y += d(52f)
@@ -374,25 +423,21 @@ internal class Menus(private val game: Game) {
         }
         y += d(52f)
         ui.toggle(g, "tips", x, y, w, d(46f), Tx.TIPS.t, profile.tips) { profile.tips = it }
-        y += d(52f)
-        return y - y0
     }
 
     /** Settings as a dialog over the paused battle. */
-    fun settingsPanel(g: Gfx, inBattle: Boolean, onBack: () -> Unit) {
+    fun settingsPanel(g: Gfx, onBack: () -> Unit) {
         val pw = min(ui.w - d(32f), d(360f))
-        val inner = settingsHeight(inBattle)
-        val ph = min(ui.h - ui.top - ui.bottom - d(24f), inner + d(130f))
+        val inner = settingsHeight()
+        val ph = min(ui.h - ui.top - ui.bottom - d(24f), inner + d(150f))
         val px = (ui.w - pw) / 2f
         val py = ui.top + (ui.h - ui.top - ui.bottom - ph) / 2f
-        ui.panel(g, px, py, pw, ph)
-        ui.textMid(g, Tx.SETTINGS_BTN.t, ui.w / 2f, py + d(28f), d(18f), Ui.TEXT)
-        val listTop = py + d(50f)
-        val listH = ph - d(50f) - d(70f)
+        val listTop = ui.panel(g, px, py, pw, ph, title = Tx.SETTINGS_BTN.t) + d(8f)
+        val listH = py + ph - d(76f) - listTop
         val off = ui.beginScroll(g, "battle-settings", px, listTop, pw, listH, inner)
-        settingsRows(g, px + d(16f), listTop - off, pw - d(32f), inBattle)
+        settingsRows(g, px + d(16f), listTop - off, pw - d(32f))
         ui.endScroll(g, "battle-settings")
-        ui.button(g, "sback", px + d(16f), py + ph - d(60f), pw - d(32f), d(46f), Tx.RESUME.t, Style.PRIMARY) { onBack() }
+        ui.button(g, "sback", px + d(16f), py + ph - d(64f), pw - d(32f), d(48f), Tx.RESUME.t, Style.PRIMARY, icon = Icon.PLAY) { onBack() }
     }
 
     // --- perks ----------------------------------------------------------------------------
@@ -401,13 +446,13 @@ internal class Menus(private val game: Game) {
         val top = ui.header(g, Tx.UPGRADES.t) { game.go(Screen.MENU) }
         val x = d(14f)
         val w = ui.w - d(28f)
-        ui.panel(g, x, top, w, d(74f), Ui.ACCENT)
-        ui.star(g, x + d(28f), top + d(26f), d(11f), true)
-        ui.text(g, Tx.POINTS.f(profile.freePoints), x + d(46f), top + d(32f), d(17f), Ui.GOLD, maxW = w - d(60f))
-        ui.paragraph(g, Tx.POINTS_HINT.t, x + d(16f), top + d(40f), w - d(32f), d(10.5f), Ui.DIM, spacing = 1.2f)
-        val listTop = top + d(86f)
-        val rowH = d(74f)
-        val bottomH = d(64f)
+        ui.panel(g, x, top, w, d(80f), Ui.ACCENT)
+        ui.icon(g, Icon.RANKS, x + d(30f), top + d(29f), d(26f), Ui.GOLD)
+        ui.textMid(g, Tx.POINTS.f(profile.freePoints), x + d(54f), top + d(29f), d(18f), Ui.GOLD, Align.LEFT, maxW = w - d(70f), font = Font.DISPLAY)
+        ui.paragraph(g, Tx.POINTS_HINT.t, x + d(18f), top + d(44f), w - d(36f), d(11f), Ui.DIM, spacing = 1.2f)
+        val listTop = top + d(92f)
+        val rowH = d(78f)
+        val bottomH = d(66f)
         val viewH = ui.h - ui.bottom - listTop - bottomH
         val content = Perk.entries.size * (rowH + d(8f))
         val off = ui.beginScroll(g, Screen.PERKS.name, 0f, listTop, ui.w, viewH, content)
@@ -415,28 +460,32 @@ internal class Menus(private val game: Game) {
             val y = listTop - off + i * (rowH + d(8f))
             if (y > listTop + viewH || y + rowH < listTop) continue
             val rank = profile.perk(p)
-            g.fillRoundRect(x, y, w, rowH, d(12f), Ui.PANEL_LIGHT)
-            g.strokeRoundRect(x, y, w, rowH, d(12f), Ui.EDGE, d(1f))
-            val bw = d(86f)
-            ui.text(g, p.title.t, x + d(14f), y + d(24f), d(15f), Ui.TEXT, maxW = w - bw - d(40f))
-            ui.text(g, p.hint.t, x + d(14f), y + d(43f), d(11.5f), Ui.DIM, maxW = w - bw - d(40f))
+            ui.plate(g, x, y, w, rowH, Ui.PANEL)
+            val bw = d(88f)
+            val tw = w - bw - d(40f)
+            ui.text(g, p.title.t, x + d(14f), y + d(25f), d(15.5f), Ui.TEXT, maxW = tw)
+            ui.text(g, p.hint.t, x + d(14f), y + d(44f), d(11.5f), Ui.DIM, maxW = tw, font = Font.BODY)
             for (k in 0 until p.maxRank) {
-                val px = x + d(20f) + k * d(18f)
-                g.fillRoundRect(px - d(6f), y + d(54f), d(14f), d(8f), d(4f), if (k < rank) Ui.ACCENT else Ui.PANEL)
+                val rx = x + d(14f) + k * d(20f)
+                if (k < rank) {
+                    ui.chamfer(g, rx, y + d(54f), d(16f), d(10f), d(3f), Ui.EDGE)
+                    ui.chamfer(g, rx + d(1f), y + d(55f), d(14f), d(8f), d(2.5f), Ui.ACCENT)
+                } else {
+                    ui.well(g, rx, y + d(54f), d(16f), d(10f), d(3f))
+                }
             }
-            val bx = x + w - bw - d(10f)
+            val bx = x + w - bw - d(12f)
             if (rank >= p.maxRank) {
-                ui.textMid(g, Tx.MAX.t, bx + bw / 2f, y + rowH / 2f, d(14f), Ui.GOLD)
+                ui.tag(g, Tx.MAX.t, bx + bw / 2f - g.textWidth(Tx.MAX.t, d(13f), Font.DISPLAY) / 2f - d(6f), y + rowH / 2f, d(13f), Ui.PANEL_HI, Ui.GOLD)
             } else {
-                ui.button(g, "buy${p.name}", bx, y + d(18f), bw, d(38f), "${p.cost}", Style.PRIMARY, profile.freePoints >= p.cost, size = 15f,
-                    icon = { gg, cx, cy, s, _ -> ui.star(gg, cx, cy, s * 0.55f, true, 0xFF6A4300.toInt()) }) {
+                ui.button(g, "buy${p.name}", bx, y + d(20f), bw, d(38f), "${p.cost}", Style.PRIMARY, profile.freePoints >= p.cost, size = 16f, icon = Icon.STAR) {
                     if (profile.buyPerk(p)) game.sound(Sfx.UPGRADE, 0.6f)
                 }
             }
         }
         ui.endScroll(g, Screen.PERKS.name)
         val by = ui.h - ui.bottom - bottomH + d(10f)
-        ui.button(g, "respec", x, by, w, d(44f), Tx.RESPEC.t, Style.GHOST, profile.spent > 0) { profile.resetPerks() }
+        ui.button(g, "respec", x, by, w, d(44f), Tx.RESPEC.t, Style.GHOST, profile.spent > 0, size = 14f, icon = Icon.UNDO) { profile.resetPerks() }
     }
 
     // --- achievements ---------------------------------------------------------------------
@@ -444,9 +493,10 @@ internal class Menus(private val game: Game) {
     fun achievements(g: Gfx) {
         val top = ui.header(g, Tx.ACHIEVEMENTS.t) { game.go(Screen.MENU) }
         val done = Achievement.entries.count { profile.achieved(it) }
-        ui.textMid(g, Tx.ACH_COUNT.f(done, Achievement.entries.size), ui.w / 2f, top + d(4f), d(13f), Ui.ACCENT)
-        val listTop = top + d(20f)
-        val rowH = d(68f)
+        val count = Tx.ACH_COUNT.f(done, Achievement.entries.size)
+        ui.tag(g, count, ui.w - d(12f), ui.top + d(30f), d(13f), Ui.PANEL_HI, Ui.GOLD, right = true)
+        val listTop = top - d(4f)
+        val rowH = d(72f)
         val x = d(14f)
         val w = ui.w - d(28f)
         val viewH = ui.h - ui.bottom - listTop
@@ -457,55 +507,65 @@ internal class Menus(private val game: Game) {
             val y = listTop - off + d(4f) + i * (rowH + d(8f))
             if (y > listTop + viewH || y + rowH < listTop) continue
             val got = profile.achieved(a)
-            g.fillRoundRect(x, y, w, rowH, d(12f), if (got) 0xFF262214.toInt() else Ui.PANEL_LIGHT)
-            g.strokeRoundRect(x, y, w, rowH, d(12f), if (got) Ui.GOLD else Ui.EDGE, d(1f))
-            ui.medal(g, x + d(28f), y + rowH / 2f, d(30f), got)
-            val tx = x + d(52f)
-            val tw = w - d(64f)
-            ui.text(g, a.title.t, tx, y + d(22f), d(14.5f), if (got) Ui.GOLD else Ui.TEXT, maxW = tw)
-            ui.text(g, a.hint.t, tx, y + d(39f), d(11f), Ui.DIM, maxW = tw)
+            ui.plate(g, x, y, w, rowH, if (got) Ui.PANEL_LIGHT else Ui.PANEL, if (got) Ui.GOLD else Ui.EDGE)
+            ui.well(g, x + d(10f), y + d(12f), d(44f), rowH - d(24f), d(6f))
+            ui.icon(g, Icon.MEDAL, x + d(32f), y + rowH / 2f + d(1f), d(30f), if (got) Ui.GOLD else Ui.FADED)
+            val tx = x + d(66f)
+            val tw = w - d(78f)
+            ui.text(g, a.title.t, tx, y + d(24f), d(15f), if (got) Ui.GOLD else Ui.TEXT, maxW = tw)
+            ui.text(g, a.hint.t, tx, y + d(41f), d(11.5f), Ui.DIM, maxW = tw, font = Font.BODY)
             val now = min(a.progress(profile), a.goal)
-            val count = "$now/${a.goal}"
-            val cw = g.textWidth(count, d(10.5f))
-            ui.bar(g, tx, y + d(48f), tw - cw - d(14f), d(7f), now / a.goal.toFloat(), if (got) Ui.GOLD else Ui.ACCENT)
-            ui.text(g, count, tx + tw - d(2f), y + d(55f), d(10.5f), Ui.DIM, Align.RIGHT)
+            val text = "$now/${a.goal}"
+            val cw = g.textWidth(text, d(11f), Font.DISPLAY)
+            ui.bar(g, tx, y + d(50f), tw - cw - d(12f), d(9f), now / a.goal.toFloat(), if (got) Ui.GOLD else Ui.ACCENT)
+            ui.text(g, text, tx + tw, y + d(58.5f), d(11f), if (got) Ui.GOLD else Ui.DIM, Align.RIGHT, font = Font.DISPLAY)
         }
         ui.endScroll(g, Screen.ACHIEVEMENTS.name)
     }
 
     // --- codex ----------------------------------------------------------------------------
 
-    private class Entry(val key: String, val known: Boolean, val name: String, val draw: (Gfx, Float, Float, Float) -> Unit, val details: () -> List<String>)
+    /** One card of the codex: its picture, a line about it, its numbers and longer notes. */
+    private class Entry(
+        val key: String,
+        val known: Boolean,
+        val name: String,
+        val draw: (Gfx, Float, Float, Float) -> Unit,
+        val hint: String,
+        val stats: () -> List<String>,
+        val notes: () -> List<String> = { emptyList() },
+    )
 
     private fun codexEntries(): List<Entry> {
         val progress = profile.progress
         return when (codexTab) {
             0 -> EnemyType.entries.map { e ->
-                Entry(e.key, profile.seen(e.key), e.title.t, { g, cx, cy, s -> renderer.drawEnemyIcon(g, e, cx, cy, s, clock) }) {
+                Entry(e.key, profile.seen(e.key), e.title.t, { g, cx, cy, s -> renderer.drawEnemyIcon(g, e, cx, cy, s, clock) }, e.hint.t, {
                     buildList {
-                        add(e.hint.t)
-                        add(listOf(Tx.HEALTH.f(e.hp.roundToInt()), Tx.SPEED.f(Num.one(e.speed)), Tx.ARMOR.f(e.armor.roundToInt())).joinToString(" · "))
-                        add(listOf(Tx.REWARD.f(e.reward), Tx.BASE_DAMAGE.f(e.damage)).joinToString(" · "))
-                        val traits = buildList {
-                            if (e.boss) add(Tx.BOSS.t)
-                            if (e.air) add(Tx.FLYING.t)
-                            if (e.shield > 0f) add(Tx.SHIELDED.f(Num.percent(e.shield)))
-                            if (e.stealth) add(Tx.STEALTHY.t)
-                        }
-                        if (traits.isNotEmpty()) add(traits.joinToString(" · "))
+                        add(Tx.HEALTH.f(e.hp.roundToInt()))
+                        add(Tx.SPEED.f(Num.one(e.speed)))
+                        add(Tx.ARMOR.f(e.armor.roundToInt()))
+                        add(Tx.REWARD.f(e.reward))
+                        add(Tx.BASE_DAMAGE.f(e.damage))
+                        if (e.boss) add(Tx.BOSS.t)
+                        if (e.air) add(Tx.FLYING.t)
+                        if (e.shield > 0f) add(Tx.SHIELDED.f(Num.percent(e.shield)))
+                        if (e.stealth) add(Tx.STEALTHY.t)
                     }
-                }
+                })
             }
             1 -> TowerType.entries.map { t ->
-                Entry(t.key, t.unlock <= progress, t.title.t, { g, cx, cy, s -> renderer.drawTowerIcon(g, t, 2, cx, cy, s, clock) }) {
-                    val b = t.branches
-                    listOf(t.hint.t, Tx.COST.f(t.levels[0].cost), Tx.BRANCHES.f(b[0].title.t, b[1].title.t), b[0].title.t + ": " + b[0].hint.t, b[1].title.t + ": " + b[1].hint.t)
-                }
+                val b = t.branches
+                Entry(
+                    t.key, t.unlock <= progress, t.title.t, { g, cx, cy, s -> renderer.drawTowerIcon(g, t, 2, cx, cy, s, clock) }, t.hint.t,
+                    { listOf(Tx.COST.f(t.levels[0].cost)) },
+                    { listOf(b[0].title.t + ": " + b[0].hint.t, b[1].title.t + ": " + b[1].hint.t) },
+                )
             }
             else -> Ability.entries.map { a ->
-                Entry(a.key, a.unlock <= progress, a.title.t, { g, cx, cy, s -> renderer.drawAbilityIcon(g, a, cx, cy, s * 0.7f, Ui.TEXT) }) {
-                    listOf(a.hint.t, Tx.COOLDOWN.f(a.cooldown.roundToInt()))
-                }
+                Entry(a.key, a.unlock <= progress, a.title.t, { g, cx, cy, s -> renderer.drawAbilityIcon(g, a, cx, cy, s * 0.7f, Ui.TEXT) }, a.hint.t, {
+                    listOf(Tx.COOLDOWN.f(a.cooldown.roundToInt()))
+                })
             }
         }
     }
@@ -518,14 +578,14 @@ internal class Menus(private val game: Game) {
 
     fun codex(g: Gfx) {
         val top = ui.header(g, Tx.CODEX.t) { game.go(Screen.MENU) }
-        ui.segmented(g, "ctab", d(12f), top, ui.w - d(24f), d(38f), listOf(Tx.TAB_ENEMIES.t, Tx.TAB_TOWERS.t, Tx.TAB_ABILITIES.t), codexTab, size = 13f) {
+        ui.segmented(g, "ctab", d(12f), top, ui.w - d(24f), d(40f), listOf(Tx.TAB_ENEMIES.t, Tx.TAB_TOWERS.t, Tx.TAB_ABILITIES.t), codexTab, size = 13f) {
             codexTab = it
             codexPick = -1
             ui.resetScroll(Screen.CODEX.name)
         }
         val entries = codexEntries()
-        val detailH = d(176f)
-        val gridTop = top + d(50f)
+        val detailH = d(196f)
+        val gridTop = top + d(52f)
         val gridH = ui.h - ui.bottom - gridTop - detailH - d(8f)
         val cols = 4
         val gap = d(8f)
@@ -540,40 +600,45 @@ internal class Menus(private val game: Game) {
             val id = "entry$i"
             ui.area(id, x, y, cw, ch) { codexPick = i }
             val picked = codexPick == i
-            g.fillRoundRect(x, y, cw, ch, d(10f), if (picked) 0xFF2A2416.toInt() else Ui.PANEL_LIGHT)
-            g.strokeRoundRect(x, y, cw, ch, d(10f), if (picked) Ui.ACCENT else Ui.EDGE, if (picked) d(2f) else d(1f))
+            ui.plate(g, x, y, cw, ch, if (picked) Ui.PANEL_LIGHT else Ui.PANEL, if (picked) Ui.ACCENT else Ui.EDGE)
             if (e.known) {
-                e.draw(g, x + cw / 2f, y + cw / 2f, cw * 0.6f)
-                ui.textMid(g, e.name, x + cw / 2f, y + ch - d(12f), d(10f), Ui.TEXT, maxW = cw - d(6f))
+                e.draw(g, x + cw / 2f, y + cw / 2f + d(2f), cw * 0.6f)
+                ui.textMid(g, e.name, x + cw / 2f, y + ch - d(13f), d(10.5f), Ui.TEXT, maxW = cw - d(8f))
             } else {
-                ui.textMid(g, "?", x + cw / 2f, y + cw / 2f, d(26f), Ui.DIM)
-                ui.textMid(g, "???", x + cw / 2f, y + ch - d(12f), d(10f), Ui.DIM)
+                ui.textMid(g, "?", x + cw / 2f, y + cw / 2f, d(28f), Ui.FADED, font = Font.DISPLAY)
+                ui.textMid(g, "???", x + cw / 2f, y + ch - d(13f), d(10.5f), Ui.FADED)
             }
         }
         ui.endScroll(g, Screen.CODEX.name)
 
         val dy = ui.h - ui.bottom - detailH
-        ui.panel(g, d(12f), dy, ui.w - d(24f), detailH - d(8f))
+        ui.panel(g, d(10f), dy, ui.w - d(20f), detailH - d(10f))
         val pick = entries.getOrNull(codexPick)
         if (pick == null) {
-            ui.textMid(g, Tx.TAP_FOR_DETAILS.t, ui.w / 2f, dy + detailH / 2f - d(4f), d(13f), Ui.DIM, maxW = ui.w - d(48f))
+            ui.textMid(g, Tx.TAP_FOR_DETAILS.t, ui.w / 2f, dy + detailH / 2f - d(4f), d(13f), Ui.DIM, maxW = ui.w - d(56f))
             return
         }
         if (!pick.known) {
             val text = if (codexTab == 0) Tx.NOT_MET.t else Tx.UNLOCKS_ON.f(unlockLevel(pick.key))
-            ui.textMid(g, text, ui.w / 2f, dy + detailH / 2f - d(4f), d(14f), Ui.DIM, maxW = ui.w - d(48f))
+            ui.lock(g, ui.w / 2f, dy + detailH / 2f - d(26f), d(24f), Ui.FADED)
+            ui.textMid(g, text, ui.w / 2f, dy + detailH / 2f + d(10f), d(14f), Ui.DIM, maxW = ui.w - d(56f))
             return
         }
-        g.fillCircle(d(56f), dy + d(52f), d(34f), Ui.PANEL_LIGHT)
-        pick.draw(g, d(56f), dy + d(52f), d(48f))
-        val tx = d(102f)
-        val tw = ui.w - tx - d(24f)
-        ui.text(g, pick.name, tx, dy + d(30f), d(17f), Ui.TEXT, maxW = tw)
-        var y = dy + d(38f)
-        for ((k, line) in pick.details().withIndex()) {
-            val h = ui.paragraph(g, line, tx, y, tw, d(11f), if (k == 0) Ui.TEXT else Ui.DIM, spacing = 1.2f)
-            y += h + d(2f)
-            if (y > dy + detailH - d(20f)) break
+        val photo = d(76f)
+        ui.well(g, d(26f), dy + d(22f), photo, photo, d(6f))
+        pick.draw(g, d(26f) + photo / 2f, dy + d(22f) + photo / 2f + d(1f), d(54f))
+        val tx = d(26f) + photo + d(14f)
+        val tw = ui.w - tx - d(28f)
+        ui.text(g, pick.name, tx, dy + d(38f), d(18f), Ui.TEXT, maxW = tw, font = Font.DISPLAY)
+        var y = dy + d(46f)
+        y += ui.paragraph(g, pick.hint, tx, y, tw, d(11.5f), Ui.TEXT, spacing = 1.2f) + d(6f)
+        val left = d(26f)
+        val wide = ui.w - left - d(28f)
+        y = max(y, dy + d(22f) + photo + d(10f))
+        y += ui.chips(g, pick.stats(), left, y, wide, size = d(10.5f), wrap = true) + d(6f)
+        for (note in pick.notes()) {
+            if (y > dy + detailH - d(30f)) break
+            y += ui.paragraph(g, note, left, y, wide, d(10.5f), Ui.DIM, spacing = 1.15f)
         }
     }
 
@@ -585,33 +650,37 @@ internal class Menus(private val game: Game) {
         val level = Levels.daily(day, profile.progress)
         val mods = Mod.forDay(day)
         val date = LocalDate.ofEpochDay(day.toLong())
-        ui.textMid(g, "%02d.%02d.%d".format(date.dayOfMonth, date.monthValue, date.year), ui.w / 2f, top + d(4f), d(13f), Ui.ACCENT)
+        val dateText = "${date.dayOfMonth.toString().padStart(2, '0')}.${date.monthValue.toString().padStart(2, '0')}.${date.year}"
+        ui.tag(g, dateText, ui.w - d(12f), ui.top + d(30f), d(12f), Ui.PANEL_HI, Ui.TEXT, right = true)
         val x = d(14f)
         val w = ui.w - d(28f)
-        val thumbH = min(d(240f), (ui.h - ui.bottom - top) * 0.36f)
+        val thumbH = min(d(230f), (ui.h - ui.bottom - top) * 0.34f)
         val thumbW = thumbH * COLS / ROWS
-        val ty = top + d(28f)
-        renderer.drawMapThumb(g, thumb(level), (ui.w - thumbW) / 2f, ty, thumbW, thumbH)
-        var y = ty + thumbH + d(10f)
+        val ty = top + d(4f)
+        framedThumb(g, thumb(level), (ui.w - thumbW) / 2f, ty, thumbW, thumbH)
+        var y = ty + thumbH + d(12f)
         val source = Levels.all.firstOrNull { it.ascii == level.ascii }
         if (source != null) ui.textMid(g, Tx.DAILY_MAP.f(source.name.t), ui.w / 2f, y + d(6f), d(12f), Ui.DIM)
         y += d(22f)
-        ui.text(g, Tx.DAILY_TWISTS.t, x + d(4f), y + d(12f), d(13f), Ui.TEXT)
-        y += d(20f)
+        ui.caption(g, Tx.DAILY_TWISTS.t, x + d(4f), y + d(10f), Ui.ACCENT)
+        y += d(18f)
         for (m in mods) {
-            g.fillRoundRect(x, y, w, d(48f), d(10f), Ui.PANEL_LIGHT)
-            g.strokeRoundRect(x, y, w, d(48f), d(10f), Ui.EDGE, d(1f))
-            ui.text(g, m.title.t, x + d(14f), y + d(20f), d(14f), Ui.ACCENT, maxW = w - d(28f))
-            ui.text(g, m.hint.t, x + d(14f), y + d(37f), d(11.5f), Ui.DIM, maxW = w - d(28f))
-            y += d(54f)
+            ui.plate(g, x, y, w, d(52f), Ui.PANEL)
+            ui.icon(g, Icon.WARNING, x + d(24f), y + d(25f), d(22f), Ui.ACCENT)
+            ui.text(g, m.title.t, x + d(46f), y + d(22f), d(14.5f), Ui.TEXT, maxW = w - d(58f))
+            ui.text(g, m.hint.t, x + d(46f), y + d(39f), d(11.5f), Ui.DIM, maxW = w - d(58f), font = Font.BODY)
+            y += d(58f)
         }
-        y += d(4f)
-        val best = profile.dailyBest(day)
-        val status = if (profile.dailyWon(day)) Tx.DAILY_WON.t else Tx.DAILY_BEST.f(best)
-        ui.textMid(g, status, ui.w / 2f, y + d(8f), d(13f), if (profile.dailyWon(day)) Ui.GREEN else Ui.TEXT, maxW = w)
-        y += d(20f)
-        ui.textMid(g, Tx.STREAK.f(profile.dailyStreak(day)) + " · " + Tx.DAILY_REWARD.t, ui.w / 2f, y + d(8f), d(11f), Ui.DIM, maxW = w)
-        val by = max(y + d(24f), ui.h - ui.bottom - d(70f))
-        ui.button(g, "dstart", x, by, w, d(54f), Tx.START.t, Style.PRIMARY, size = 18f) { game.startDaily() }
+        y += d(6f)
+        val won = profile.dailyWon(day)
+        val status = if (won) Tx.DAILY_WON.t else Tx.DAILY_BEST.f(profile.dailyBest(day))
+        if (won) ui.icon(g, Icon.CHECK, ui.w / 2f - g.textWidth(status, d(14f)) / 2f - d(14f), y + d(8f), d(16f), Ui.GREEN)
+        ui.textMid(g, status, ui.w / 2f, y + d(8f), d(14f), if (won) Ui.GREEN else Ui.TEXT, maxW = w)
+        y += d(24f)
+        val streak = Tx.STREAK.f(profile.dailyStreak(day))
+        y += ui.chips(g, listOf(streak), (ui.w - g.textWidth(streak, d(11f)) - d(12f)) / 2f, y, w, Ui.ACCENT) + d(6f)
+        ui.textMid(g, Tx.DAILY_REWARD.t, ui.w / 2f, y + d(8f), d(11.5f), Ui.DIM, maxW = w, font = Font.BODY)
+        val by = max(y + d(26f), ui.h - ui.bottom - d(72f))
+        ui.button(g, "dstart", x, by, w, d(56f), Tx.START.t, Style.PRIMARY, size = 20f, icon = Icon.PLAY) { game.startDaily() }
     }
 }

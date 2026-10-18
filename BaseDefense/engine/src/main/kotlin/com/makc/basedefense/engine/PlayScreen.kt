@@ -62,7 +62,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private var resultAchievements: List<Achievement> = emptyList()
     private var flushed = false
 
-    private class Card(val kind: L, val title: String, val text: String, val icon: (Gfx, Float, Float, Float) -> Unit)
+    private class Card(val kind: L, val title: String, val text: String, val stats: List<String> = emptyList(), val icon: (Gfx, Float, Float, Float) -> Unit)
 
     private val cards = ArrayList<Card>()
 
@@ -88,10 +88,8 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         if (profile.seen(type.key)) return
         profile.markSeen(type.key)
         if (!profile.tips) return
-        cards += Card(
-            Tx.CARD_ENEMY, type.title.t,
-            type.hint.t + "\n" + Tx.ENEMY_STATS.f(type.hp.roundToInt(), Num.one(type.speed), type.armor.roundToInt()),
-        ) { g, cx, cy, s -> renderer.drawEnemyIcon(g, type, cx, cy, s, clock) }
+        val stats = listOf(Tx.HEALTH.f(type.hp.roundToInt()), Tx.SPEED.f(Num.one(type.speed)), Tx.ARMOR.f(type.armor.roundToInt()))
+        cards += Card(Tx.CARD_ENEMY, type.title.t, type.hint.t, stats) { g, cx, cy, s -> renderer.drawEnemyIcon(g, type, cx, cy, s, clock) }
     }
 
     override fun bossSpawned(e: Enemy) {
@@ -140,7 +138,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         fun tip(key: String, title: L, text: L) {
             if (profile.seen(key)) return
             profile.markSeen(key)
-            if (tips) cards += Card(Tx.CARD_TIP, title.t, text.t) { g, cx, cy, sz -> ui.book(g, cx, cy, sz * 0.8f, Ui.ACCENT) }
+            if (tips) cards += Card(Tx.CARD_TIP, title.t, text.t) { g, cx, cy, sz -> ui.icon(g, Icon.INFO, cx, cy, sz * 0.7f, Ui.ACCENT) }
         }
         for (t in TowerType.entries) {
             if (t.unlock != id || profile.seen(t.key)) continue
@@ -531,7 +529,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     fun render(g: Gfx) {
         val wd = world ?: return
         layout()
-        g.fillRect(0f, ui.top + hudH, ui.w, stripY - ui.top - hudH, 0xFF0B100E.toInt())
+        g.fillRect(0f, ui.top + hudH, ui.w, stripY - ui.top - hudH, Ui.BG_DEEP)
 
         g.save()
         g.clip(mapX, mapY, cell * COLS, cell * ROWS)
@@ -566,7 +564,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             g.fillRect(0f, 0f, ui.w, ui.h, Ui.SCRIM)
             when (overlay) {
                 Overlay.PAUSE -> drawPause(g)
-                Overlay.SETTINGS -> game.menus.settingsPanel(g, inBattle = true) { overlay = Overlay.PAUSE }
+                Overlay.SETTINGS -> game.menus.settingsPanel(g) { overlay = Overlay.PAUSE }
                 Overlay.RESULT -> drawResult(g, wd)
                 Overlay.CARD -> drawCard(g)
                 Overlay.NONE -> Unit
@@ -625,12 +623,12 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private fun drawTexts(g: Gfx, wd: World) {
         for (t in wd.texts) {
             val a = (t.life / 0.4f).coerceIn(0f, 1f)
-            val size = d(12f) * t.size
+            val size = d(12.5f) * t.size
             val tx = screenX(t.x)
             val ty = screenY(t.y)
             if (ty < mapY || ty > mapY + cell * ROWS + d(10f)) continue
-            ui.text(g, t.text, tx + d(1f), ty + d(1f), size, Colors.alpha(0xFF000000.toInt(), a * 0.8f), Align.CENTER)
-            ui.text(g, t.text, tx, ty, size, Colors.alpha(t.color, a), Align.CENTER)
+            ui.text(g, t.text, tx + d(1.2f), ty + d(1.2f), size, Colors.alpha(Ui.EDGE, a * 0.85f), Align.CENTER, font = Font.DISPLAY)
+            ui.text(g, t.text, tx, ty, size, Colors.alpha(t.color, a), Align.CENTER, font = Font.DISPLAY)
         }
     }
 
@@ -645,19 +643,26 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         }
     }
 
+    /** A dark plate over the map with coloured bars at its ends. */
+    private fun notePlate(g: Gfx, x: Float, y: Float, bw: Float, bh: Float, color: Int, a: Float) {
+        ui.chamfer(g, x, y, bw, bh, d(8f), Colors.alpha(Ui.EDGE, a))
+        ui.chamfer(g, x + d(1f), y + d(1f), bw - d(2f), bh - d(2f), d(8f), Colors.alpha(Ui.BAND, a * 0.95f))
+        g.fillRect(x + d(6f), y + d(9f), d(4f), bh - d(18f), Colors.alpha(color, a))
+        g.fillRect(x + bw - d(10f), y + d(9f), d(4f), bh - d(18f), Colors.alpha(color, a))
+    }
+
     private fun drawBanner(g: Gfx, wd: World) {
         val b = wd.banner ?: return
         val a = min(1f, b.timer / 0.4f) * min(1f, (b.maxTimer - b.timer) / 0.15f + 0.3f)
         val title = b.title()
         val sub = b.sub?.invoke()
-        val bw = min(ui.w - d(32f), max(g.textWidth(title, d(17f)), if (sub != null) g.textWidth(sub, d(12f)) else 0f) + d(36f))
-        val bh = if (sub != null) d(56f) else d(38f)
+        val bw = min(ui.w - d(32f), max(g.textWidth(title, d(18f), Font.DISPLAY), if (sub != null) g.textWidth(sub, d(12.5f)) else 0f) + d(48f))
+        val bh = if (sub != null) d(60f) else d(42f)
         val x = (ui.w - bw) / 2f
         val y = mapY + d(12f)
-        g.fillRoundRect(x, y, bw, bh, d(12f), Colors.alpha(0xE6101614.toInt(), a))
-        g.strokeRoundRect(x, y, bw, bh, d(12f), Colors.alpha(b.color, a), d(1.5f))
-        ui.textMid(g, title, ui.w / 2f, y + d(19f), d(17f), Colors.alpha(b.color, a), maxW = bw - d(20f))
-        if (sub != null) ui.textMid(g, sub, ui.w / 2f, y + d(40f), d(12f), Colors.alpha(Ui.TEXT, a), maxW = bw - d(20f))
+        notePlate(g, x, y, bw, bh, b.color, a)
+        ui.textMid(g, title, ui.w / 2f, y + d(21f), d(18f), Colors.alpha(b.color, a), maxW = bw - d(32f), font = Font.DISPLAY)
+        if (sub != null) ui.textMid(g, sub, ui.w / 2f, y + d(43f), d(12.5f), Colors.alpha(Ui.TEXT, a), maxW = bw - d(32f))
     }
 
     private fun drawHint(g: Gfx, wd: World) {
@@ -668,67 +673,91 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             wd.towers.isEmpty() -> Tx.HINT_PICK.t
             else -> Tx.HINT_START.t
         }
-        val bw = min(ui.w - d(24f), g.textWidth(hint, d(13f)) + d(28f))
+        val bw = min(ui.w - d(24f), g.textWidth(hint, d(13f)) + d(60f))
+        val bh = d(40f)
         val x = (ui.w - bw) / 2f
         val y = mapY + d(10f)
-        g.fillRoundRect(x, y, bw, d(36f), d(18f), 0xE6101614.toInt())
-        g.strokeRoundRect(x, y, bw, d(36f), d(18f), Ui.ACCENT, d(1.2f))
-        ui.textMid(g, hint, ui.w / 2f, y + d(18f), d(13f), Ui.TEXT, maxW = bw - d(16f))
+        ui.chamfer(g, x, y, bw, bh, d(8f), Ui.EDGE)
+        ui.chamfer(g, x + d(1f), y + d(1f), bw - d(2f), bh - d(2f), d(8f), Ui.ACCENT)
+        ui.chamfer(g, x + d(36f), y + d(1f), bw - d(37f), bh - d(2f), d(8f), Colors.alpha(Ui.BAND, 0.96f))
+        ui.icon(g, Icon.INFO, x + d(19f), y + bh / 2f, d(20f), Ui.DARK_TEXT)
+        ui.textMid(g, hint, x + d(36f) + (bw - d(36f)) / 2f, y + bh / 2f, d(13f), Ui.TEXT, maxW = bw - d(52f))
+    }
+
+    /** A sunken readout with an icon and a number; returns its width. */
+    private fun readout(g: Gfx, x: Float, cy: Float, minW: Float, value: String, color: Int, icon: (Float) -> Unit): Float {
+        val w = max(minW, d(30f) + g.textWidth(value, d(17f), Font.DISPLAY) + d(10f))
+        ui.well(g, x, cy - d(16f), w, d(32f))
+        icon(x + d(15f))
+        ui.textMid(g, value, x + d(29f), cy + d(1f), d(17f), color, Align.LEFT, font = Font.DISPLAY)
+        return w
     }
 
     private fun drawHud(g: Gfx, wd: World) {
         val s = session ?: return
-        g.fillRect(0f, 0f, ui.w, ui.top + hudH, Ui.PANEL)
-        g.fillRect(0f, ui.top + hudH - d(1f), ui.w, d(1f), Ui.EDGE)
-        val cy = ui.top + hudH / 2f
+        val bottom = ui.top + hudH
+        g.fillRect(0f, 0f, ui.w, bottom, Ui.BAND)
+        g.fillRect(0f, bottom - d(3f), ui.w, d(1f), Ui.PANEL_HI)
+        g.fillRect(0f, bottom - d(2f), ui.w, d(2f), Ui.EDGE)
+        val cy = ui.top + hudH / 2f - d(1f)
         val low = wd.lives <= wd.maxLives / 4
-        ui.heart(g, d(22f), cy, d(18f), Ui.RED)
-        ui.textMid(g, "${wd.lives}", d(37f), cy, d(17f), if (low && sin(clock * 10f) > 0f) Ui.RED else Ui.TEXT, Align.LEFT)
-        ui.coin(g, d(86f), cy, d(18f))
+        var x = d(8f)
+        x += readout(g, x, cy, d(62f), "${wd.lives}", if (low && sin(clock * 10f) > 0f) Ui.RED else Ui.TEXT) { ix ->
+            ui.heart(g, ix, cy + d(1f), d(18f), Ui.RED)
+        } + d(6f)
         val moneyColor = if (moneyFlash > 0f && sin(clock * 30f) > 0f) Ui.RED else Ui.GOLD
-        ui.textMid(g, "${wd.money}", d(100f), cy, d(17f), moneyColor, Align.LEFT)
+        x += readout(g, x, cy, d(78f), "${wd.money}", moneyColor) { ix -> ui.coin(g, ix, cy + d(1f), d(19f)) } + d(6f)
 
-        val waveText = if (wd.endless) Tx.WAVE_N.f(max(1, wd.wavesStarted)) else Tx.WAVE_N_OF.f(max(1, wd.wavesStarted), wd.totalWaves)
-        val pauseX = ui.w - d(12f) - d(40f)
-        val speedX = pauseX - d(8f) - d(50f)
-        var badges = speedX - d(6f)
+        val pauseX = ui.w - d(10f) - d(40f)
+        val speedX = pauseX - d(8f) - d(48f)
+        var badges = speedX - d(4f)
         if (s.challenge) {
-            badges -= d(22f)
-            ui.medal(g, badges + d(11f), cy, d(20f), !wd.challengeFailed)
+            badges -= d(24f)
+            ui.medal(g, badges + d(12f), cy, d(22f), !wd.challengeFailed)
         }
         if (s.difficulty == Difficulty.HARD) {
-            badges -= d(22f)
-            ui.skull(g, badges + d(11f), cy, d(18f), Ui.RED)
+            badges -= d(24f)
+            ui.skull(g, badges + d(12f), cy, d(20f), Ui.RED)
         }
-        val waveLeft = d(150f)
-        ui.textMid(g, waveText, (waveLeft + badges) / 2f, cy, d(14f), Ui.TEXT, maxW = max(d(40f), badges - waveLeft - d(4f)))
-        ui.button(g, "speed", speedX, cy - d(17f), d(50f), d(34f), "×$speed", if (speed > 1) Style.PRIMARY else Style.NORMAL, size = 15f) {
+        val wave = max(1, wd.wavesStarted)
+        val waveText = if (wd.endless) "$wave" else "$wave/${wd.totalWaves}"
+        val room = badges - d(6f) - x
+        if (room > d(56f)) {
+            val ww = min(room, d(30f) + g.textWidth(waveText, d(17f), Font.DISPLAY) + d(12f))
+            ui.well(g, x, cy - d(16f), ww, d(32f))
+            ui.icon(g, Icon.FLAG, x + d(15f), cy, d(18f), Ui.ACCENT)
+            ui.textMid(g, waveText, x + d(29f), cy + d(1f), d(17f), Ui.TEXT, Align.LEFT, maxW = ww - d(36f), font = Font.DISPLAY)
+        }
+        ui.button(g, "speed", speedX, cy - d(17f), d(48f), d(33f), "×$speed", if (speed > 1) Style.PRIMARY else Style.NORMAL, size = 15f) {
             speed = if (speed >= 3) 1 else speed + 1
         }
-        ui.button(g, "pause", pauseX, cy - d(17f), d(40f), d(34f), "", icon = { gg, x, y, sz, c -> ui.pauseIcon(gg, x, y, sz * 0.9f, c) }) {
-            openPause()
-        }
+        ui.button(g, "pause", pauseX, cy - d(17f), d(40f), d(33f), "", icon = Icon.PAUSE) { openPause() }
     }
 
     private fun drawStrip(g: Gfx, wd: World) {
-        g.fillRect(0f, stripY, ui.w, stripH, 0xFF111816.toInt())
+        g.fillRect(0f, stripY, ui.w, stripH, Ui.PANEL_DARK)
+        g.fillRect(0f, stripY, ui.w, d(1f), Ui.EDGE)
         val pad = d(6f)
-        val bs = stripH - pad * 2f
+        val bs = stripH - pad * 2f - d(3f)
         var x = d(8f)
         for (a in Ability.entries) {
             if (!wd.rules.unlocked(a)) continue
             drawAbility(g, wd, a, x, stripY + pad, bs)
-            x += bs + d(6f)
+            x += bs + d(7f)
         }
-        val waveW = min(ui.w * 0.36f, d(170f))
+        val waveW = min(ui.w * 0.38f, d(176f))
         val waveX = ui.w - waveW - d(8f)
         drawStripMiddle(g, wd, x + d(2f), waveX - d(6f))
 
         val label: String
+        var sub: String? = null
         var style = Style.PRIMARY
         when {
             wd.phase == Phase.READY -> label = Tx.START_WAVE.t
-            wd.countdown >= 0f -> label = Tx.NEXT_WAVE_IN.f(wd.wavesStarted + 1, wd.countdown.toInt() + 1, wd.earlyBonus)
+            wd.countdown >= 0f -> {
+                label = Tx.WAVE_N.f(wd.wavesStarted + 1)
+                sub = Tx.NEXT_WAVE_IN.f(wd.countdown.toInt() + 1, wd.earlyBonus)
+            }
             wd.nextWave == null -> {
                 label = Tx.FINAL.t
                 style = Style.NORMAL
@@ -739,7 +768,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             }
         }
         val pulse = wd.phase == Phase.READY && sin(clock * 5f) > 0f
-        ui.button(g, "wave", waveX, stripY + pad, waveW, stripH - pad * 2f, label, if (pulse) Style.NORMAL else style, wd.canCallWave, size = 13f) {
+        ui.button(g, "wave", waveX, stripY + pad, waveW, bs, label, if (pulse) Style.NORMAL else style, wd.canCallWave, size = 14f, sub = sub) {
             wd.callWave()
         }
     }
@@ -749,26 +778,19 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         val ready = wd.abilityReady(a)
         val active = a == Ability.AIRSTRIKE && aiming
         val id = "ab${a.name}"
-        ui.area(id, x, y, s, s, allowed) { useAbility(a) }
+        ui.button(g, id, x, y, s, s, "", if (active) Style.DANGER else Style.NORMAL, allowed) { useAbility(a) }
         val sink = if (ui.down(id)) d(2f) else 0f
-        g.fillRoundRect(x, y + d(3f), s, s, d(10f), 0xFF0A0E0C.toInt())
-        g.fillRoundRect(x, y + sink, s, s, d(10f), if (active) 0xFF4A2410.toInt() else Ui.PANEL_LIGHT)
-        val edge = when {
-            active -> Ui.RED
-            ready -> Colors.mix(Ui.ACCENT, Ui.GOLD, 0.5f + 0.5f * sin(clock * 4f))
-            else -> Ui.EDGE
-        }
-        g.strokeRoundRect(x, y + sink, s, s, d(10f), edge, if (ready || active) d(2f) else d(1f))
+        if (ready && !active) ui.outline(g, x + d(1f), y + sink + d(1f), s - d(2f), s - d(2f), d(7f), Colors.mix(Ui.ACCENT, Ui.GOLD, 0.5f + 0.5f * sin(clock * 4f)), d(2f))
         val cx = x + s / 2f
         val cy = y + s / 2f + sink
-        renderer.drawAbilityIcon(g, a, cx, cy, s * 0.56f, if (ready || active) Ui.TEXT else Ui.DIM)
+        renderer.drawAbilityIcon(g, a, cx, cy, s * 0.56f, if (ready || active) Ui.TEXT else Ui.FADED)
         val left = wd.cooldowns[a.ordinal]
         if (allowed && left > 0f) {
             val sweep = 360f * left / wd.cooldownOf(a)
-            g.fillArc(cx, cy, s * 0.46f, -90f, sweep, Colors.alpha(0xFF000000.toInt(), 0.5f))
-            ui.textMid(g, "${ceil(left).toInt()}", cx, cy, d(12f), Ui.TEXT)
+            g.fillArc(cx, cy, s * 0.44f, -90f, sweep, Colors.alpha(Ui.EDGE, 0.6f))
+            ui.textMid(g, "${ceil(left).toInt()}", cx, cy, d(13f), Ui.TEXT, font = Font.DISPLAY)
         }
-        if (!allowed) ui.cross(g, cx, cy, s * 0.7f, Colors.alpha(Ui.RED, 0.85f))
+        if (!allowed) ui.icon(g, Icon.CROSS, cx, cy, s * 0.6f, Colors.alpha(Ui.RED, 0.85f))
     }
 
     private fun drawStripMiddle(g: Gfx, wd: World, left: Float, right: Float) {
@@ -776,23 +798,24 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         val width = right - left
         if (width < d(30f)) return
         if (aiming) {
-            ui.paragraph(g, Tx.AIM_AIRSTRIKE.t, left, cy - d(15f), width, d(11.5f), Ui.ACCENT, spacing = 1.15f)
+            ui.paragraph(g, Tx.AIM_AIRSTRIKE.t, left, cy - d(15f), width, d(11.5f), Ui.ACCENT, spacing = 1.15f, font = Font.BOLD)
             return
         }
         val undo = undoable
         if (undo != null) {
-            val bh = stripH - d(14f)
-            ui.button(g, "undo", left, cy - bh / 2f, width, bh, Tx.UNDO.t, size = 12f, icon = { gg, x, y, s, c -> ui.undoIcon(gg, x, y, s, c) }) {
+            val bh = stripH - d(15f)
+            ui.button(g, "undo", left, cy - bh / 2f - d(1.5f), width, bh, Tx.UNDO.t, size = 12f, icon = Icon.UNDO) {
                 world?.undo(undo)
                 lastBuilt = null
             }
             val f = 1f - (clock - lastBuiltAt) / UNDO_TIME
-            g.fillRoundRect(left + d(6f), cy + bh / 2f - d(4f), (width - d(12f)) * f, d(2.5f), d(1.2f), Ui.ACCENT)
+            val sink = if (ui.down("undo")) d(2f) else 0f
+            g.fillRect(left + d(7f), cy + bh / 2f - d(6f) + sink, (width - d(14f)) * f, d(2.5f), Ui.ACCENT)
             return
         }
         val n = notice
         if (n != null && clock - noticeAt < NOTICE_TIME) {
-            ui.paragraph(g, n, left, cy - d(15f), width, d(11.5f), Ui.ACCENT, spacing = 1.15f)
+            ui.paragraph(g, n, left, cy - d(15f), width, d(11.5f), Ui.ACCENT, spacing = 1.15f, font = Font.BOLD)
             return
         }
         val type = placing
@@ -802,64 +825,61 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         }
         val next = wd.nextWave
         if (next == null) {
-            ui.textMid(g, Tx.LAST_WAVE.t, left, cy, d(12f), Ui.ACCENT, Align.LEFT, maxW = width)
+            ui.textMid(g, Tx.LAST_WAVE.t, left, cy, d(13f), Ui.ACCENT, Align.LEFT, maxW = width, font = Font.DISPLAY)
             return
         }
-        ui.text(g, Tx.NEXT.t, left, cy - d(9f), d(9f), Ui.DIM, maxW = width)
+        ui.caption(g, Tx.NEXT.t, left, cy - d(8f), maxW = width)
         var x = left
         for ((t, n2) in next.preview.take(4)) {
             val label = "×$n2"
-            val tw = g.textWidth(label, d(11f))
+            val tw = g.textWidth(label, d(11f), Font.DISPLAY)
             if (x + d(20f) + tw > right) break
-            renderer.drawEnemyIcon(g, t, x + d(9f), cy + d(7f), d(17f), clock)
-            ui.text(g, label, x + d(19f), cy + d(11f), d(11f), if (t.boss) Ui.RED else Ui.TEXT)
-            x += d(23f) + tw + d(4f)
+            renderer.drawEnemyIcon(g, t, x + d(9f), cy + d(8f), d(17f), clock)
+            ui.text(g, label, x + d(19f), cy + d(12f), d(11f), if (t.boss) Ui.RED else Ui.TEXT, font = Font.DISPLAY)
+            x += d(23f) + tw + d(5f)
         }
     }
 
-    private fun drawShop(g: Gfx, wd: World) {
+    private fun panelBase(g: Gfx) {
         g.fillRect(0f, shopY, ui.w, shopH + ui.bottom, Ui.PANEL)
-        g.fillRect(0f, shopY, ui.w, d(1f), Ui.EDGE)
+        g.fillRect(0f, shopY, ui.w, d(2f), Ui.EDGE)
+        g.fillRect(0f, shopY + d(2f), ui.w, d(1f), Ui.PANEL_HI)
+    }
+
+    private fun drawShop(g: Gfx, wd: World) {
+        panelBase(g)
         val types = wd.rules.towers
         if (types.isEmpty()) return
         val margin = d(8f)
         val gap = d(6f)
         val fits = types.size <= 6
         val cw = if (fits) (ui.w - margin * 2 - gap * (types.size - 1)) / types.size else (ui.w - margin * 2 - gap * 5) / 5.5f
-        val ch = shopH - d(14f)
+        val ch = shopH - d(18f)
         val content = margin * 2 + types.size * cw + (types.size - 1) * gap
         val off = ui.beginScroll(g, "shop", 0f, shopY, ui.w, shopH, content, horizontal = true)
         for ((i, type) in types.withIndex()) {
             val x = margin + i * (cw + gap) - off
-            val y = shopY + d(7f)
+            val y0 = shopY + d(9f)
             if (x > ui.w || x + cw < 0f) continue
             val cost = wd.buildCost(type)
             val blocked = wd.towerLimitReached || wd.quarryLimitReached(type)
             val affordable = wd.money >= cost && !blocked
             val active = placing == type
             val id = "shop${type.name}"
-            ui.area(id, x, y, cw, ch) { pickTower(type) }
-            val down = ui.down(id)
-            g.fillRoundRect(x, y + (if (down) d(2f) else 0f), cw, ch, d(10f), if (active) 0xFF3A2A12.toInt() else Ui.PANEL_LIGHT)
-            g.strokeRoundRect(x, y, cw, ch, d(10f), if (active) Ui.ACCENT else Ui.EDGE, if (active) d(2f) else d(1f))
+            ui.area(id, x, y0, cw, ch) { pickTower(type) }
+            val y = y0 + if (ui.down(id)) d(2f) else 0f
+            ui.plate(g, x, y, cw, ch, if (active) Ui.PANEL_HI else Ui.PANEL_LIGHT, if (active) Ui.ACCENT else Ui.EDGE)
             val icon = min(cw * 0.62f, d(40f))
-            renderer.drawTowerIcon(g, type, 0, x + cw / 2f, y + d(8f) + icon / 2f, icon, clock)
-            ui.textMid(g, type.short.t, x + cw / 2f, y + ch - d(31f), d(10.5f), if (affordable) Ui.TEXT else Ui.DIM, maxW = cw - d(6f))
+            renderer.drawTowerIcon(g, type, 0, x + cw / 2f, y + d(7f) + icon / 2f, icon, clock)
+            ui.textMid(g, type.short.t, x + cw / 2f, y + ch - d(30f), d(10.5f), if (affordable) Ui.TEXT else Ui.DIM, maxW = cw - d(8f))
             val costText = "$cost"
-            ui.textMid(g, costText, x + cw / 2f + d(6f), y + ch - d(13f), d(13f), if (affordable) Ui.GOLD else Ui.DIM)
-            ui.coin(g, x + cw / 2f - g.textWidth(costText, d(13f)) / 2f - d(4f), y + ch - d(13f), d(10f))
-            if (type.role == Role.ROAD) {
-                g.fillRoundRect(x + d(4f), y + d(4f), d(30f), d(13f), d(6f), 0xFF5A4630.toInt())
-                ui.textMid(g, Tx.ROAD.t, x + d(19f), y + d(10.5f), d(8f), Ui.TEXT, maxW = d(28f))
-            }
-            if (!affordable) g.fillRoundRect(x, y, cw, ch, d(10f), 0x660E1412)
+            val costW = g.textWidth(costText, d(13f), Font.DISPLAY)
+            ui.coin(g, x + cw / 2f - costW / 2f - d(5f), y + ch - d(13f), d(11f))
+            ui.textMid(g, costText, x + cw / 2f + d(5f), y + ch - d(13f), d(13f), if (affordable) Ui.GOLD else Ui.FADED, font = Font.DISPLAY)
+            if (type.role == Role.ROAD) ui.tag(g, Tx.ROAD.t.uppercase(), x + d(4f), y + d(10f), d(7f))
+            if (!affordable) ui.chamfer(g, x, y, cw, ch, d(6f), 0x66101309)
         }
         ui.endScroll(g, "shop")
-    }
-
-    private fun panelBase(g: Gfx) {
-        g.fillRect(0f, shopY, ui.w, shopH + ui.bottom, Ui.PANEL)
-        g.fillRect(0f, shopY, ui.w, d(1f), Ui.EDGE)
     }
 
     private fun drawTowerPanel(g: Gfx, wd: World, t: Tower) {
@@ -867,27 +887,42 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         if (t.atFork && wd.rules.branches) drawFork(g, wd, t) else drawTowerInfo(g, wd, t)
     }
 
-    private fun towerName(t: Tower): String = t.branch?.title?.t ?: "${t.type.title.t} · ${Tx.LEVEL_N.f(t.level + 1)}"
+    /** The squad's name with its rank: chevrons for its level, a star once specialised. */
+    private fun drawName(g: Gfx, t: Tower, x: Float, cy: Float, size: Float, maxW: Float) {
+        val name = t.branch?.title?.t ?: t.type.title.t
+        val sz = ui.fit(g, name, size, maxW - d(40f), Font.DISPLAY)
+        ui.textMid(g, name, x, cy, sz, Ui.TEXT, Align.LEFT, font = Font.DISPLAY)
+        val after = x + g.textWidth(name, sz, Font.DISPLAY) + d(8f)
+        if (t.branch != null) ui.star(g, after + d(7f), cy, d(7.5f), true) else ui.chevrons(g, after, cy, t.level + 1, d(11f), Ui.ACCENT)
+    }
 
     private fun drawTowerInfo(g: Gfx, wd: World, t: Tower) {
         val x0 = d(12f)
-        val icon = d(38f)
-        renderer.drawTowerIcon(g, t.type, t.level, x0 + icon / 2f, shopY + d(8f) + icon / 2f, icon, clock, t.branch)
-        val tx = x0 + icon + d(10f)
+        val icon = d(44f)
+        ui.well(g, x0, shopY + d(12f), icon + d(8f), icon + d(8f), d(6f))
+        renderer.drawTowerIcon(g, t.type, t.level, x0 + d(4f) + icon / 2f, shopY + d(17f) + icon / 2f, icon, clock, t.branch)
+        val tx = x0 + icon + d(18f)
         val maxW = ui.w - tx - d(12f)
-        ui.text(g, towerName(t), tx, shopY + d(21f), d(15f), Ui.TEXT, maxW = maxW)
+        drawName(g, t, tx, shopY + d(19f), d(15f), maxW)
         val tally = if (t.type == TowerType.QUARRY) Tx.EARNED.f(t.damageDealt.roundToInt()) else Tx.KILLS.f(t.kills)
-        ui.text(g, statLine(wd, t.type, t.stats, t.branch) + " · " + tally, tx, shopY + d(38f), d(11.5f), Ui.DIM, maxW = maxW)
-        val hint = when {
-            t.canUpgrade -> Tx.NEXT_LEVEL.f(statLine(wd, t.type, t.type.levels[t.level + 1], null))
-            t.branch != null -> t.branch!!.hint.t
-            !wd.rules.branches -> Tx.BRANCH_LOCKED.f(BRANCH_UNLOCK)
-            else -> t.type.hint.t
+        ui.chips(g, statParts(wd, t.type, t.stats, t.branch) + tally, tx, shopY + d(29f), maxW, size = d(10.5f))
+        when {
+            t.canUpgrade -> {
+                ui.icon(g, Icon.RANKS, tx + d(7f), shopY + d(58.5f), d(13f), Ui.GREEN)
+                ui.chips(g, statParts(wd, t.type, t.type.levels[t.level + 1], null), tx + d(17f), shopY + d(50f), maxW - d(17f), Ui.GREEN, d(10f), Ui.PANEL_DARK)
+            }
+            else -> {
+                val hint = when {
+                    t.branch != null -> t.branch!!.hint.t
+                    !wd.rules.branches -> Tx.BRANCH_LOCKED.f(BRANCH_UNLOCK)
+                    else -> t.type.hint.t
+                }
+                ui.text(g, hint, tx, shopY + d(62f), d(11f), Ui.GREEN, maxW = maxW, font = Font.BODY)
+            }
         }
-        ui.text(g, hint, tx, shopY + d(54f), d(11f), 0xFF8FCF8F.toInt(), maxW = maxW)
 
-        val by = shopY + d(66f)
-        val bh = d(34f)
+        val by = shopY + d(70f)
+        val bh = d(32f)
         val gap = d(6f)
         val aims = t.type.aims
         val total = ui.w - d(24f) - gap * (if (aims) 3 else 2)
@@ -906,14 +941,14 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         drawSellButton(g, wd, t, x, by, sellW, bh)
         x += sellW + gap
         if (aims) {
-            ui.button(g, "mode", x, by + d(4f), modeW, bh - d(4f), t.mode.title.t, size = 12f) {
+            ui.button(g, "mode", x, by, modeW, bh, t.mode.title.t, size = 12f) {
                 t.mode = TargetMode.entries[(t.mode.ordinal + 1) % TargetMode.entries.size]
             }
-            g.fillRoundRect(x + modeW / 2f - d(20f), by - d(5f), d(40f), d(12f), d(6f), Ui.PANEL)
-            ui.textMid(g, Tx.TARGET.t, x + modeW / 2f, by + d(1f), d(8.5f), Ui.DIM, maxW = d(38f))
+            val sink = if (ui.down("mode")) d(2f) else 0f
+            ui.tag(g, Tx.TARGET.t, x + modeW / 2f - (g.textWidth(Tx.TARGET.t, d(7.5f), Font.DISPLAY) + d(7f)) / 2f, by + sink, d(7.5f), Ui.WELL, Ui.DIM)
             x += modeW + gap
         }
-        ui.button(g, "close", x, by, closeW, bh, "", Style.GHOST, icon = { gg, cx, cy, s, c -> ui.cross(gg, cx, cy, s * 0.8f, c) }) { selected = null }
+        ui.button(g, "close", x, by, closeW, bh, "", Style.GHOST, icon = Icon.CROSS) { selected = null }
     }
 
     private fun drawSellButton(g: Gfx, wd: World, t: Tower, x: Float, y: Float, bw: Float, bh: Float) {
@@ -931,21 +966,21 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private fun drawFork(g: Gfx, wd: World, t: Tower) {
         val x0 = d(12f)
         val icon = d(28f)
-        renderer.drawTowerIcon(g, t.type, t.level, x0 + icon / 2f, shopY + d(6f) + icon / 2f, icon, clock)
+        renderer.drawTowerIcon(g, t.type, t.level, x0 + icon / 2f, shopY + d(8f) + icon / 2f, icon, clock)
         val closeW = d(38f)
         val sellW = d(96f)
         val bx = ui.w - d(12f) - closeW
-        ui.button(g, "close", bx, shopY + d(6f), closeW, d(30f), "", Style.GHOST, icon = { gg, cx, cy, s, c -> ui.cross(gg, cx, cy, s * 0.8f, c) }) {
+        ui.button(g, "close", bx, shopY + d(8f), closeW, d(28f), "", Style.GHOST, icon = Icon.CROSS) {
             selected = null
         }
-        drawSellButton(g, wd, t, bx - d(6f) - sellW, shopY + d(6f), sellW, d(30f))
+        drawSellButton(g, wd, t, bx - d(6f) - sellW, shopY + d(8f), sellW, d(28f))
         val tx = x0 + icon + d(8f)
         val maxW = bx - d(6f) - sellW - tx - d(8f)
-        ui.text(g, towerName(t), tx, shopY + d(18f), d(13.5f), Ui.TEXT, maxW = maxW)
-        ui.text(g, Tx.CHOOSE_BRANCH.t, tx, shopY + d(33f), d(10.5f), Ui.ACCENT, maxW = maxW)
+        drawName(g, t, tx, shopY + d(15f), d(13.5f), maxW)
+        ui.text(g, Tx.CHOOSE_BRANCH.t, tx, shopY + d(36f), d(10.5f), Ui.ACCENT, maxW = maxW)
 
-        val top = shopY + d(42f)
-        val ch = shopH - d(48f)
+        val top = shopY + d(44f)
+        val ch = shopH - d(52f)
         val gap = d(8f)
         val cw = (ui.w - d(24f) - gap) / 2f
         for ((k, b) in t.type.branches.withIndex()) {
@@ -954,19 +989,17 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             val ok = wd.money >= cost
             val id = "branch${b.name}"
             ui.area(id, x, top, cw, ch, ok) { wd.branch(t, b) }
-            val sink = if (ui.down(id)) d(2f) else 0f
-            g.fillRoundRect(x, top + sink, cw, ch, d(10f), if (ok) 0xFF2A2416.toInt() else Ui.PANEL_LIGHT)
-            g.strokeRoundRect(x, top + sink, cw, ch, d(10f), if (ok) Ui.GOLD else Ui.EDGE, if (ok) d(1.5f) else d(1f))
+            val y = top + if (ui.down(id)) d(2f) else 0f
+            ui.plate(g, x, y, cw, ch, if (ok) Ui.PANEL_LIGHT else Ui.PANEL_DARK, if (ok) Ui.GOLD else Ui.EDGE)
             val bi = d(30f)
-            renderer.drawTowerIcon(g, t.type, 2, x + d(6f) + bi / 2f, top + sink + d(6f) + bi / 2f, bi, clock, b)
-            val lx = x + d(12f) + bi
-            ui.text(g, b.title.t, lx, top + sink + d(16f), d(12.5f), if (ok) Ui.TEXT else Ui.DIM, maxW = cw - bi - d(18f))
-            val costText = "$cost"
-            ui.coin(g, lx + d(5f), top + sink + d(29f), d(10f))
-            ui.text(g, costText, lx + d(13f), top + sink + d(33f), d(12f), if (ok) Ui.GOLD else Ui.DIM)
-            val lines = ui.lines(g, b.hint.t, d(9.5f), cw - d(12f))
+            renderer.drawTowerIcon(g, t.type, 2, x + d(7f) + bi / 2f, y + d(6f) + bi / 2f, bi, clock, b)
+            val lx = x + d(14f) + bi
+            ui.text(g, b.title.t, lx, y + d(17f), d(12.5f), if (ok) Ui.TEXT else Ui.DIM, maxW = cw - bi - d(20f), font = Font.DISPLAY)
+            ui.coin(g, lx + d(5f), y + d(29f), d(10f))
+            ui.text(g, "$cost", lx + d(13f), y + d(33.5f), d(12f), if (ok) Ui.GOLD else Ui.FADED, font = Font.DISPLAY)
+            val lines = ui.lines(g, b.hint.t, d(9.5f), cw - d(14f))
             for ((i, l) in lines.take(2).withIndex()) {
-                ui.text(g, l, x + d(6f), top + sink + d(48f) + i * d(11.5f), d(9.5f), Ui.DIM, maxW = cw - d(12f))
+                ui.text(g, l, x + d(7f), y + d(48f) + i * d(11.5f), d(9.5f), Ui.DIM, maxW = cw - d(14f), font = Font.BODY)
             }
         }
     }
@@ -977,29 +1010,31 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         val r = obstacle / COLS
         val kind = wd.map.terrain(c, r)
         val icon = d(44f)
-        renderer.drawObstacle(g, kind, wd.map.biome, d(12f) + icon / 2f, shopY + d(10f) + icon / 2f, icon)
-        val tx = d(12f) + icon + d(12f)
+        ui.well(g, d(12f), shopY + d(12f), icon + d(8f), icon + d(8f), d(6f))
+        renderer.drawObstacle(g, kind, wd.map.biome, d(16f) + icon / 2f, shopY + d(16f) + icon / 2f, icon)
+        val tx = d(12f) + icon + d(18f)
         val name = when (kind) {
             'T' -> Tx.TREE
             'C' -> Tx.CACTUS
             else -> Tx.ROCK
         }
-        ui.text(g, name.t, tx, shopY + d(26f), d(15f), Ui.TEXT, maxW = ui.w - tx - d(12f))
-        ui.text(g, Tx.CLEAR_HINT.t, tx, shopY + d(45f), d(11.5f), Ui.DIM, maxW = ui.w - tx - d(12f))
-        val by = shopY + d(66f)
-        val bh = d(34f)
+        ui.textMid(g, name.t, tx, shopY + d(24f), d(15f), Ui.TEXT, Align.LEFT, maxW = ui.w - tx - d(12f), font = Font.DISPLAY)
+        ui.text(g, Tx.CLEAR_HINT.t, tx, shopY + d(50f), d(11.5f), Ui.DIM, maxW = ui.w - tx - d(12f), font = Font.BODY)
+        val by = shopY + d(70f)
+        val bh = d(32f)
         val closeW = d(42f)
         val cost = wd.clearCost()
         ui.button(g, "clear", d(12f), by, ui.w - d(30f) - closeW, bh, Tx.CLEAR.f(cost), Style.PRIMARY, wd.canClear(c, r), size = 13f) {
             wd.clear(c, r)
             obstacle = -1
         }
-        ui.button(g, "close", ui.w - d(12f) - closeW, by, closeW, bh, "", Style.GHOST, icon = { gg, cx, cy, s, cc -> ui.cross(gg, cx, cy, s * 0.8f, cc) }) {
+        ui.button(g, "close", ui.w - d(12f) - closeW, by, closeW, bh, "", Style.GHOST, icon = Icon.CROSS) {
             obstacle = -1
         }
     }
 
-    fun statLine(wd: World, type: TowerType, s: TowerLevel, branch: Branch?): String {
+    /** What a squad level does, as short pieces: damage, rate, range... */
+    fun statParts(wd: World, type: TowerType, s: TowerLevel, branch: Branch?): List<String> {
         val dmg = s.damage * wd.rules.damageMul
         val range = s.range * wd.rules.rangeMul
         val parts = ArrayList<String>()
@@ -1052,18 +1087,18 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             }
             TowerType.QUARRY -> parts += Tx.COINS_PER_WAVE.f(s.damage.toInt())
         }
-        return parts.joinToString(" · ")
+        return parts
     }
 
     // --- overlays -------------------------------------------------------------------------
 
-    /** Draws a centred dialog [ph] high; returns its x, y and width. */
-    private fun panelRect(g: Gfx, ph: Float): FloatArray {
+    /** Draws a centred dialog [ph] high; returns its x, y, width and where its content starts. */
+    private fun dialog(g: Gfx, ph: Float, title: String? = null, band: Int = Ui.BAND): FloatArray {
         val pw = min(ui.w - d(40f), d(340f))
         val px = (ui.w - pw) / 2f
         val py = max(ui.top + d(10f), (ui.h - ph) / 2f)
-        ui.panel(g, px, py, pw, ph)
-        return floatArrayOf(px, py, pw)
+        val top = ui.panel(g, px, py, pw, ph, title = title, band = band)
+        return floatArrayOf(px, py, pw, top)
     }
 
     private fun drawPause(g: Gfx) {
@@ -1073,51 +1108,62 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             if (s.challenge) s.level.challenge?.let { add(it.title) }
             for (m in s.mods) add(m.title.t)
         }
-        val ph = d(330f) + (if (info.isNotEmpty()) d(22f) else 0f)
-        val (px, py, pw) = panelRect(g, ph)
-        ui.textMid(g, Tx.PAUSED.t, ui.w / 2f, py + d(36f), d(24f), Ui.TEXT)
-        var y = py + d(58f)
+        val ph = d(354f) + (if (info.isNotEmpty()) d(32f) else 0f)
+        val (px, _, pw, top) = dialog(g, ph, Tx.PAUSED.t)
+        var y = top + d(16f)
         if (info.isNotEmpty()) {
-            ui.textMid(g, info.joinToString(" · "), ui.w / 2f, y + d(6f), d(12f), Ui.ACCENT, maxW = pw - d(30f))
-            y += d(22f)
+            ui.chips(g, info, px + d(20f), y, pw - d(40f), Ui.ACCENT, d(11f), centre = true)
+            y += d(32f)
         }
-        val bx = px + d(24f)
-        val bw = pw - d(48f)
-        ui.button(g, "resume", bx, y, bw, d(50f), Tx.RESUME.t, Style.PRIMARY, size = 17f, icon = { gg, cx, cy, sz, c -> ui.play(gg, cx, cy, sz, c) }) {
+        val bx = px + d(22f)
+        val bw = pw - d(44f)
+        ui.button(g, "resume", bx, y, bw, d(52f), Tx.RESUME.t, Style.PRIMARY, size = 18f, icon = Icon.PLAY) {
             overlay = Overlay.NONE
         }
-        y += d(60f)
-        ui.button(g, "restart", bx, y, bw, d(44f), Tx.RESTART.t) { game.restart() }
-        y += d(54f)
-        ui.button(g, "psettings", bx, y, bw, d(44f), Tx.SETTINGS_BTN.t, icon = { gg, cx, cy, sz, c -> ui.gear(gg, cx, cy, sz, c) }) {
+        y += d(64f)
+        ui.button(g, "restart", bx, y, bw, d(46f), Tx.RESTART.t, icon = Icon.UNDO) { game.restart() }
+        y += d(56f)
+        ui.button(g, "psettings", bx, y, bw, d(46f), Tx.SETTINGS_BTN.t, icon = Icon.GEAR) {
             overlay = Overlay.SETTINGS
         }
-        y += d(54f)
-        ui.button(g, "quit", bx, y, bw, d(44f), Tx.TO_MENU.t, Style.GHOST) {
+        y += d(56f)
+        ui.button(g, "quit", bx, y, bw, d(46f), Tx.TO_MENU.t, Style.GHOST, icon = Icon.HOME) {
             overlay = Overlay.NONE
             leave()
         }
-        y += d(52f)
-        ui.paragraph(g, Tx.SAVED_NOTE.t, ui.w / 2f, y, pw - d(40f), d(11f), Ui.DIM, Align.CENTER)
+        y += d(56f)
+        ui.paragraph(g, Tx.SAVED_NOTE.t, ui.w / 2f, y, pw - d(44f), d(11.5f), Ui.DIM, Align.CENTER)
     }
 
+    /** News from the front: a sheet of paper with a stamp, a photo and a few lines. */
     private fun drawCard(g: Gfx) {
         val card = cards.firstOrNull() ?: run {
             overlay = Overlay.NONE
             return
         }
         val pw = min(ui.w - d(40f), d(340f))
-        val textH = ui.lines(g, card.text, d(13.5f), pw - d(48f)).size * d(13.5f) * 1.35f
-        val ph = d(250f) + textH
-        val (px, py) = panelRect(g, ph)
-        ui.textMid(g, card.kind.t, ui.w / 2f, py + d(28f), d(13f), Ui.ACCENT)
-        val iconY = py + d(92f)
-        g.fillCircle(ui.w / 2f, iconY, d(46f), Ui.PANEL_LIGHT)
-        g.strokeCircle(ui.w / 2f, iconY, d(46f), Ui.EDGE, d(1.2f))
-        card.icon(g, ui.w / 2f, iconY, d(64f))
-        ui.textMid(g, card.title, ui.w / 2f, py + d(162f), d(21f), Ui.TEXT, maxW = pw - d(30f))
-        ui.paragraph(g, card.text, ui.w / 2f, py + d(176f), pw - d(48f), d(13.5f), Ui.DIM, Align.CENTER)
-        ui.button(g, "gotit", px + d(24f), py + ph - d(66f), pw - d(48f), d(48f), Tx.GOT_IT.t, Style.PRIMARY, size = 16f) { closeCard() }
+        val textW = pw - d(48f)
+        val textH = ui.lines(g, card.text, d(13.5f), textW).size * d(13.5f) * 1.35f
+        val statsH = if (card.stats.isEmpty()) 0f else d(30f)
+        val ph = d(292f) + textH + statsH
+        val px = (ui.w - pw) / 2f
+        val py = max(ui.top + d(14f), (ui.h - ph) / 2f)
+        val cx = ui.w / 2f
+        ui.paper(g, px, py, pw, ph)
+        ui.stamp(g, card.kind.t, cx, py + d(36f), d(13f))
+        val photo = d(98f)
+        val top = py + d(62f)
+        g.fillRect(cx - photo / 2f + d(2f), top + d(3f), photo, photo, 0x40000000)
+        g.fillRect(cx - photo / 2f, top, photo, photo, 0xFFF8F3E2.toInt())
+        g.fillRect(cx - photo / 2f + d(5f), top + d(5f), photo - d(10f), photo - d(10f), Ui.PANEL)
+        card.icon(g, cx, top + photo / 2f, d(66f))
+        ui.textMid(g, card.title, cx, py + d(190f), d(21f), Ui.INK, maxW = pw - d(36f), font = Font.DISPLAY)
+        var y = py + d(204f)
+        y += ui.paragraph(g, card.text, cx, y, textW, d(13.5f), Colors.alpha(Ui.INK, 0.85f), Align.CENTER)
+        if (card.stats.isNotEmpty()) {
+            ui.chips(g, card.stats, px + d(20f), y + d(4f), pw - d(40f), Ui.INK, d(11f), Ui.PAPER_EDGE, centre = true)
+        }
+        ui.button(g, "gotit", px + d(24f), py + ph - d(70f), pw - d(48f), d(50f), Tx.GOT_IT.t, Style.PRIMARY, size = 17f) { closeCard() }
     }
 
     private fun drawResult(g: Gfx, wd: World) {
@@ -1128,14 +1174,14 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         when (s.mode) {
             Mode.CAMPAIGN -> {
                 if (!won) lines += Tx.WAVE_OF.f(wd.wavesStarted, wd.totalWaves) to Ui.TEXT
-                lines += Tx.LIVES.f(wd.lives, wd.maxLives) to Ui.DIM
-                lines += Tx.KILLED.f(wd.kills) to Ui.DIM
+                lines += Tx.LIVES.f(wd.lives, wd.maxLives) to Ui.TEXT
+                lines += Tx.KILLED.f(wd.kills) to Ui.TEXT
                 if (won && resultHard) lines += Tx.HARD_WIN.t to Ui.RED
                 if (s.challenge) lines += (if (won && resultMedal) Tx.MEDAL_WON.t to Ui.GOLD else Tx.CHALLENGE_FAILED.t to Ui.DIM)
             }
             Mode.ENDLESS -> {
-                lines += (if (resultRecord) Tx.NEW_RECORD.t to Ui.GOLD else Tx.RECORD.f(profile.bestEndless) to Ui.DIM)
-                lines += Tx.KILLED.f(wd.kills) to Ui.DIM
+                lines += (if (resultRecord) Tx.NEW_RECORD.t to Ui.GOLD else Tx.RECORD.f(profile.bestEndless) to Ui.TEXT)
+                lines += Tx.KILLED.f(wd.kills) to Ui.TEXT
             }
             Mode.DAILY -> {
                 if (won) {
@@ -1144,62 +1190,76 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 } else {
                     lines += Tx.WAVE_OF.f(wd.wavesStarted, wd.totalWaves) to Ui.TEXT
                 }
-                lines += Tx.KILLED.f(wd.kills) to Ui.DIM
+                lines += Tx.KILLED.f(wd.kills) to Ui.TEXT
             }
         }
         val achievements = resultAchievements.take(3)
-        val buttonsH = if (next != null) d(160f) else d(110f)
-        val headH = if (s.mode == Mode.ENDLESS || (s.mode == Mode.CAMPAIGN && won)) d(150f) else d(80f)
-        val achH = if (achievements.isEmpty()) 0f else d(26f) + achievements.size * d(22f)
-        val ph = headH + lines.size * d(22f) + achH + buttonsH + d(20f)
-        val (px, py, pw) = panelRect(g, ph)
+        val rowH = d(26f)
+        val buttonsH = if (next != null) d(172f) else d(118f)
+        val headH = if (s.mode == Mode.ENDLESS || (s.mode == Mode.CAMPAIGN && won)) d(92f) else d(12f)
+        val achH = if (achievements.isEmpty()) 0f else d(30f) + achievements.size * d(24f)
+        val ph = d(56f) + headH + lines.size * rowH + achH + buttonsH + d(34f)
+        val band = if (won) 0xFF3B5A24.toInt() else 0xFF6B2219.toInt()
+        val (px, _, pw, top) = dialog(g, ph, if (won) Tx.VICTORY.t else Tx.DEFEAT.t, band)
         val since = clock - resultAt
-        val title = if (won) Tx.VICTORY.t else Tx.DEFEAT.t
-        ui.textMid(g, title, ui.w / 2f, py + d(40f), d(26f), if (won) Ui.GREEN else Ui.RED)
-        var y = py + d(70f)
+        var y = top + d(8f)
         if (s.mode == Mode.CAMPAIGN && won) {
             for (k in 0 until 3) {
                 val appear = ((since - 0.25f - k * 0.3f) * 5f).coerceIn(0f, 1f)
                 val pop = if (appear < 1f) appear * 1.2f else 1f
-                ui.star(g, ui.w / 2f + (k - 1) * d(54f), y + d(30f), d(22f) * max(0.4f, pop), k < resultStars && appear > 0f)
+                val sx = ui.w / 2f + (k - 1) * d(60f)
+                val sy = y + d(42f) - (if (k == 1) d(8f) else 0f)
+                ui.star(g, sx, sy, d(24f), false)
+                if (k < resultStars && appear > 0f) ui.star(g, sx, sy, d(24f) * max(0.4f, pop), true)
             }
-            y += d(80f)
+            y += headH
         } else if (s.mode == Mode.ENDLESS) {
-            ui.textMid(g, Tx.HELD.t, ui.w / 2f, y + d(8f), d(14f), Ui.DIM)
-            ui.textMid(g, Tx.WAVES_COUNT.f(max(0, wd.wavesStarted - 1)), ui.w / 2f, y + d(44f), d(30f), Ui.TEXT)
-            y += d(80f)
+            ui.caption(g, Tx.HELD.t, ui.w / 2f - g.textWidth(Tx.HELD.t.uppercase(), d(10.5f)) / 2f, y + d(20f))
+            ui.textMid(g, Tx.WAVES_COUNT.f(max(0, wd.wavesStarted - 1)), ui.w / 2f, y + d(54f), d(30f), Ui.TEXT, font = Font.DISPLAY)
+            y += headH
         } else {
-            y += d(10f)
+            y += headH
         }
+        // The report: what was counted on the left, the number on the right.
+        val lx = px + d(26f)
+        val rx = px + pw - d(26f)
         for ((text, color) in lines) {
-            ui.textMid(g, text, ui.w / 2f, y + d(8f), d(14f), color, maxW = pw - d(30f))
-            y += d(22f)
+            val split = text.indexOf(": ")
+            if (split > 0) {
+                ui.textMid(g, text.substring(0, split), lx, y + rowH / 2f, d(13.5f), Ui.DIM, Align.LEFT, maxW = pw * 0.6f)
+                ui.textMid(g, text.substring(split + 2), rx, y + rowH / 2f, d(15f), color, Align.RIGHT, font = Font.DISPLAY)
+            } else {
+                ui.textMid(g, text, ui.w / 2f, y + rowH / 2f, d(14f), color, maxW = pw - d(52f))
+            }
+            g.fillRect(lx, y + rowH, rx - lx, max(1f, d(1f)), Colors.alpha(Ui.PANEL_HI, 0.7f))
+            y += rowH
         }
         if (achievements.isNotEmpty()) {
-            y += d(6f)
-            ui.textMid(g, Tx.NEW_ACHIEVEMENTS.t, ui.w / 2f, y + d(6f), d(12f), Ui.ACCENT)
+            y += d(10f)
+            ui.caption(g, Tx.NEW_ACHIEVEMENTS.t, lx, y + d(10f), Ui.ACCENT)
             y += d(20f)
             for (a in achievements) {
-                ui.medal(g, px + d(36f), y + d(8f), d(16f), true)
-                ui.textMid(g, a.title.t, px + d(52f), y + d(8f), d(13f), Ui.TEXT, Align.LEFT, maxW = pw - d(70f))
-                y += d(22f)
+                ui.medal(g, lx + d(9f), y + d(12f), d(18f), true)
+                ui.textMid(g, a.title.t, lx + d(24f), y + d(12f), d(13.5f), Ui.TEXT, Align.LEFT, maxW = pw - d(76f))
+                y += d(24f)
             }
         }
-        y += d(14f)
-        val bx = px + d(24f)
-        val bw = pw - d(48f)
+        y += d(18f)
+        val bx = px + d(22f)
+        val bw = pw - d(44f)
         if (next != null) {
-            ui.button(g, "next", bx, y, bw, d(48f), Tx.NEXT_LEVEL_BTN.f(next.name.t.uppercase()), Style.PRIMARY, size = 15f) {
+            ui.button(g, "next", bx, y, bw, d(52f), Tx.NEXT_LEVEL_BTN.f(next.name.t.uppercase()), Style.PRIMARY, size = 16f, icon = Icon.PLAY) {
                 game.startCampaign(next, s.difficulty.takeIf { profile.stars(next.id) > 0 || it != Difficulty.HARD } ?: Difficulty.NORMAL, false)
             }
-            y += d(58f)
-            ui.button(g, "again", bx, y, bw, d(42f), Tx.AGAIN.t) { game.restart() }
+            y += d(64f)
+            ui.button(g, "again", bx, y, bw, d(44f), Tx.AGAIN.t, icon = Icon.UNDO) { game.restart() }
+            y += d(54f)
         } else {
-            ui.button(g, "again", bx, y, bw, d(48f), Tx.AGAIN.t, Style.PRIMARY, size = 16f) { game.restart() }
+            ui.button(g, "again", bx, y, bw, d(52f), Tx.AGAIN.t, Style.PRIMARY, size = 17f, icon = Icon.UNDO) { game.restart() }
+            y += d(62f)
         }
-        y += if (next != null) d(52f) else d(58f)
         val backLabel = if (s.mode == Mode.CAMPAIGN) Tx.TO_LEVELS.t else Tx.TO_MENU.t
-        ui.button(g, "levels", bx, y, bw, d(42f), backLabel, Style.GHOST) { leave() }
+        ui.button(g, "levels", bx, y, bw, d(44f), backLabel, Style.GHOST, icon = if (s.mode == Mode.CAMPAIGN) Icon.FLAG else Icon.HOME) { leave() }
     }
 
     companion object {

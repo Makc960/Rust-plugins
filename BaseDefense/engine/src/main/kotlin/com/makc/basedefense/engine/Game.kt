@@ -136,6 +136,7 @@ class Game(private val platform: Platform) {
         ui.begin()
         g.fillRect(0f, 0f, ui.w, ui.h, Ui.BG)
         if (ui.w <= 0f || ui.h <= 0f) return
+        if (screen != Screen.MENU && screen != Screen.PLAY) ui.backdrop(g)
         when (screen) {
             Screen.MENU -> menus.menu(g)
             Screen.LEVELS -> menus.levels(g)
@@ -157,13 +158,14 @@ class Game(private val platform: Platform) {
         var y = ui.top + ui.d(58f)
         for (t in toasts) {
             val a = min(1f, t.life / 0.4f) * min(1f, (TOAST_TIME - t.life) / 0.25f + 0.2f)
-            val tw = min(ui.w - ui.d(32f), g.textWidth(t.text, ui.d(13f)) + ui.d(56f))
+            val tw = min(ui.w - ui.d(32f), g.textWidth(t.text, ui.d(13f)) + ui.d(62f))
+            val th = ui.d(42f)
             val x = (ui.w - tw) / 2f
-            g.fillRoundRect(x, y, tw, ui.d(38f), ui.d(19f), Colors.alpha(0xF0151C19.toInt(), a))
-            g.strokeRoundRect(x, y, tw, ui.d(38f), ui.d(19f), Colors.alpha(Ui.GOLD, a), ui.d(1.5f))
-            ui.medal(g, x + ui.d(22f), y + ui.d(19f), ui.d(20f), true)
-            ui.textMid(g, t.text, x + ui.d(40f), y + ui.d(19f), ui.d(13f), Colors.alpha(Ui.TEXT, a), Align.LEFT, maxW = tw - ui.d(52f))
-            y += ui.d(44f)
+            ui.chamfer(g, x, y, tw, th, ui.d(9f), Colors.alpha(Ui.GOLD, a))
+            ui.chamfer(g, x + ui.d(2f), y + ui.d(2f), tw - ui.d(4f), th - ui.d(4f), ui.d(8f), Colors.alpha(Ui.BAND, a))
+            ui.icon(g, Icon.MEDAL, x + ui.d(24f), y + th / 2f, ui.d(22f), Colors.alpha(Ui.GOLD, a))
+            ui.textMid(g, t.text, x + ui.d(44f), y + th / 2f, ui.d(13f), Colors.alpha(Ui.TEXT, a), Align.LEFT, maxW = tw - ui.d(56f))
+            y += ui.d(48f)
         }
     }
 
@@ -307,7 +309,7 @@ class Game(private val platform: Platform) {
 
     companion object {
         const val STEP = 1f / 60f
-        const val VERSION = "2.2"
+        const val VERSION = "2.3"
         const val FADE_TIME = 0.28f
         const val TOAST_TIME = 3.2f
     }

@@ -3,9 +3,12 @@ package com.makc.basedefense
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.ColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.RectF
@@ -13,9 +16,11 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.os.Build
 import com.makc.basedefense.engine.Align
+import com.makc.basedefense.engine.Font
 import com.makc.basedefense.engine.Gfx
 import com.makc.basedefense.engine.Sprite
 import com.makc.basedefense.engine.Sprites
+import java.io.File
 import kotlin.math.ceil
 
 /** [Gfx] on an Android [Canvas]; set [canvas] before each frame. */
@@ -28,9 +33,7 @@ class AndroidGfx : Gfx {
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-    }
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
@@ -39,6 +42,7 @@ class AndroidGfx : Gfx {
     private val src = Rect()
     private val shaderMatrix = Matrix()
     private val gradients = HashMap<Int, RadialGradient>()
+    private val tints = HashMap<Int, ColorFilter>()
 
     /** Terrain pictures, newest last; dropped oldest first past [MAX_CACHE_PIXELS]. */
     private val pictures = LinkedHashMap<String, Bitmap>(16, 0.75f, true)
@@ -140,7 +144,8 @@ class AndroidGfx : Gfx {
         canvas.drawCircle(cx, cy, r, glowPaint)
     }
 
-    override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Align) {
+    override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Align, font: Font) {
+        textPaint.typeface = typeface(font)
         textPaint.textSize = size
         textPaint.color = color
         textPaint.textAlign = when (align) {
@@ -151,7 +156,8 @@ class AndroidGfx : Gfx {
         canvas.drawText(s, x, y, textPaint)
     }
 
-    override fun textWidth(s: String, size: Float): Float {
+    override fun textWidth(s: String, size: Float, font: Font): Float {
+        textPaint.typeface = typeface(font)
         textPaint.textSize = size
         return textPaint.measureText(s)
     }
@@ -181,9 +187,11 @@ class AndroidGfx : Gfx {
 
     override val sprites: Boolean get() = atlas != null
 
-    override fun sprite(s: Sprite, cx: Float, cy: Float, w: Float, h: Float, degrees: Float, alpha: Float) {
+    override fun sprite(s: Sprite, cx: Float, cy: Float, w: Float, h: Float, degrees: Float, alpha: Float, tint: Int) {
         val bitmap = atlas ?: return
         if (alpha <= 0f) return
+        if (tint != 0 && tint !in tints && tints.size > 128) tints.clear()
+        spritePaint.colorFilter = if (tint != 0) tints.getOrPut(tint) { PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_IN) } else null
         src.set(s.x, s.y, s.x + s.w, s.y + s.h)
         rect.set(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
         spritePaint.alpha = (alpha.coerceAtMost(1f) * 255f).toInt()
@@ -222,9 +230,28 @@ class AndroidGfx : Gfx {
             }
         }
 
-        /** Decodes the atlas now, before the first frame needs it. */
-        fun preload() {
+        /** The game's fonts, unpacked to [preload]'s folder; until then the system bold. */
+        private val typefaces = arrayOfNulls<Typeface>(Font.entries.size)
+
+        private fun typeface(font: Font): Typeface = typefaces[font.ordinal] ?: Typeface.DEFAULT_BOLD
+
+        /** Decodes the atlas and loads the fonts now, before the first frame needs them. */
+        fun preload(cacheDir: File) {
             atlas
+            for (font in Font.entries) {
+                if (typefaces[font.ordinal] != null) continue
+                val bytes = AndroidGfx::class.java.getResourceAsStream(font.resource)?.use { it.readBytes() } ?: continue
+                typefaces[font.ordinal] = try {
+                    val file = File(cacheDir, "fonts/" + font.file)
+                    if (file.length() != bytes.size.toLong()) {
+                        file.parentFile?.mkdirs()
+                        file.writeBytes(bytes)
+                    }
+                    Typeface.createFromFile(file)
+                } catch (e: RuntimeException) {
+                    null
+                }
+            }
         }
     }
 }

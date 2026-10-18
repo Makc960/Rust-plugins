@@ -30,24 +30,43 @@ class StoreAssetsTest {
         ImageIO.write(rgb, "png", File(out, "$name.png"))
     }
 
+    /** A filled shape through the points (x, y, x, y...). */
+    private fun shape(g: Gfx, color: Int, vararg xy: Float) {
+        val n = xy.size / 2
+        g.fillPolygon(FloatArray(n) { xy[it * 2] }, FloatArray(n) { xy[it * 2 + 1] }, n, color)
+    }
+
+    /** Points along a cubic curve, without its start. */
+    private fun cubic(x0: Float, y0: Float, x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float): List<Float> = buildList {
+        for (i in 1..16) {
+            val t = i / 16f
+            val u = 1f - t
+            add(u * u * u * x0 + 3f * u * u * t * x1 + 3f * u * t * t * x2 + t * t * t * x3)
+            add(u * u * u * y0 + 3f * u * u * t * y1 + 3f * u * t * t * y2 + t * t * t * y3)
+        }
+    }
+
     @Test
     fun icon() {
         val size = 512
         val img = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
-        // Drawn in shapes, which stay sharp this big, like the launcher icon.
-        val g = object : Gfx by AwtGfx(img) {
-            override val sprites: Boolean get() = false
-        }
-        val r = Renderer()
-        g.fillRect(0f, 0f, size.toFloat(), size.toFloat(), 0xFF1E3324.toInt())
-        // A strip of road behind the tower.
-        g.save()
-        g.scale(size / 4f)
-        g.fillRect(0f, 2.55f, 4f, 0.9f, 0xFF6B5638.toInt())
-        g.fillRect(0f, 2.62f, 4f, 0.76f, 0xFFA58A62.toInt())
-        g.restore()
-        g.glow(size / 2f, size * 0.45f, size * 0.42f, 0x55FF9F1A)
-        r.drawTowerIcon(g, TowerType.TURRET, 2, size / 2f, size * 0.47f, size * 0.78f, 0.6f, Branch.MINIGUN)
+        val g = AwtGfx(img)
+        // The launcher icon (res/drawable/ic_launcher_foreground.xml) in the same
+        // shapes; the part a phone shows, 72 of its 108 units, fills the picture.
+        g.fillRect(0f, 0f, size.toFloat(), size.toFloat(), 0xFF2E3524.toInt())
+        g.scale(size / 72f)
+        g.translate(-18f, -18f)
+        shape(g, 0xFF0F120B.toInt(), 42f, 27f, 66f, 27f, 81f, 42f, 81f, 66f, 66f, 81f, 42f, 81f, 27f, 66f, 27f, 42f)
+        shape(g, 0xFF9A6A10.toInt(), 42.6f, 28.5f, 65.4f, 28.5f, 79.5f, 42.6f, 79.5f, 65.4f, 65.4f, 79.5f, 42.6f, 79.5f, 28.5f, 65.4f, 28.5f, 42.6f)
+        shape(g, 0xFFFFD978.toInt(), 42.6f, 28.5f, 65.4f, 28.5f, 79.5f, 42.6f, 79.5f, 63.6f, 65.4f, 77.7f, 42.6f, 77.7f, 28.5f, 63.6f, 28.5f, 42.6f)
+        shape(g, 0xFFF2B634.toInt(), 43.1f, 30f, 64.9f, 30f, 78f, 43.1f, 78f, 63.1f, 64.9f, 76.2f, 43.1f, 76.2f, 30f, 63.1f, 30f, 43.1f)
+        val ink = 0xFF22200F.toInt()
+        val dome = listOf(39f, 54f) + cubic(39f, 54f, 39f, 41.5f, 45.5f, 34f, 54f, 34f) + cubic(54f, 34f, 62.5f, 34f, 69f, 41.5f, 69f, 54f)
+        shape(g, ink, *dome.toFloatArray())
+        shape(g, ink, 38f, 53f, 70f, 53f, 74.5f, 58.5f, 33.5f, 58.5f)
+        g.fillRect(40.2f, 46.5f, 27.6f, 2.7f, 0xFFF2B634.toInt())
+        shape(g, ink, 45f, 65.5f, 54f, 60.5f, 63f, 65.5f, 63f, 69f, 54f, 64f, 45f, 69f)
+        shape(g, ink, 45f, 71.5f, 54f, 66.5f, 63f, 71.5f, 63f, 75f, 54f, 70f, 45f, 75f)
         save(img, "icon-512")
         assertTrue(File(out, "icon-512.png").length() > 1000)
     }
@@ -79,15 +98,15 @@ class StoreAssetsTest {
         Renderer().drawWorld(g, world, 3f, cell)
         g.restore()
         g.fillRect(0f, 0f, w.toFloat(), h.toFloat(), 0x40000000)
-        g.glow(w * 0.3f, h * 0.5f, w * 0.45f, 0xCC0E1412.toInt())
-        for ((lang, y) in listOf(Language.RU to 0f)) {
-            I18n.lang = lang
-            val size = 96f
-            g.text(Tx.TITLE_1.t, 60f + 5f, h * 0.45f + 5f + y, size, 0xFF000000.toInt())
-            g.text(Tx.TITLE_1.t, 60f, h * 0.45f + y, size, 0xFFFF9F1A.toInt())
-            g.text(Tx.TITLE_2.t, 60f + 5f, h * 0.45f + size + 5f + y, size, 0xFF000000.toInt())
-            g.text(Tx.TITLE_2.t, 60f, h * 0.45f + size + y, size, 0xFFF1EDE4.toInt())
-        }
+        g.glow(w * 0.28f, h * 0.5f, w * 0.5f, 0xD8101309.toInt())
+        I18n.lang = Language.RU
+        val ui = Ui {}.apply { dp = 2.4f }
+        val size = 100f
+        val x = 64f
+        val y = h * 0.46f
+        g.text(Tx.TITLE_1.t, x + 5f, y + 6f, size, Ui.EDGE, font = Font.DISPLAY)
+        g.text(Tx.TITLE_1.t, x, y, size, Ui.TEXT, font = Font.DISPLAY)
+        ui.tape(g, Tx.TITLE_2.t, x + g.textWidth(Tx.TITLE_1.t, size, Font.DISPLAY) / 2f, y + size * 0.82f, size * 0.9f, -3f)
         save(img, "feature-graphic")
     }
 

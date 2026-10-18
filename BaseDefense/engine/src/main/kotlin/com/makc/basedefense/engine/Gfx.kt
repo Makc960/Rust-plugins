@@ -2,10 +2,20 @@ package com.makc.basedefense.engine
 
 enum class Align { LEFT, CENTER, RIGHT }
 
+/** The game's typefaces: [DISPLAY] for titles, buttons and numbers, the other two for reading. */
+enum class Font(val file: String) {
+    DISPLAY("RussoOne-Regular.ttf"),
+    BOLD("Play-Bold.ttf"),
+    BODY("Play-Regular.ttf"),
+    ;
+
+    val resource: String get() = "/fonts/$file"
+}
+
 /**
  * Everything the game draws goes through this, so the same code paints the
  * phone screen and the PNG screenshots in tests. Colors are ARGB ints,
- * text is bold and `y` is the baseline.
+ * text comes in the game's [Font]s and `y` is its baseline.
  */
 interface Gfx {
     fun save()
@@ -31,8 +41,8 @@ interface Gfx {
 
     /** A disc that fades from [color] in the middle to transparent at the edge. */
     fun glow(cx: Float, cy: Float, r: Float, color: Int)
-    fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Align = Align.LEFT)
-    fun textWidth(s: String, size: Float): Float
+    fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Align = Align.LEFT, font: Font = Font.BOLD)
+    fun textWidth(s: String, size: Float, font: Font = Font.BOLD): Float
 
     /**
      * Draws [content], which covers (0, 0)-([w], [h]) in current units and never
@@ -44,8 +54,11 @@ interface Gfx {
     /** True when [sprite] draws pictures from the atlas; otherwise the renderer paints shapes. */
     val sprites: Boolean get() = false
 
-    /** Draws [s] centred on ([cx], [cy]), [w] by [h] units, turned [degrees] clockwise. */
-    fun sprite(s: Sprite, cx: Float, cy: Float, w: Float, h: Float, degrees: Float = 0f, alpha: Float = 1f) = Unit
+    /**
+     * Draws [s] centred on ([cx], [cy]), [w] by [h] units, turned [degrees] clockwise.
+     * A [tint] other than 0 paints the picture in that one colour, keeping its shape.
+     */
+    fun sprite(s: Sprite, cx: Float, cy: Float, w: Float, h: Float, degrees: Float = 0f, alpha: Float = 1f, tint: Int = 0) = Unit
 }
 
 object Colors {

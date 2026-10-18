@@ -39,4 +39,4 @@ The graphics come from the free Kenney packs (kenney.nl, CC0), and the sounds an
 
 ## What's new (up to 500 characters)
 
-Base Defense 2.2: soldier squads instead of towers! Every squad has its own uniform and weapons, and each level puts another soldier in the pit. In 2.1: new graphics for enemies, explosions, roads and trees. In 2.0: 16 new levels in the desert and the north, specialisations, abilities, 4 new enemies, difficulty levels, challenges, a daily challenge, achievements, a codex, music and English.
+Base Defense 2.3: a new field-HQ look with olive plates, signal-yellow buttons, military lettering and icons, stamped dossiers about new enemies and a new app icon. In 2.2: soldier squads with their own uniforms and weapons instead of towers. In 2.1: new graphics for enemies, explosions, roads and trees. In 2.0: 16 new levels in the desert and the north, specialisations, abilities, 4 new enemies, difficulty levels, challenges, a daily challenge, achievements, a codex, music and English.

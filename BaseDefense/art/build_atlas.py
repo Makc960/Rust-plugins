@@ -1060,6 +1060,106 @@ S['rocket'] = trim(face_right_from_up(td(251)))
 S['rocket.big'] = trim(face_right_from_up(td(252)))
 
 
+# --- interface icons ---------------------------------------------------------------------
+
+# White pictures the game paints in any colour, on 100 px squares with the shape
+# about 64 px across, like Kenney's Game Icons. A few more are drawn here in that style.
+ICON = 100
+GAME_ICONS = K / 'gameicons/PNG/White/2x'
+MORE_ICONS = K / 'gameicons-expansion/PNG/White/2x'
+
+
+def kicon(name, folder=GAME_ICONS):
+    return Image.open(folder / (name + '.png')).convert('RGBA')
+
+
+def glyph(paint):
+    """[paint] draws white on a large mask, black cuts holes; returns the shrunk icon."""
+    n = ICON * HI
+    m = Image.new('L', (n, n), 0)
+    paint(ImageDraw.Draw(m), n / 100.0)
+    im = Image.new('RGBA', (ICON, ICON), (255, 255, 255, 0))
+    im.putalpha(m.resize((ICON, ICON), Image.LANCZOS))
+    return im
+
+
+def ib(k, l, t, r, b):
+    """A box on the 100-unit icon square, [k] mask pixels per unit."""
+    return (l * k, t * k, r * k, b * k)
+
+
+def heart_icon(d, k):
+    d.ellipse(ib(k, 17, 22, 53, 58), fill=255)
+    d.ellipse(ib(k, 47, 22, 83, 58), fill=255)
+    d.polygon([(19 * k, 47 * k), (81 * k, 47 * k), (50 * k, 82 * k)], fill=255)
+    d.rectangle(ib(k, 35, 34, 65, 55), fill=255)
+
+
+def skull_icon(d, k):
+    d.ellipse(ib(k, 20, 16, 80, 70), fill=255)
+    d.rounded_rectangle(ib(k, 32, 54, 68, 84), 6 * k, fill=255)
+    d.ellipse(ib(k, 29, 38, 47, 56), fill=0)
+    d.ellipse(ib(k, 53, 38, 71, 56), fill=0)
+    d.polygon([(50 * k, 57 * k), (45 * k, 66 * k), (55 * k, 66 * k)], fill=0)
+    for x in (41, 50, 59):
+        d.rectangle(ib(k, x - 1.6, 73, x + 1.6, 84), fill=0)
+
+
+def book_icon(d, k):
+    # An open book seen from above: two pages and a spine.
+    d.polygon([(16 * k, 24 * k), (47 * k, 30 * k), (47 * k, 82 * k), (16 * k, 76 * k)], fill=255)
+    d.polygon([(84 * k, 24 * k), (53 * k, 30 * k), (53 * k, 82 * k), (84 * k, 76 * k)], fill=255)
+    for y in (40, 51, 62):
+        d.line([(23 * k, (y - 4) * k), (40 * k, (y - 1) * k)], fill=0, width=int(4 * k))
+        d.line([(77 * k, (y - 4) * k), (60 * k, (y - 1) * k)], fill=0, width=int(4 * k))
+
+
+def calendar_icon(d, k):
+    d.rounded_rectangle(ib(k, 18, 24, 82, 84), 7 * k, fill=255)
+    d.rectangle(ib(k, 18, 38, 82, 42), fill=0)
+    for x in (34, 66):
+        d.rounded_rectangle(ib(k, x - 4, 14, x + 4, 31), 3 * k, fill=255)
+    for row in range(2):
+        for col in range(3):
+            x, y = 27 + col * 17, 50 + row * 15
+            d.rectangle(ib(k, x, y, x + 12, y + 10), fill=0)
+    d.rectangle(ib(k, 27, 50, 39, 60), fill=255)
+
+
+def infinity_icon(d, k):
+    # A lemniscate, traced with a round brush.
+    r = 5.5 * k
+    for i in range(720):
+        t = 2 * math.pi * i / 720
+        q = 1 + math.sin(t) ** 2
+        x, y = (50 + 36 * math.cos(t) / q) * k, (50 + 36 * math.sin(t) * math.cos(t) / q) * k
+        d.ellipse((x - r, y - r, x + r, y + r), fill=255)
+
+
+def ranks_icon(d, k):
+    # Three sergeant's chevrons pointing up.
+    for i in range(3):
+        y = 24 + i * 19
+        d.polygon([(50 * k, y * k), (84 * k, (y + 20) * k), (84 * k, (y + 31) * k), (50 * k, (y + 11) * k),
+                   (16 * k, (y + 31) * k), (16 * k, (y + 20) * k)], fill=255)
+
+
+for name, src in {
+    'back': 'arrowLeft', 'gear': 'gear', 'trophy': 'trophy', 'play': 'right', 'pause': 'pause', 'cross': 'cross',
+    'undo': 'return', 'lock': 'locked', 'star': 'star', 'medal': 'medal1', 'speed': 'fastForward',
+    'target': 'target', 'sound': 'audioOn', 'music': 'musicOn', 'warning': 'warning', 'home': 'home',
+    'check': 'checkmark', 'info': 'information',
+}.items():
+    S['icon.' + name] = kicon(src)
+S['icon.flag'] = kicon('flag', MORE_ICONS)
+S['icon.heart'] = glyph(heart_icon)
+S['icon.skull'] = glyph(skull_icon)
+S['icon.book'] = glyph(book_icon)
+S['icon.calendar'] = glyph(calendar_icon)
+S['icon.infinity'] = glyph(infinity_icon)
+S['icon.ranks'] = glyph(ranks_icon)
+
+
 # --- packing -----------------------------------------------------------------------------
 
 def extrude(im, pad):

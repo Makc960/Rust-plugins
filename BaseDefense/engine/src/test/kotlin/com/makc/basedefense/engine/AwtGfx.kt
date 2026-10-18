@@ -3,7 +3,7 @@ package com.makc.basedefense.engine
 import java.awt.AlphaComposite
 import java.awt.BasicStroke
 import java.awt.Color
-import java.awt.Font
+import java.awt.Font as AwtFont
 import java.awt.Graphics2D
 import java.awt.MultipleGradientPaint
 import java.awt.RadialGradientPaint
@@ -29,7 +29,6 @@ class AwtGfx(val image: BufferedImage) : Gfx {
         setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
     }
     private val stack = ArrayDeque<Pair<AffineTransform, Shape?>>()
-    private val baseFont = Font("DejaVu Sans", Font.BOLD, 12)
 
     private fun color(c: Int) = Color(c, true)
 
@@ -107,8 +106,8 @@ class AwtGfx(val image: BufferedImage) : Gfx {
         g.fill(Ellipse2D.Float(cx - r, cy - r, r * 2, r * 2))
     }
 
-    override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Align) {
-        val f = baseFont.deriveFont(size)
+    override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Align, font: Font) {
+        val f = fonts.getValue(font).deriveFont(size)
         g.font = f
         g.color = color(color)
         val w = f.getStringBounds(s, g.fontRenderContext).width.toFloat()
@@ -120,13 +119,13 @@ class AwtGfx(val image: BufferedImage) : Gfx {
         g.drawString(s, x + dx, y)
     }
 
-    override fun textWidth(s: String, size: Float): Float =
-        baseFont.deriveFont(size).getStringBounds(s, g.fontRenderContext).width.toFloat()
+    override fun textWidth(s: String, size: Float, font: Font): Float =
+        fonts.getValue(font).deriveFont(size).getStringBounds(s, g.fontRenderContext).width.toFloat()
 
     override val sprites: Boolean get() = atlas != null
 
-    override fun sprite(s: Sprite, cx: Float, cy: Float, w: Float, h: Float, degrees: Float, alpha: Float) {
-        val img = atlas ?: return
+    override fun sprite(s: Sprite, cx: Float, cy: Float, w: Float, h: Float, degrees: Float, alpha: Float, tint: Int) {
+        val img = (if (tint != 0) tinted(s, tint) else atlas) ?: return
         if (alpha <= 0f) return
         val t = g.transform
         val comp = g.composite
@@ -136,12 +135,43 @@ class AwtGfx(val image: BufferedImage) : Gfx {
         g.translate(-s.w / 2.0, -s.h / 2.0)
         if (alpha < 1f) g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha)
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-        g.drawImage(img, 0, 0, s.w, s.h, s.x, s.y, s.x + s.w, s.y + s.h, null)
+        if (tint != 0) {
+            g.drawImage(img, 0, 0, s.w, s.h, 0, 0, s.w, s.h, null)
+        } else {
+            g.drawImage(img, 0, 0, s.w, s.h, s.x, s.y, s.x + s.w, s.y + s.h, null)
+        }
         g.composite = comp
         g.transform = t
     }
 
     private companion object {
+        val fonts: Map<Font, AwtFont> by lazy {
+            Font.entries.associateWith { f ->
+                AwtGfx::class.java.getResourceAsStream(f.resource)?.use { AwtFont.createFont(AwtFont.TRUETYPE_FONT, it) }
+                    ?: AwtFont("DejaVu Sans", AwtFont.BOLD, 12)
+            }
+        }
+
+        private val tints = HashMap<Pair<String, Int>, BufferedImage>()
+
+        /** [s] alone, every pixel in [tint] with its own alpha, premultiplied like the atlas. */
+        fun tinted(s: Sprite, tint: Int): BufferedImage? {
+            val src = atlas ?: return null
+            return tints.getOrPut(s.name to tint) {
+                val out = BufferedImage(s.w, s.h, BufferedImage.TYPE_INT_ARGB)
+                val rgb = tint and 0xFFFFFF
+                val ta = (tint ushr 24) and 0xFF
+                for (y in 0 until s.h) for (x in 0 until s.w) {
+                    val p = src.getRGB(s.x + x, s.y + y)
+                    val a = ((p ushr 24) and 0xFF) * ta / 255
+                    out.setRGB(x, y, (a shl 24) or rgb)
+                }
+                val pre = BufferedImage(s.w, s.h, BufferedImage.TYPE_INT_ARGB_PRE)
+                pre.createGraphics().apply { drawImage(out, 0, 0, null); dispose() }
+                pre
+            }
+        }
+
         /** Premultiplied, so filtering never darkens the soft edges. */
         val atlas: BufferedImage? by lazy {
             val src = AwtGfx::class.java.getResourceAsStream(Sprites.IMAGE)?.use { ImageIO.read(it) } ?: return@lazy null
