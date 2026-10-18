@@ -38,7 +38,8 @@ jobs:
               raise SystemExit("no BOM metadata")
           versions = re.findall(r"<version>([^<]+)</version>", meta.decode())
           print("BOM VERSIONS", versions)
-          bom_v = max(versions)
+          dated = [v for v in versions if re.fullmatch(r"\d{4}\.\d{2}\.\d{2}", v)]
+          bom_v = max(dated)
           bom = get(f"ru/rustore/sdk/bom/{bom_v}/bom-{bom_v}.pom").decode()
           print("===== BOM", bom_v)
           print(bom)
@@ -80,7 +81,7 @@ jobs:
           names = []
           for j in jars:
               for n in zipfile.ZipFile(j).namelist():
-                  if n.endswith(".class") and n.startswith("ru/rustore/sdk/pay") and "/internal/" not in n:
+                  if n.endswith(".class") and (n.startswith("ru/rustore/sdk/pay") or n.startswith("ru/rustore/sdk/core/tasks") or n.startswith("ru/rustore/sdk/core/util")) and "/internal/" not in n:
                       names.append(n[:-6].replace("/", "."))
           print("===== CLASSES", len(names))
           for chunk in range(0, len(names), 60):
