@@ -83,6 +83,12 @@ jobs:
               for n in zipfile.ZipFile(j).namelist():
                   if n.endswith(".class") and (n.startswith("ru/rustore/sdk/pay") or n.startswith("ru/rustore/sdk/core/tasks") or n.startswith("ru/rustore/sdk/core/util")) and "/internal/" not in n:
                       names.append(n[:-6].replace("/", "."))
+          for extra in (["javap", "-constants", "-p", "-c", "-cp", cp, "ru.rustore.sdk.pay.RuStorePayContentProvider"],
+                        ["javap", "-constants", "-p", "-cp", cp, "ru.rustore.sdk.pay.model.PurchaseAvailabilityResult$Available"]):
+              out = subprocess.run(extra, capture_output=True, text=True)
+              print("===== EXTRA", extra[-1])
+              print("\n".join(l for l in out.stdout.splitlines() if "ldc" in l or "String" in l or "static" in l or "class" in l))
+          raise SystemExit(0)
           print("===== CLASSES", len(names))
           for chunk in range(0, len(names), 60):
               out = subprocess.run(["javap", "-public", "-cp", cp] + names[chunk:chunk + 60], capture_output=True, text=True)
