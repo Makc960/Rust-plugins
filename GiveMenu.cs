@@ -12,7 +12,7 @@ using UnityEngine.UI;
 
 namespace Oxide.Plugins
 {
-    [Info("GiveMenu", "Flux", "1.6.0")]
+    [Info("GiveMenu", "Flux", "1.7.0")]
     public class GiveMenu : RustPlugin
     {
         [PluginReference] private Plugin InfoToast;
@@ -53,6 +53,7 @@ namespace Oxide.Plugins
             public Int32 GridPage;
             public Boolean Hosted;
             public UInt64 UserId;
+            public Boolean ConfirmReset;
         }
 
         private readonly Dictionary<UInt64, MenuState> _menuStates = new();
@@ -76,6 +77,8 @@ namespace Oxide.Plugins
             public Boolean Initialized;
                                                                
             public Int64 SaveCreatedUnix;
+
+            public HashSet<UInt64> LimitResetUsed = new HashSet<UInt64>();
         }
 
         private class PluginConfig
@@ -97,6 +100,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("КД меню выдачи после вайпа, часы")]
             public Double WipeCooldownHours = 2d;
+
+            [JsonProperty("Игрок может раз за вайп сбросить свои лимиты кнопкой в меню")]
+            public Boolean PlayerLimitReset = true;
 
             [JsonProperty("Лимит по умолчанию для новой категории")]
             public Int32 DefaultCategoryLimit = 500000;
@@ -1432,6 +1438,7 @@ namespace Oxide.Plugins
             _wipeState.SaveCreatedUnix = Math.Max(0L, saveCreatedUnix);
             _wipeState.UnlockAt = UnixNow() + Math.Max(0d, _config?.WipeCooldownHours ?? 2d) * 3600d;
             _wipeState.Initialized = true;
+            LimitResets().Clear();
             SaveWipeState();
 
             Int32 resetPlayers = ResetAllPlayerLimits();
@@ -1478,6 +1485,14 @@ namespace Oxide.Plugins
         private String WipeCooldownMessage()
         {
             return "Меню выдачи станет доступно через " + WipeCooldownRemaining() + " после вайпа.";
+        }
+
+        private HashSet<UInt64> LimitResets()
+        {
+            if (_wipeState == null)
+                _wipeState = new WipeState();
+
+            return _wipeState.LimitResetUsed ??= new HashSet<UInt64>();
         }
 
         private static Double UnixNow()
@@ -1683,6 +1698,9 @@ namespace Oxide.Plugins
 
         private const Single CardIcon = 96f;
         private const Single AdminFooterHeight = 48f;
+        private const Single ResetFooterHeight = 68f;
+        private const Single ResetBtnBottom = 8f;
+        private const Single ResetBtnH = 30f;
 
         private const Single LimitGap = 12f;
         private const Single RowLimitInput = 10f;
@@ -1868,6 +1886,7 @@ namespace Oxide.Plugins
             state.Amount = 1;
             state.Search = String.Empty;
             state.GridPage = 0;
+            state.ConfirmReset = false;
         }
 
         private void API_RenderServerMenu(BasePlayer player)
@@ -1907,6 +1926,7 @@ namespace Oxide.Plugins
             state.Item = String.Empty;
             state.Search = String.Empty;
             state.GridPage = 0;
+            state.ConfirmReset = false;
 
             MenuState admin = GetAdminMenuState(player);
             admin.Hosted = false;
@@ -2017,7 +2037,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            DrawNav(container, state, admin);
+            DrawNav(container, player, state, admin);
             DrawHead(container, player, state, admin);
             DrawGrid(container, state, admin);
             DrawCard(container, player, state, admin);
@@ -2038,7 +2058,7 @@ namespace Oxide.Plugins
                 admin ? "ОБЫЧНЫЙ РЕЖИМ" : "РЕЖИМ АДМИНИСТРАТОРА", true);
         }
 
-        private void DrawNav(CuiElementContainer container, MenuState state, Boolean admin)
+        private void DrawNav(CuiElementContainer container, BasePlayer player, MenuState state, Boolean admin)
         {
             String main = MainOf(admin);
             String nav = NavPanel(admin);
@@ -2062,7 +2082,10 @@ namespace Oxide.Plugins
             }
 
             if (!admin)
+            {
+                DrawLimitReset(container, player, state);
                 return;
+            }
 
             String footer = nav + ".Default";
             Single navHeight = UiStyle.ContentTop - BottomOf(state);
@@ -2081,6 +2104,59 @@ namespace Oxide.Plugins
                     ? "БЕЗ ЛИМИТА"
                     : _config.DefaultCategoryLimit.ToString("N0", CultureInfo.InvariantCulture),
                 UiStyle.SizeCardTitle, UiStyle.ColText, TextAnchor.MiddleLeft, UiStyle.Bold);
+        }
+
+        private void DrawLimitReset(CuiElementContainer container, BasePlayer player, MenuState state)
+        {
+            if (!_config.PlayerLimitReset || IsUnlimited(player))
+                return;
+
+            String nav = NavPanel(false);
+            String footer = nav + ".Reset";
+            Single width = NavRight - NavLeft;
+            Single navHeight = UiStyle.ContentTop - BottomOf(state);
+            Single footerTop = -(navHeight - ResetFooterHeight);
+
+            Boolean used = LimitResets().Contains(player.userID);
+            Boolean issued = HasIssued(GetPlayerData(player.userID));
+            Boolean ready = !used && issued;
+            Boolean confirm = ready && state.ConfirmReset;
+
+            UiStyle.Card(container, nav, footer, 0f, width, footerTop, footerTop - ResetFooterHeight,
+                UiStyle.ColCardDark,
+                confirm ? UiStyle.ColRedStrong : ready ? UiStyle.ColGreenBtn : UiStyle.ColMuted);
+
+            UiStyle.Label(container, footer, "0 1", "1 1",
+                UiStyle.Off(UiStyle.PadRow, -22f), UiStyle.Off(-UiStyle.PadRow, -6f),
+                confirm ? "ТОЧНО? ЭТО 1 РАЗ ЗА ВАЙП" : "СБРОС ЛИМИТОВ",
+                UiStyle.SizeTiny, confirm ? UiStyle.ColRedText : UiStyle.ColMuted, TextAnchor.MiddleLeft, UiStyle.Bold);
+
+            if (confirm)
+            {
+                Single half = (width - UiStyle.PadRow * 2f - UiStyle.TabGap) * 0.5f;
+
+                UiStyle.Danger(container, footer, "0 0", "0 0",
+                    UiStyle.Off(UiStyle.PadRow, ResetBtnBottom),
+                    UiStyle.Off(UiStyle.PadRow + half, ResetBtnBottom + ResetBtnH),
+                    "UI_GIVE limitreset confirm", "СБРОСИТЬ", true);
+
+                UiStyle.Secondary(container, footer, "0 0", "0 0",
+                    UiStyle.Off(width - UiStyle.PadRow - half, ResetBtnBottom),
+                    UiStyle.Off(width - UiStyle.PadRow, ResetBtnBottom + ResetBtnH),
+                    "UI_GIVE limitreset cancel", "ОТМЕНА", true);
+                return;
+            }
+
+            UiStyle.Label(container, footer, "0 1", "1 1",
+                UiStyle.Off(UiStyle.PadRow, -22f), UiStyle.Off(-UiStyle.PadRow, -6f),
+                used ? "ИСПОЛЬЗОВАН" : "1 РАЗ ЗА ВАЙП",
+                UiStyle.SizeTiny, used ? UiStyle.ColRedText : UiStyle.ColMuted, TextAnchor.MiddleRight, UiStyle.Bold);
+
+            UiStyle.Secondary(container, footer, "0 0", "1 0",
+                UiStyle.Off(UiStyle.PadRow, ResetBtnBottom), UiStyle.Off(-UiStyle.PadRow, ResetBtnBottom + ResetBtnH),
+                "UI_GIVE limitreset",
+                used ? "ДОСТУПЕН В НОВОМ ВАЙПЕ" : issued ? "СБРОСИТЬ ЛИМИТЫ" : "НЕЧЕГО СБРАСЫВАТЬ",
+                ready);
         }
 
         private void DrawHead(CuiElementContainer container, BasePlayer player, MenuState state, Boolean admin)
@@ -2458,7 +2534,7 @@ namespace Oxide.Plugins
         {
             CuiElementContainer container = new CuiElementContainer();
 
-            if (nav) DrawNav(container, state, admin);
+            if (nav) DrawNav(container, player, state, admin);
             if (head) DrawHead(container, player, state, admin);
             if (grid) DrawGrid(container, state, admin);
             if (cardOnly) DrawCard(container, player, state, admin);
@@ -2501,6 +2577,7 @@ namespace Oxide.Plugins
             state.Amount = 1;
             state.Search = String.Empty;
             state.GridPage = 0;
+            state.ConfirmReset = false;
 
             DrawMenu(player, false);
         }
@@ -2762,6 +2839,7 @@ namespace Oxide.Plugins
                 state.Amount = 1;
                 state.Search = String.Empty;
                 state.GridPage = 0;
+                state.ConfirmReset = false;
 
                 Refresh(player, state, false, true, true, true, true, false);
                 return;
@@ -2770,6 +2848,12 @@ namespace Oxide.Plugins
             if (action.Equals("page", StringComparison.OrdinalIgnoreCase))
             {
                 ChangeGridPage(player, args, false);
+                return;
+            }
+
+            if (action.Equals("limitreset", StringComparison.OrdinalIgnoreCase))
+            {
+                LimitReset(player, args.GetString(1, String.Empty));
                 return;
             }
 
@@ -2882,6 +2966,8 @@ namespace Oxide.Plugins
                     return;
                 }
 
+                Boolean firstIssue = !HasIssued(data);
+
                 SetCategoryAmount(data, category, (Int32)newAmount);
                 SetItemAmount(data, shortName, (Int32)newItem);
                 RequestPlayerSave();
@@ -2890,14 +2976,53 @@ namespace Oxide.Plugins
                     player,
                     $"Получено: {amount:N0} × {item.info.displayName.english}");
 
-                RefreshAfterGive(player);
+                RefreshAfterGive(player, firstIssue);
             }
         }
 
-        private void RefreshAfterGive(BasePlayer player)
+        private void LimitReset(BasePlayer player, String step)
+        {
+            MenuState state = GetMenuState(player);
+            PlayerData data = GetPlayerData(player.userID);
+
+            Boolean ready = _config.PlayerLimitReset && !IsUnlimited(player) &&
+                            !LimitResets().Contains(player.userID) && HasIssued(data);
+
+            if (!ready || step.Equals("cancel", StringComparison.OrdinalIgnoreCase))
+            {
+                state.ConfirmReset = false;
+                Refresh(player, state, false, true, false, false, false, false);
+                return;
+            }
+
+            if (!step.Equals("confirm", StringComparison.OrdinalIgnoreCase))
+            {
+                state.ConfirmReset = true;
+                Refresh(player, state, false, true, false, false, false, false);
+                return;
+            }
+
+            state.ConfirmReset = false;
+            LimitResets().Add(player.userID);
+            SaveWipeState();
+
+            data.CategoryAmounts.Clear();
+            data.ItemAmounts.Clear();
+            RequestPlayerSave();
+
+            UiStyle.Sound(player, UiStyle.FxApplied);
+            SendNotify(player, "Лимиты сброшены, выдача снова доступна в полном объёме. Следующий сброс — в новом вайпе.");
+
+            Puts("GiveMenu: " + player.displayName + " (" + player.UserIDString +
+                 ") сбросил свои лимиты кнопкой в меню (раз за вайп).");
+
+            Refresh(player, state, false, true, true, false, true, false);
+        }
+
+        private void RefreshAfterGive(BasePlayer player, Boolean nav)
         {
             if (_menuStates.ContainsKey(player.userID))
-                Refresh(player, GetMenuState(player), false, false, true, false, true, false);
+                Refresh(player, GetMenuState(player), false, nav, true, false, true, false);
 
             if (_adminMenuStates.ContainsKey(player.userID))
                 Refresh(player, GetAdminMenuState(player), true, false, true, false, true, false);
@@ -3482,6 +3607,13 @@ namespace Oxide.Plugins
                 data.CategoryAmounts = new Dictionary<String, Int32>(StringComparer.OrdinalIgnoreCase);
 
             data.CategoryAmounts[category.ToString()] = Math.Max(0, amount);
+        }
+
+        private static Boolean HasIssued(PlayerData data)
+        {
+            return data != null &&
+                   (data.CategoryAmounts != null && data.CategoryAmounts.Values.Any(x => x > 0) ||
+                    data.ItemAmounts != null && data.ItemAmounts.Values.Any(x => x > 0));
         }
 
         private Int32 CategorySortOrder(ItemCategory category)
