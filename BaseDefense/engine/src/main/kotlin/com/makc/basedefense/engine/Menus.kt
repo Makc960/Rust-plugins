@@ -63,6 +63,19 @@ internal class Menus(private val game: Game) {
         game.go(s)
     }
 
+    private var savedText: String? = null
+    private var saved: Session? = null
+
+    /** The battle waiting in the save, read again only when the save changes. */
+    private fun savedBattle(): Session? {
+        val text = profile.save
+        if (text != savedText) {
+            savedText = text
+            saved = if (text == null) null else game.savedSession()
+        }
+        return saved
+    }
+
     private fun thumb(level: LevelDef): GameMap = thumbs.getOrPut("${level.id}-${level.plan.seed}") { GameMap(level) }
 
     // --- main menu ------------------------------------------------------------------------
@@ -90,7 +103,7 @@ internal class Menus(private val game: Game) {
         }
         ui.text(g, Tx.TAGLINE.t, cx, ty + big + d(30f), d(14f), Ui.DIM, Align.CENTER)
 
-        val saved = profile.save?.let { game.savedSession() }
+        val saved = savedBattle()
         val bottomRow = ui.h - ui.bottom - d(118f)
         val top = ty + big + d(56f)
         val count = if (saved != null) 5 else 4

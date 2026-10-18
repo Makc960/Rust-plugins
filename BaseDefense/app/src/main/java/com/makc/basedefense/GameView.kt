@@ -32,6 +32,11 @@ class GameView(context: Context, private val game: Game) : View(context) {
         },
     )
 
+    init {
+        // Double-tap-and-drag zoom would fight with taps on the map; two fingers are enough.
+        scaler.isQuickScaleEnabled = false
+    }
+
     fun setInsets(top: Int, bottom: Int) {
         insetTop = top
         insetBottom = bottom
