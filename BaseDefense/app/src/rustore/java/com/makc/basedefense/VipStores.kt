@@ -7,6 +7,7 @@ import com.makc.basedefense.engine.Payment
 import com.makc.basedefense.engine.Vip
 import com.makc.basedefense.engine.VipShop
 import ru.rustore.sdk.pay.RuStorePayClient
+import ru.rustore.sdk.pay.model.PreferredPurchaseType
 import ru.rustore.sdk.pay.model.ProductId
 import ru.rustore.sdk.pay.model.ProductPurchaseParams
 import ru.rustore.sdk.pay.model.ProductType
@@ -32,7 +33,7 @@ private class RuStoreVip : VipStore {
     override fun buy(done: (Payment, Int) -> Unit) {
         try {
             client.getPurchaseInteractor()
-                .purchase(ProductPurchaseParams(productId = ProductId(Vip.PRODUCT)), sdkTheme = SdkTheme.DARK)
+                .purchase(ProductPurchaseParams(ProductId(Vip.PRODUCT)), PreferredPurchaseType.ONE_STEP, SdkTheme.DARK)
                 .addOnSuccessListener {
                     // The purchase result has no end date; the subscription itself does.
                     check { until -> done(Payment.PAID, until ?: today() + Vip.DAYS) }
@@ -48,7 +49,7 @@ private class RuStoreVip : VipStore {
     override fun check(done: (Int?) -> Unit) {
         try {
             client.getPurchaseInteractor()
-                .getPurchases(productType = ProductType.SUBSCRIPTION)
+                .getPurchases(ProductType.SUBSCRIPTION)
                 .addOnSuccessListener { purchases ->
                     val until = purchases.filterIsInstance<SubscriptionPurchase>()
                         .filter { it.productId.value == Vip.PRODUCT && it.status == SubscriptionPurchaseStatus.ACTIVE }

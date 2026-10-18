@@ -48,7 +48,8 @@ android {
         resValues = true
     }
 
-    sourceSets.getByName("main").java.directories.add(if (store == "rustore") "src/rustore/java" else "src/nostore/java")
+    // Built-in Kotlin compiles extra folders only from the Kotlin source set, not the Java one.
+    sourceSets.getByName("main").kotlin.directories.add(if (store == "rustore") "src/rustore/java" else "src/nostore/java")
 
     signingConfigs {
         // One public key for builds installed by hand, so a new APK installs over the old one.
