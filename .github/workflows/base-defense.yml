@@ -102,7 +102,7 @@ jobs:
           gh release create base-defense BaseDefense.apk \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "Оборона базы 2.4" \
+            --title "Оборона базы 2.5" \
             --notes "Сборка из ${GITHUB_SHA::7}. Скачай BaseDefense.apk на телефон и установи поверх старой версии (прогресс сохранится). Поддержать автора: https://pay.cloudtips.ru/p/5b9bb7e3"
 
   # RuStore builds pull in RuStore's Pay SDK; this checks they still compile against it,

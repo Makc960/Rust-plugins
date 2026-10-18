@@ -14,6 +14,7 @@ internal enum class Style { PRIMARY, NORMAL, GHOST, DANGER }
 internal enum class Icon {
     BACK, GEAR, TROPHY, BOOK, RANKS, CALENDAR, INFINITY, PLAY, PAUSE, CROSS, UNDO, LOCK, STAR, MEDAL,
     SPEED, FLAG, TARGET, SOUND, MUSIC, WARNING, HOME, CHECK, INFO, HEART, SKULL, CROWN,
+    COMMANDER, GRENADE, FIST, WRENCH, BOLT, BLAST, CART,
     ;
 
     val sprite = "icon." + name.lowercase()
@@ -73,6 +74,9 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
         buttons.lastOrNull { it.id == id }?.let { (it.r.x + it.r.w / 2f) to (it.r.y + it.r.h / 2f) }
 
     fun ids(): List<String> = buttons.map { it.id } + sliders.map { it.id }
+
+    /** Left, top, width and height of the control drawn under [id] this frame, or null. */
+    fun rect(id: String): FloatArray? = buttons.lastOrNull { it.id == id }?.let { floatArrayOf(it.r.x, it.r.y, it.r.w, it.r.h) }
 
     /** Left, top, width and height of a slider drawn last frame. */
     fun sliderRect(id: String): FloatArray? = sliders.lastOrNull { it.id == id }?.let { floatArrayOf(it.r.x, it.r.y, it.r.w, it.r.h) }
@@ -270,8 +274,8 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
 
     // --- shapes ---------------------------------------------------------------------------
 
-    private val px = FloatArray(12)
-    private val py = FloatArray(12)
+    private val px = FloatArray(16)
+    private val py = FloatArray(16)
 
     /** A rectangle with its corners cut [cut] deep, the shape of every plate here. */
     fun chamfer(g: Gfx, x: Float, y: Float, cw: Float, ch: Float, cut: Float, color: Int) {
@@ -908,6 +912,46 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
                 px[5] = cx + s * 0.45f; py[5] = cy - s * 0.3f
                 px[6] = cx + s * 0.45f; py[6] = cy + s * 0.3f
                 g.fillPolygon(px, py, 7, color)
+            }
+            Icon.COMMANDER -> {
+                g.fillRoundRect(cx - s * 0.36f, cy - s * 0.42f, s * 0.72f, s * 0.84f, s * 0.16f, color)
+                starShape(g, cx, cy, s * 0.24f, EDGE)
+            }
+            Icon.GRENADE -> {
+                g.fillCircle(cx, cy + s * 0.1f, s * 0.32f, color)
+                g.fillRect(cx - s * 0.1f, cy - s * 0.38f, s * 0.2f, s * 0.2f, color)
+                g.line(cx + s * 0.1f, cy - s * 0.3f, cx + s * 0.34f, cy - s * 0.04f, color, s * 0.08f)
+            }
+            Icon.FIST -> {
+                g.fillRoundRect(cx - s * 0.34f, cy - s * 0.3f, s * 0.68f, s * 0.42f, s * 0.12f, color)
+                g.fillRoundRect(cx - s * 0.24f, cy + s * 0.04f, s * 0.48f, s * 0.36f, s * 0.08f, color)
+            }
+            Icon.WRENCH -> {
+                g.line(cx - s * 0.3f, cy + s * 0.3f, cx + s * 0.16f, cy - s * 0.16f, color, s * 0.16f)
+                g.strokeCircle(cx + s * 0.22f, cy - s * 0.22f, s * 0.16f, color, s * 0.12f)
+            }
+            Icon.BOLT -> {
+                px[0] = cx + s * 0.12f; py[0] = cy - s * 0.46f
+                px[1] = cx - s * 0.3f; py[1] = cy + s * 0.06f
+                px[2] = cx - s * 0.02f; py[2] = cy + s * 0.06f
+                px[3] = cx - s * 0.12f; py[3] = cy + s * 0.46f
+                px[4] = cx + s * 0.3f; py[4] = cy - s * 0.06f
+                px[5] = cx + s * 0.02f; py[5] = cy - s * 0.06f
+                g.fillPolygon(px, py, 6, color)
+            }
+            Icon.BLAST -> {
+                for (k in 0 until 16) {
+                    val a = -PI / 2 + k * PI / 8
+                    val rr = if (k % 2 == 0) s * 0.48f else s * 0.24f
+                    px[k] = cx + (cos(a) * rr).toFloat()
+                    py[k] = cy + (sin(a) * rr).toFloat()
+                }
+                g.fillPolygon(px, py, 16, color)
+            }
+            Icon.CART -> {
+                g.fillRoundRect(cx - s * 0.36f, cy - s * 0.26f, s * 0.68f, s * 0.36f, s * 0.06f, color)
+                g.fillCircle(cx - s * 0.2f, cy + s * 0.32f, s * 0.09f, color)
+                g.fillCircle(cx + s * 0.2f, cy + s * 0.32f, s * 0.09f, color)
             }
         }
     }

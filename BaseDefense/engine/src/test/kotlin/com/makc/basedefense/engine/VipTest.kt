@@ -53,16 +53,16 @@ class VipTest {
     @Test
     fun buyingCheckingAndSaving() {
         val platform = SilentPlatform(day = 1000)
-        platform.vipShop = VipShop.HERE
+        platform.shop = Shop.HERE
         platform.payment = Payment.CANCELLED
         val game = Game(platform)
         assertFalse(game.vip)
         var heard: Payment? = null
-        game.buyVip { heard = it }
+        game.buy(Product.VIP_MONTH) { heard = it }
         assertEquals(Payment.CANCELLED, heard)
         assertFalse(game.vip, "a cancelled payment gives nothing")
         platform.payment = Payment.PAID
-        game.buyVip { heard = it }
+        game.buy(Product.VIP_MONTH) { heard = it }
         assertEquals(Payment.PAID, heard)
         assertTrue(game.vip)
         assertEquals(1030, game.profile.vipUntil)

@@ -143,6 +143,9 @@ class Projectile(
     /** Damage of each bomblet a cluster rocket releases; 0 for plain rockets. */
     var cluster = 0f
     var big = false
+
+    /** Fired by the commander or his sentry gun: what it does is his experience. */
+    var hero = false
 }
 
 class Particle(
@@ -263,6 +266,10 @@ class World(
     var abilitiesUsed = 0
         private set
 
+    /** The VIP reserve already came, so the next fall is the end. */
+    var reserveUsed = false
+        private set
+
     val enemies = ArrayList<Enemy>()
     val towers = ArrayList<Tower>()
     val projectiles = ArrayList<Projectile>()
@@ -277,6 +284,11 @@ class World(
     val bombs = ArrayList<Bomb>()
     var plane: Plane? = null
         private set
+
+    /** The commander, when the rules bring one. */
+    var commander: Commander? = rules.commander?.let { startCommander(it) }
+        private set
+    val sentries = ArrayList<Sentry>()
 
     var baseFlash = 0f
         private set
@@ -296,6 +308,9 @@ class World(
     var bossAlert = 0f
         private set
     val cooldowns = FloatArray(Ability.entries.size) { Ability.entries[it].cooldown * rules.cooldownMul * 0.5f }
+
+    /** The next wave's timer stands still: the tutorial waits for the player. */
+    var holdWaves = false
 
     /** Fewer particles for weak phones. */
     var lite = false
@@ -398,18 +413,22 @@ class World(
             updateSupport()
             updateEnemies(dt)
             for (t in towers) updateTower(t, dt)
+            commander?.let { updateCommander(it, dt) }
+            updateSentries(dt)
             updateProjectiles(dt)
             updatePatches(dt)
             updateBombs(dt)
             enemies.removeAll { !it.alive }
             enemies.addAll(incoming)
             incoming.clear()
-            if (countdown >= 0f) {
+            if (countdown >= 0f && !holdWaves) {
                 countdown -= dt
                 if (countdown <= 0f) startWave()
             }
             if (money > maxMoney) maxMoney = money
-            if (lives <= 0) {
+            if (lives <= 0 && rules.reserve && !reserveUsed) {
+                callReserve()
+            } else if (lives <= 0) {
                 lives = 0
                 phase = Phase.LOST
                 sound(Sfx.LOSE, 1f)
@@ -418,6 +437,8 @@ class World(
                 sound(Sfx.WIN, 1f)
             }
         } else {
+            // Before the first wave the commander can already take up his post.
+            if (phase == Phase.READY) commander?.let { walk(it, dt) }
             updateBombs(dt)
         }
         updateEffects(dt)
@@ -432,6 +453,19 @@ class World(
     }
 
     private fun sound(sfx: Sfx, volume: Float) = listener.sound(sfx, volume)
+
+    /** VIP's second chance: the base holds with a few fresh lives. */
+    private fun callReserve() {
+        reserveUsed = true
+        lives = min(maxLives, Vip.RESERVE_LIVES)
+        val bx = map.baseCol + 0.5f
+        val by = map.baseRow + 0.5f
+        rings += Ring(bx, by, 1.8f, 0.9f, 0.9f, GOLD)
+        texts += FloatText(bx, by - 0.4f, "+$lives", GOLD, 1.6f, 1.4f)
+        banner = Banner({ L("РЕЗЕРВ ВСТУПИЛ В БОЙ", "RESERVES ARRIVE").t }, { L("Второй шанс VIP: +%d жизней", "VIP second chance: +%d lives").f(Vip.RESERVE_LIVES) }, GOLD, 3f)
+        shake = max(shake, 0.3f)
+        sound(Sfx.REPAIR, 1f)
+    }
 
     // --- building -------------------------------------------------------------------------
 
@@ -715,27 +749,34 @@ class World(
         }
         if (radars.isEmpty()) {
             for (e in enemies) e.revealed = false
-            return
-        }
-        for (r in radars) {
-            val s = r.stats
-            val reach = radarRange(r)
-            for (t in towers) {
-                if (t === r || t.type.role == Role.SUPPORT || t.type.role == Role.ECONOMY) continue
-                if (!near(t.x, t.y, r.x, r.y, reach)) continue
-                t.aura = max(t.aura, s.extra)
-                if (r.branch == Branch.COMMAND) t.rangeBonus = max(t.rangeBonus, s.extra2)
-            }
-        }
-        for (e in enemies) {
-            if (!e.alive) continue
-            var seenNow = false
+        } else {
             for (r in radars) {
-                if (!near(e.x, e.y, r.x, r.y, radarRange(r) + e.type.radius)) continue
-                seenNow = true
-                if (r.branch == Branch.JAMMER) slow(e, r.stats.extra2 * bossK(e), 0.25f)
+                val s = r.stats
+                val reach = radarRange(r)
+                for (t in towers) {
+                    if (t === r || t.type.role == Role.SUPPORT || t.type.role == Role.ECONOMY) continue
+                    if (!near(t.x, t.y, r.x, r.y, reach)) continue
+                    t.aura = max(t.aura, s.extra)
+                    if (r.branch == Branch.COMMAND) t.rangeBonus = max(t.rangeBonus, s.extra2)
+                }
             }
-            e.revealed = seenNow
+            for (e in enemies) {
+                if (!e.alive) continue
+                var seenNow = false
+                for (r in radars) {
+                    if (!near(e.x, e.y, r.x, r.y, radarRange(r) + e.type.radius)) continue
+                    seenNow = true
+                    if (r.branch == Branch.JAMMER) slow(e, r.stats.extra2 * bossK(e), 0.25f)
+                }
+                e.revealed = seenNow
+            }
+        }
+        // The commander's rally adds to whatever a radar gives.
+        val c = commander ?: return
+        if (c.rally <= 0f) return
+        for (t in towers) {
+            if (t.type.role == Role.SUPPORT || t.type.role == Role.ECONOMY) continue
+            if (near(t.x, t.y, c.x, c.y, RALLY_RADIUS)) t.aura += RALLY_BONUS
         }
     }
 
@@ -852,6 +893,12 @@ class World(
             t.jammed = max(t.jammed, JAM_TIME)
             hit = true
         }
+        commander?.let {
+            if (near(it.x, it.y, e.x, e.y, SAPPER_RADIUS)) {
+                it.jammed = max(it.jammed, JAM_TIME)
+                hit = true
+            }
+        }
         if (!hit) {
             e.jamTimer = 0.3f
             return
@@ -879,8 +926,8 @@ class World(
         finish(e)
     }
 
-    /** Hits [e] for [raw] damage before armor; returns what actually came off. */
-    fun damage(e: Enemy, raw: Float, source: Tower?, pierce: Boolean = false, armorPierce: Float = 0f): Float {
+    /** Hits [e] for [raw] damage before armor; returns what actually came off. [hero] is the commander's. */
+    fun damage(e: Enemy, raw: Float, source: Tower?, pierce: Boolean = false, armorPierce: Float = 0f, hero: Boolean = false): Float {
         if (!e.alive || raw <= 0f) return 0f
         var amount = raw
         if (e.markTimer > 0f) amount *= MARK_BONUS
@@ -903,16 +950,17 @@ class World(
         }
         e.hp -= dealt
         if (source != null) source.damageDealt += total
+        if (hero) commander?.let { gainXp(it, total) }
         if (!pierce) e.hitFlash = 0.07f
         if (damageNumbers && total >= 25f && e.numberTimer <= 0f) {
             e.numberTimer = 0.3f
             texts += FloatText(e.x + (fx.nextFloat() - 0.5f) * 0.3f, e.y - e.type.radius - 0.1f, total.roundToInt().toString(), 0xFFFFF1C8.toInt(), 0.6f, 0.75f)
         }
-        if (e.hp <= 0f) kill(e, source)
+        if (e.hp <= 0f) kill(e, source, hero)
         return total
     }
 
-    private fun kill(e: Enemy, source: Tower?) {
+    private fun kill(e: Enemy, source: Tower?, hero: Boolean) {
         e.alive = false
         val reward = max(1, (e.reward * rules.rewardMul).roundToInt())
         money += reward
@@ -920,6 +968,14 @@ class World(
         if (e.type.boss) bossKills++
         if (e.type == EnemyType.GHOST) ghostKills++
         if (source != null) source.kills++
+        commander?.let {
+            if (hero) {
+                it.kills++
+            } else if (near(e.x, e.y, it.x, it.y, commanderRange(it) + SHARED_REACH)) {
+                // He learns from the fighting around him too.
+                gainXp(it, e.maxHp * SHARED_XP, dealt = false)
+            }
+        }
         val n = if (e.type.boss) 30 else if (lite) 3 else 8
         for (k in 0 until n) {
             val a = fx.nextFloat() * 6.283f
@@ -1251,7 +1307,11 @@ class World(
             }
             cur = next ?: break
         }
-        // Jagged bolt between the hit points.
+        bolt(xs, ys, 0.16f, if (stun) 0xFFFFE36B.toInt() else BOLT)
+    }
+
+    /** A jagged bolt through the hit points. */
+    private fun bolt(xs: List<Float>, ys: List<Float>, life: Float, color: Int) {
         val outX = ArrayList<Float>()
         val outY = ArrayList<Float>()
         for (i in 0 until xs.size - 1) {
@@ -1272,7 +1332,7 @@ class World(
         }
         outX += xs.last()
         outY += ys.last()
-        bolts += Bolt(outX.toFloatArray(), outY.toFloatArray(), 0.16f, if (stun) 0xFFFFE36B.toInt() else BOLT)
+        bolts += Bolt(outX.toFloatArray(), outY.toFloatArray(), life, color)
     }
 
     private fun fireSniper(t: Tower, s: TowerLevel, target: Enemy, dmg: Float, mx: Float, my: Float) {
@@ -1335,6 +1395,332 @@ class World(
         sound(Sfx.MINE, if (t.branch == Branch.LANDMINE) 0.8f else 0.55f)
     }
 
+    // --- the commander ------------------------------------------------------------------
+
+    private fun startCommander(type: CommanderType): Commander {
+        // Beside the main road, a little before the base, on the side that is not water.
+        val path = map.paths[0]
+        val p = FloatArray(4)
+        path.pointAt(path.length - COMMANDER_START, p)
+        var x = 0f
+        var y = 0f
+        for (side in floatArrayOf(COMMANDER_SIDE, -COMMANDER_SIDE)) {
+            x = (p[0] - p[3] * side).coerceIn(COMMANDER_EDGE, COLS - COMMANDER_EDGE)
+            y = (p[1] + p[2] * side).coerceIn(COMMANDER_EDGE, ROWS - COMMANDER_EDGE)
+            val c = floor(x).toInt()
+            val r = floor(y).toInt()
+            if (map.inside(c, r) && !map.isRoad(c, r) && map.terrain(c, r) != '~') break
+        }
+        val c = Commander(type, x, y)
+        c.level = rules.commanderLevel.coerceIn(0, Commander.MAX_LEVEL)
+        c.xp = Commander.XP[c.level]
+        return c
+    }
+
+    /** Sends the commander to (x, y), kept on the map. */
+    fun moveCommander(x: Float, y: Float): Boolean {
+        val c = commander ?: return false
+        if (over) return false
+        c.tx = x.coerceIn(COMMANDER_EDGE, COLS - COMMANDER_EDGE)
+        c.ty = y.coerceIn(COMMANDER_EDGE, ROWS - COMMANDER_EDGE)
+        return true
+    }
+
+    fun commanderRange(c: Commander): Float {
+        var r = c.stats.range * rules.rangeMul
+        if (sandstorm) r *= STORM_RANGE
+        return r
+    }
+
+    fun commanderDamage(c: Commander): Float = c.stats.damage * rules.damageMul
+
+    fun skillCooldown(s: Skill): Float = s.cooldown * rules.cooldownMul
+
+    /** Skills count as abilities: a challenge or a day without abilities switches them off too. */
+    val skillsAllowed: Boolean get() = rules.abilitiesAllowed
+
+    fun skillReady(k: Int): Boolean {
+        val c = commander ?: return false
+        return skillsAllowed && phase == Phase.RUNNING && c.jammed <= 0f && c.skillCooldowns[k] <= 0f
+    }
+
+    /** What skill [s] gives at the commander's level: damage, or seconds for the rally and the stun. */
+    fun skillPower(c: Commander, s: Skill): Float = when (s) {
+        Skill.GRENADE -> GRENADE_DAMAGE * c.power * rules.damageMul
+        Skill.RALLY -> RALLY_TIME * c.power
+        Skill.SENTRY -> SENTRY_DAMAGE * c.power * rules.damageMul
+        Skill.EMP -> EMP_STUN + 0.3f * c.level
+        Skill.PIERCE -> PIERCE_DAMAGE * c.power * rules.damageMul
+        Skill.BARRAGE -> BARRAGE_DAMAGE * c.power * rules.damageMul
+    }
+
+    /** Fires the commander's skill [k]; false when it is not ready or has nothing to hit. */
+    fun useSkill(k: Int): Boolean {
+        val c = commander ?: return false
+        if (!skillReady(k)) return false
+        val skill = c.type.skills[k]
+        val done = when (skill) {
+            Skill.GRENADE -> grenade(c)
+            Skill.RALLY -> rally(c)
+            Skill.SENTRY -> sentry(c)
+            Skill.EMP -> emp(c)
+            Skill.PIERCE -> pierce(c)
+            Skill.BARRAGE -> barrage(c)
+        }
+        if (done) c.skillCooldowns[k] = skillCooldown(skill)
+        return done
+    }
+
+    private fun walk(c: Commander, dt: Float) {
+        val dx = c.tx - c.x
+        val dy = c.ty - c.y
+        val d = sqrt(dx * dx + dy * dy)
+        if (d < 0.005f) {
+            c.x = c.tx
+            c.y = c.ty
+            return
+        }
+        val step = min(d, c.type.speed * dt)
+        c.x += dx / d * step
+        c.y += dy / d * step
+        c.walked += step
+        c.angle = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
+    }
+
+    private fun gainXp(c: Commander, amount: Float, dealt: Boolean = true) {
+        if (dealt) c.damageDealt += amount
+        c.xp += amount * rules.xpMul
+        while (c.level < Commander.MAX_LEVEL && c.xp >= Commander.XP[c.level + 1]) {
+            c.level++
+            c.promoted = PROMOTED_GLOW
+            rings += Ring(c.x, c.y, 1.2f, 0.6f, 0.6f, GOLD)
+            texts += FloatText(c.x, c.y - 0.5f, L("Уровень %d!", "Level %d!").f(c.level + 1), GOLD, 1.5f, 1.25f)
+            sound(Sfx.UPGRADE, 0.8f)
+        }
+    }
+
+    /** He fires only when standing: walking, he just keeps his eyes on the enemy. */
+    private fun updateCommander(c: Commander, dt: Float) {
+        if (c.flash > 0f) c.flash -= dt
+        if (c.promoted > 0f) c.promoted -= dt
+        if (c.rally > 0f) c.rally -= dt
+        for (k in c.skillCooldowns.indices) if (c.skillCooldowns[k] > 0f) c.skillCooldowns[k] = max(0f, c.skillCooldowns[k] - dt)
+        walk(c, dt)
+        if (c.jammed > 0f) {
+            c.jammed -= dt
+            return
+        }
+        if (c.cooldown > 0f) c.cooldown -= dt
+        if (c.moving) return
+        val target = heroTarget(c, commanderRange(c)) ?: return
+        val aim = atan2(target.y - c.y, target.x - c.x)
+        c.angle = Math.toDegrees(aim.toDouble()).toFloat()
+        if (c.cooldown > 0f) return
+        val dmg = commanderDamage(c)
+        val mx = c.x + cos(aim) * 0.32f
+        val my = c.y + sin(aim) * 0.32f
+        when (c.type) {
+            CommanderType.SERGEANT -> {
+                val p = Projectile(Shot.BULLET, mx, my, target, dmg, BULLET_SPEED, 0f, null)
+                p.hero = true
+                projectiles += p
+                c.flash = 0.06f
+                sound(Sfx.SHOOT, 0.25f)
+            }
+            CommanderType.ENGINEER -> {
+                zap(c, target, dmg)
+                c.flash = 0.1f
+                sound(Sfx.ZAP, 0.3f)
+            }
+            CommanderType.GROM -> {
+                val p = Projectile(Shot.ROCKET, mx, my, target, dmg, ROCKET_SPEED, GROM_BLAST, null)
+                p.hero = true
+                projectiles += p
+                c.flash = 0.1f
+                sound(Sfx.ROCKET, 0.4f)
+            }
+        }
+        c.shots++
+        c.cooldown = max(c.cooldown, 0f) + 1f / (c.stats.rate * (if (blizzard) BLIZZARD_RATE else 1f))
+    }
+
+    /** The enemy nearest the base he can hit in [range], or the toughest; [any] includes what his gun cannot reach. */
+    private fun heroTarget(c: Commander, range: Float, toughest: Boolean = false, any: Boolean = false): Enemy? {
+        var best: Enemy? = null
+        var bestScore = 0f
+        for (e in enemies) {
+            if (!e.alive || !e.visible || !onMap(e)) continue
+            if (!any && !(if (e.type.air) c.type.hitsAir else c.type.hitsGround)) continue
+            if (!near(e.x, e.y, c.x, c.y, range)) continue
+            val score = if (toughest) e.hp + e.shield else -e.remaining
+            if (best == null || score > bestScore) {
+                best = e
+                bestScore = score
+            }
+        }
+        return best
+    }
+
+    /** The engineer's lightning: a few jumps between enemies, each weaker, each slowing. */
+    private fun zap(c: Commander, target: Enemy, damage: Float) {
+        chain.clear()
+        val xs = arrayListOf(c.x)
+        val ys = arrayListOf(c.y - 0.15f)
+        var cur = target
+        var dmg = damage
+        for (k in 0 until ZAP_JUMPS) {
+            chain += cur
+            xs += cur.x
+            ys += cur.y
+            damage(cur, dmg, null, hero = true)
+            slow(cur, ZAP_SLOW * bossK(cur), SLOW_TIME)
+            dmg *= TESLA_DECAY
+            var next: Enemy? = null
+            var best = TESLA_JUMP * TESLA_JUMP
+            for (e in enemies) {
+                if (!e.alive || !e.visible || e in chain || !onMap(e)) continue
+                val dx = e.x - cur.x
+                val dy = e.y - cur.y
+                val d2 = dx * dx + dy * dy
+                if (d2 < best) {
+                    best = d2
+                    next = e
+                }
+            }
+            cur = next ?: break
+        }
+        bolt(xs, ys, 0.14f, BOLT)
+    }
+
+    /** Into the spot where the most walkers are bunched up. */
+    private fun grenade(c: Commander): Boolean {
+        val reach = commanderRange(c) + GRENADE_REACH
+        var best: Enemy? = null
+        var most = 0
+        for (e in enemies) {
+            if (!e.alive || e.type.air || !e.visible || !onMap(e) || !near(e.x, e.y, c.x, c.y, reach)) continue
+            var n = 0
+            for (o in enemies) if (o.alive && !o.type.air && near(o.x, o.y, e.x, e.y, GRENADE_RADIUS)) n++
+            if (n > most) {
+                most = n
+                best = e
+            }
+        }
+        val t = best ?: return false
+        val p = Projectile(Shot.BOMBLET, c.x, c.y, null, skillPower(c, Skill.GRENADE), GRENADE_SPEED, GRENADE_RADIUS, null)
+        // Thrown a little ahead of where they walk.
+        p.tx = t.x + t.dirX * speedOf(t) * 0.3f
+        p.ty = t.y + t.dirY * speedOf(t) * 0.3f
+        p.hero = true
+        p.big = true
+        projectiles += p
+        c.angle = Math.toDegrees(atan2(p.ty - c.y, p.tx - c.x).toDouble()).toFloat()
+        sound(Sfx.CLICK, 0.5f)
+        return true
+    }
+
+    private fun rally(c: Commander): Boolean {
+        c.rally = skillPower(c, Skill.RALLY)
+        rings += Ring(c.x, c.y, RALLY_RADIUS, 0.6f, 0.6f, GOLD)
+        texts += FloatText(c.x, c.y - 0.5f, Skill.RALLY.title.t, GOLD, 1.2f, 1.2f)
+        sound(Sfx.WAVE, 0.6f)
+        return true
+    }
+
+    /** One sentry at a time: a new one replaces the old. */
+    private fun sentry(c: Commander): Boolean {
+        sentries.clear()
+        val x = (c.x + 0.35f).coerceIn(COMMANDER_EDGE, COLS - COMMANDER_EDGE)
+        val y = (c.y + 0.25f).coerceIn(COMMANDER_EDGE, ROWS - COMMANDER_EDGE)
+        sentries += Sentry(x, y, SENTRY_TIME, skillPower(c, Skill.SENTRY))
+        rings += Ring(x, y, 0.7f, 0.4f, 0.4f, Colors.alpha(WHITE, 0.8f))
+        puff(x, y, if (lite) 4 else 8, 0xFFB9A98A.toInt())
+        sound(Sfx.BUILD, 0.7f)
+        return true
+    }
+
+    private fun updateSentries(dt: Float) {
+        if (sentries.isEmpty()) return
+        val iter = sentries.iterator()
+        while (iter.hasNext()) {
+            val s = iter.next()
+            s.life -= dt
+            if (s.flash > 0f) s.flash -= dt
+            if (s.life <= 0f) {
+                puff(s.x, s.y, 6, 0xFF8A8A8A.toInt())
+                iter.remove()
+                continue
+            }
+            if (s.cooldown > 0f) s.cooldown -= dt
+            var target: Enemy? = null
+            var best = 0f
+            for (e in enemies) {
+                if (!e.alive || !e.visible || !onMap(e) || !near(e.x, e.y, s.x, s.y, SENTRY_RANGE)) continue
+                if (target == null || -e.remaining > best) {
+                    target = e
+                    best = -e.remaining
+                }
+            }
+            val t = target ?: continue
+            val aim = atan2(t.y - s.y, t.x - s.x)
+            s.angle = Math.toDegrees(aim.toDouble()).toFloat()
+            if (s.cooldown > 0f) continue
+            val p = Projectile(Shot.BULLET, s.x + cos(aim) * 0.3f, s.y + sin(aim) * 0.3f, t, s.damage, BULLET_SPEED, 0f, null)
+            p.hero = true
+            projectiles += p
+            s.flash = 0.05f
+            s.cooldown = max(s.cooldown, 0f) + 1f / (SENTRY_RATE * (if (blizzard) BLIZZARD_RATE else 1f))
+            sound(Sfx.SHOOT, 0.15f)
+        }
+    }
+
+    private fun emp(c: Commander): Boolean {
+        val stun = skillPower(c, Skill.EMP)
+        var hit = false
+        for (e in enemies) {
+            if (!e.alive || !onMap(e) || !near(e.x, e.y, c.x, c.y, EMP_RADIUS)) continue
+            hit = true
+            if (e.type.boss) slow(e, 0.5f, stun) else e.stunTimer = max(e.stunTimer, stun)
+            damage(e, EMP_DAMAGE * c.power * rules.damageMul, null, pierce = true, hero = true)
+        }
+        if (!hit) return false
+        rings += Ring(c.x, c.y, EMP_RADIUS, 0.5f, 0.5f, BOLT)
+        rings += Ring(c.x, c.y, EMP_RADIUS * 0.6f, 0.4f, 0.4f, Colors.alpha(WHITE, 0.8f))
+        sound(Sfx.ZAP, 0.9f)
+        return true
+    }
+
+    /** At the toughest enemy within reach, flier or not, through any armor. */
+    private fun pierce(c: Commander): Boolean {
+        val t = heroTarget(c, commanderRange(c) * PIERCE_REACH, toughest = true, any = true) ?: return false
+        val aim = atan2(t.y - c.y, t.x - c.x)
+        c.angle = Math.toDegrees(aim.toDouble()).toFloat()
+        val dmg = skillPower(c, Skill.PIERCE) * (if (t.type.boss) PIERCE_BOSS else 1f)
+        tracers += Tracer(c.x + cos(aim) * 0.3f, c.y + sin(aim) * 0.3f, t.x, t.y, 0.22f, 2)
+        explosion(t.x, t.y, 0.45f, ground = false)
+        damage(t, dmg, null, armorPierce = 1f, hero = true)
+        c.flash = 0.15f
+        shake = max(shake, 0.2f)
+        sound(Sfx.SNIPER, 0.9f)
+        return true
+    }
+
+    private fun barrage(c: Commander): Boolean {
+        val reach = commanderRange(c) * BARRAGE_REACH
+        val targets = enemies.filter { it.alive && !it.type.air && it.visible && onMap(it) && near(it.x, it.y, c.x, c.y, reach) }
+        if (targets.isEmpty()) return false
+        val dmg = skillPower(c, Skill.BARRAGE)
+        for (k in 0 until BARRAGE_SHOTS) {
+            val a = fx.nextFloat() * 6.283f
+            val p = Projectile(Shot.ROCKET, c.x + cos(a) * 0.2f, c.y + sin(a) * 0.2f, targets[k % targets.size], dmg, ROCKET_SPEED * (0.75f + 0.08f * k), BARRAGE_BLAST, null)
+            p.hero = true
+            projectiles += p
+        }
+        c.flash = 0.15f
+        sound(Sfx.ROCKET, 0.8f)
+        return true
+    }
+
     // --- projectiles ----------------------------------------------------------------------
 
     private fun updateProjectiles(dt: Float) {
@@ -1390,7 +1776,7 @@ class World(
         return best
     }
 
-    private fun splash(x: Float, y: Float, radius: Float, dmg: Float, source: Tower?, bossMul: Float = 1f) {
+    private fun splash(x: Float, y: Float, radius: Float, dmg: Float, source: Tower?, bossMul: Float = 1f, hero: Boolean = false) {
         for (e in enemies) {
             if (!e.alive || e.type.air) continue
             val dx = e.x - x
@@ -1398,7 +1784,7 @@ class World(
             val d = sqrt(dx * dx + dy * dy)
             if (d > radius + e.type.radius) continue
             val k = (1f - 0.5f * d / radius).coerceIn(0.5f, 1f)
-            damage(e, dmg * k * (if (e.type.boss) bossMul else 1f), source)
+            damage(e, dmg * k * (if (e.type.boss) bossMul else 1f), source, hero = hero)
         }
     }
 
@@ -1406,12 +1792,12 @@ class World(
         p.alive = false
         when (p.kind) {
             Shot.BULLET -> {
-                p.target?.let { if (it.alive) damage(it, p.damage, p.source, pierce = p.pierce) }
+                p.target?.let { if (it.alive) damage(it, p.damage, p.source, pierce = p.pierce, hero = p.hero) }
                 particles += Particle(p.x, p.y, 0f, 0f, 0.08f, 0.08f, 0.07f, 0xFFFFE38A.toInt(), 0f)
             }
             Shot.ROCKET -> {
                 explosion(p.x, p.y, p.splash)
-                splash(p.x, p.y, p.splash, p.damage, p.source, p.bossMul)
+                splash(p.x, p.y, p.splash, p.damage, p.source, p.bossMul, p.hero)
                 if (p.cluster > 0f) {
                     for (k in 0 until CLUSTER_BOMBLETS) {
                         val a = fx.nextFloat() * 6.283f
@@ -1426,13 +1812,14 @@ class World(
                 sound(Sfx.BOOM, if (p.big) 0.8f else 0.5f)
             }
             Shot.MISSILE -> {
-                p.target?.let { if (it.alive) damage(it, p.damage * (if (it.type.boss) p.bossMul else 1f), p.source) }
+                p.target?.let { if (it.alive) damage(it, p.damage * (if (it.type.boss) p.bossMul else 1f), p.source, hero = p.hero) }
                 explosion(p.x, p.y, 0.5f, ground = false)
                 sound(Sfx.BOOM, 0.3f)
             }
             Shot.BOMBLET -> {
                 explosion(p.x, p.y, p.splash)
-                splash(p.x, p.y, p.splash, p.damage, p.source)
+                splash(p.x, p.y, p.splash, p.damage, p.source, hero = p.hero)
+                if (p.big) shake = max(shake, 0.18f)
             }
         }
     }
@@ -1572,6 +1959,7 @@ class World(
         put("stats", kills, leaked, bossKills, ghostKills, built, airstrikes, cleared, maxMoney, branchMask, typeMask, abilitiesUsed)
         put("cool", *cooldowns.toTypedArray())
         put("weather", weather, weatherWait)
+        if (reserveUsed) put("reserve", 1)
         if (clearedCells.isNotEmpty()) put("cleared", *clearedCells.toTypedArray())
         for ((w, n) in remaining) put("remain", w, n)
         for (t in towers) {
@@ -1590,6 +1978,13 @@ class World(
         for (a in active) put("group", a.wave, a.index, a.spawned, a.timer)
         for (p in patches) put("patch", p.x, p.y, p.life, p.dps, p.radius)
         for (b in bombs) put("bomb", b.x, b.y, b.timer, b.damage)
+        commander?.let {
+            put(
+                "hero", it.type.name, it.x, it.y, it.tx, it.ty, it.level, it.xp, it.cooldown, it.kills, it.damageDealt,
+                it.rally, it.skillCooldowns[0], it.skillCooldowns[1], it.jammed,
+            )
+        }
+        for (s in sentries) put("sentry", s.x, s.y, s.life, s.damage, s.cooldown)
         return sb.toString()
     }
 
@@ -1636,6 +2031,7 @@ class World(
                     clearedCells += cell
                 }
                 "remain" -> remaining[i(0)] = i(1)
+                "reserve" -> reserveUsed = true
                 "tower" -> {
                     val t = Tower(TowerType.valueOf(f[0]), i(1), i(2))
                     t.level = i(3)
@@ -1679,6 +2075,22 @@ class World(
                 }
                 "patch" -> patches += Patch(x(0), x(1), x(2), x(3), x(4), null)
                 "bomb" -> bombs += Bomb(x(0), x(1), x(2), x(3))
+                "hero" -> {
+                    val c = Commander(CommanderType.valueOf(f[0]), x(1), x(2))
+                    c.tx = x(3)
+                    c.ty = x(4)
+                    c.level = i(5).coerceIn(0, Commander.MAX_LEVEL)
+                    c.xp = x(6)
+                    c.cooldown = x(7)
+                    c.kills = i(8)
+                    c.damageDealt = x(9)
+                    c.rally = x(10)
+                    c.skillCooldowns[0] = x(11)
+                    c.skillCooldowns[1] = x(12)
+                    c.jammed = x(13)
+                    commander = c
+                }
+                "sentry" -> sentries += Sentry(x(0), x(1), x(2), x(3)).also { it.cooldown = x(4) }
             }
         }
     }
@@ -1742,6 +2154,38 @@ class World(
         const val CLEAR_COST = 40
         const val CLEAR_STEP = 10
         const val MAX_QUARRIES = 4
+
+        // The commander: where he starts, his weapons and his skills at the first level.
+        const val COMMANDER_START = 2.2f
+        const val COMMANDER_SIDE = 0.8f
+        const val COMMANDER_EDGE = 0.35f
+        const val PROMOTED_GLOW = 1.2f
+        const val SHARED_XP = 0.3f
+        const val SHARED_REACH = 1f
+        const val GROM_BLAST = 0.75f
+        const val ZAP_JUMPS = 3
+        const val ZAP_SLOW = 0.15f
+        const val GRENADE_DAMAGE = 150f
+        const val GRENADE_RADIUS = 1.1f
+        const val GRENADE_REACH = 0.5f
+        const val GRENADE_SPEED = 6f
+        const val RALLY_TIME = 6f
+        const val RALLY_RADIUS = 2.5f
+        const val RALLY_BONUS = 0.3f
+        const val SENTRY_TIME = 15f
+        const val SENTRY_DAMAGE = 9f
+        const val SENTRY_RATE = 6f
+        const val SENTRY_RANGE = 3f
+        const val EMP_STUN = 1.2f
+        const val EMP_RADIUS = 2.2f
+        const val EMP_DAMAGE = 50f
+        const val PIERCE_DAMAGE = 450f
+        const val PIERCE_BOSS = 2f
+        const val PIERCE_REACH = 1.3f
+        const val BARRAGE_SHOTS = 6
+        const val BARRAGE_DAMAGE = 90f
+        const val BARRAGE_BLAST = 0.8f
+        const val BARRAGE_REACH = 1.2f
 
         val GOLD = 0xFFFFD54A.toInt()
         val RED = 0xFFFF4B4B.toInt()

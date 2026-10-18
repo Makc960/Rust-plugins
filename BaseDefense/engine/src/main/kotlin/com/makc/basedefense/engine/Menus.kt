@@ -27,6 +27,15 @@ internal class Menus(private val game: Game) {
     private var resetArmedAt = -10f
     private var settingsBottom = 0f
     private var vipBottom = 0f
+    private var commandersBottom = 0f
+
+    /** A window over the main menu: the tutorial on the first visit, VIP now and then. */
+    private enum class Popup { WELCOME, VIP, ENDED }
+
+    private var popup: Popup? = null
+    private var popupAt = 0f
+
+    /** When the store was last asked to sell or restore something; the shop buttons wait for its answer. */
     private var vipBusyAt = -100f
     private var cameFrom = Screen.MENU
 
@@ -126,7 +135,14 @@ internal class Menus(private val game: Game) {
         g.fillRect(0f, 0f, ui.w, ui.h, 0xC20E1009.toInt())
     }
 
+    /** A fresh visit to the main menu: maybe a window is due, shown after a moment. */
+    fun enterMenu() {
+        if (popup == null) popup = pickPopup()
+        popupAt = clock + POPUP_DELAY
+    }
+
     fun menu(g: Gfx) {
+        if (profile.vipGift(game.today)) game.toast(Tx.VIP_GIFT.f(Vip.DAILY_GIFT), Icon.CROWN)
         drawDemoBackground(g)
         val cx = ui.w / 2f
         val big = min(d(52f), ui.w / 6.6f)
@@ -136,12 +152,12 @@ internal class Menus(private val game: Game) {
         ui.text(g, Tx.TITLE_1.t, cx, ty, big, Ui.TEXT, Align.CENTER, maxW, Font.DISPLAY)
         ui.tape(g, Tx.TITLE_2.t, cx, ty + big * 0.8f, ui.fit(g, Tx.TITLE_2.t, big * 0.9f, maxW - big, Font.DISPLAY), -3f)
         ui.textMid(g, Tx.TAGLINE.t.uppercase(), cx, ty + big * 1.82f, d(12f), Ui.DIM, maxW = maxW)
-        if (game.vipShop != VipShop.NONE || game.vip) vipBadge(g)
+        if (game.shop != Shop.NONE || game.vip) vipBadge(g)
 
         val saved = savedBattle()
         val bottomRow = ui.h - ui.bottom - d(128f)
         val top = ty + big * 2.3f
-        val count = if (saved != null) 5 else 4
+        val count = if (saved != null) 6 else 5
         val gap = d(11f)
         val bh = min(d(58f), (bottomRow - top - d(12f) - gap * (count - 1)) / count)
         val bw = min(ui.w - d(56f), d(330f))
@@ -179,12 +195,18 @@ internal class Menus(private val game: Game) {
         ui.button(g, "perks", bx, y, bw, bh, Tx.UPGRADES.t, size = 16f, icon = Icon.RANKS) { open(Screen.PERKS) }
         val free = profile.freePoints
         if (free > 0) ui.tag(g, Tx.FREE_POINTS.f(free), bx + bw - d(12f), y + bh / 2f + (if (ui.down("perks")) d(2f) else 0f), d(13f), right = true)
+        y += bh + gap
+        val leader = profile.battleCommander
+        ui.button(g, "commanders", bx, y, bw, bh, Tx.COMMANDERS.t, size = 16f, icon = Icon.COMMANDER, sub = Tx.COMMANDERS_SUB.f(leader.title.t)) {
+            open(Screen.COMMANDERS)
+        }
 
-        // Codex, achievements and settings along the bottom.
-        val iconW = min(d(96f), (ui.w - d(64f)) / 3f)
-        val gapX = d(12f)
-        val rowX = (ui.w - iconW * 3 - gapX * 2) / 2f
+        // The tutorial, codex, achievements and settings along the bottom.
+        val gapX = d(10f)
+        val iconW = min(d(88f), (ui.w - d(40f) - gapX * 3) / 4f)
+        val rowX = (ui.w - iconW * 4 - gapX * 3) / 2f
         val icons = listOf(
+            Triple("tutorial", Tx.TUTORIAL.t, Icon.INFO),
             Triple("codex", Tx.CODEX.t, Icon.BOOK),
             Triple("ach", Tx.ACHIEVEMENTS.t, Icon.TROPHY),
             Triple("settings", Tx.SETTINGS.t, Icon.GEAR),
@@ -193,6 +215,7 @@ internal class Menus(private val game: Game) {
             val x = rowX + i * (iconW + gapX)
             ui.button(g, item.first, x, bottomRow, iconW, d(52f), "", icon = item.third) {
                 when (item.first) {
+                    "tutorial" -> game.startTutorial()
                     "codex" -> {
                         codexPick = -1
                         open(Screen.CODEX)
@@ -213,6 +236,97 @@ internal class Menus(private val game: Game) {
             ui.well(g, cx + d(4f), fy - d(14f), rw, d(28f))
             ui.icon(g, Icon.INFINITY, cx + d(20f), fy + d(1f), d(16f), Ui.DIM)
             ui.textMid(g, record, cx + d(34f), fy + d(1f), d(12f), Ui.DIM, Align.LEFT)
+        }
+        val p = popup
+        if (p != null && clock >= popupAt) drawPopup(g, p)
+    }
+
+    /** Which window the menu should open now, if any; each is remembered so it does not nag. */
+    private fun pickPopup(): Popup? {
+        if (!profile.tutorialOffered && profile.totalStars == 0) {
+            profile.tutorialOffered = true
+            return Popup.WELCOME
+        }
+        if (game.shop == Shop.NONE || game.vip) return null
+        val today = game.today
+        val until = profile.vipUntil
+        if (until > 0 && today - until in 1..ENDED_DAYS && profile.endedShown != until) {
+            profile.endedShown = until
+            // It counts as the offer too, so the next one waits its days.
+            profile.promoDay = today
+            return Popup.ENDED
+        }
+        if (profile.totalStars < PROMO_STARS || today - profile.promoDay < PROMO_GAP) return null
+        profile.promoDay = today
+        return Popup.VIP
+    }
+
+    private fun drawPopup(g: Gfx, p: Popup) {
+        ui.begin()
+        g.fillRect(0f, 0f, ui.w, ui.h, Ui.SCRIM)
+        ui.area("popupScrim", 0f, 0f, ui.w, ui.h, silent = true) {}
+        val pw = min(ui.w - d(36f), d(350f))
+        val px = (ui.w - pw) / 2f
+        val tw = pw - d(48f)
+        val vipLines = listOf(
+            Tx.PROMO_1.t,
+            Tx.PROMO_2.f(Vip.RESERVE_LIVES),
+            Tx.PROMO_3.f(Math.round((Vip.START_MONEY - 1f) * 100f), Math.round((Vip.BOUNTY - 1f) * 100f)),
+            Tx.PROMO_4.f(Vip.MAX_SPEED),
+        )
+        val text = when (p) {
+            Popup.WELCOME -> Tx.WELCOME_TEXT.t
+            Popup.ENDED -> Tx.ENDED_TEXT.t
+            Popup.VIP -> null
+        }
+        val textH = if (text != null) ui.lines(g, text, d(13.5f), tw).size * d(13.5f) * 1.3f else 0f
+        val listH = if (p == Popup.VIP) vipLines.sumOf { ui.lines(g, it, d(12.5f), tw - d(28f)).size.toDouble() }.toFloat() * d(12.5f) * 1.25f + vipLines.size * d(12f) else 0f
+        val ph = d(56f) + d(110f) + textH + listH + d(140f)
+        val py = max(ui.top + d(12f), (ui.h - ph) / 2f)
+        ui.area("popup", px, py, pw, ph, silent = true) {}
+        val title = when (p) {
+            Popup.WELCOME -> Tx.WELCOME_TITLE.t
+            Popup.VIP -> Tx.VIP_TITLE.t
+            Popup.ENDED -> Tx.ENDED_TITLE.t
+        }
+        val top = ui.panel(g, px, py, pw, ph, if (p == Popup.WELCOME) Ui.EDGE else Ui.GOLD, title = title)
+        val cx = ui.w / 2f
+        var y = top + d(14f)
+        if (p == Popup.WELCOME) {
+            ui.well(g, cx - d(40f), y, d(80f), d(80f), d(8f))
+            renderer.drawCommanderIcon(g, CommanderType.SERGEANT, cx, y + d(40f), d(66f))
+        } else {
+            g.glow(cx, y + d(40f), d(62f), Colors.alpha(Ui.GOLD, 0.25f))
+            ui.icon(g, Icon.CROWN, cx, y + d(40f), d(56f), if (p == Popup.ENDED) Ui.DIM else Ui.GOLD)
+        }
+        y += d(96f)
+        if (text != null) y += ui.paragraph(g, text, cx, y, tw, d(13.5f), Ui.TEXT, Align.CENTER, spacing = 1.3f)
+        if (p == Popup.VIP) {
+            for (line in vipLines) {
+                ui.icon(g, Icon.CHECK, px + d(34f), y + d(8f), d(15f), Ui.GOLD)
+                y += ui.paragraph(g, line, px + d(50f), y, tw - d(28f), d(12.5f), Ui.TEXT, spacing = 1.25f) + d(12f)
+            }
+        }
+        val bx = px + d(22f)
+        val bw = pw - d(44f)
+        val by = py + ph - d(126f)
+        val here = game.shop == Shop.HERE
+        val price = if (here) Tx.VIP_PRICE.f(Product.VIP_MONTH.rubles) else Tx.VIP_ELSEWHERE.t
+        when (p) {
+            Popup.WELCOME -> ui.button(g, "popupGo", bx, by, bw, d(56f), Tx.WELCOME_GO.t, Style.PRIMARY, size = 17f, icon = Icon.PLAY) {
+                popup = null
+                game.startTutorial()
+            }
+            Popup.VIP, Popup.ENDED -> ui.button(
+                g, "popupGo", bx, by, bw, d(56f), if (p == Popup.VIP) Tx.PROMO_MORE.t else Tx.ENDED_RENEW.t, Style.PRIMARY, size = 17f, icon = Icon.CROWN, sub = price,
+            ) {
+                popup = null
+                game.checkPurchases()
+                open(Screen.VIP)
+            }
+        }
+        ui.button(g, "popupLater", bx, by + d(68f), bw, d(44f), if (p == Popup.WELCOME) Tx.WELCOME_SKIP.t else Tx.PROMO_LATER.t, Style.GHOST, size = 14f) {
+            popup = null
         }
     }
 
@@ -702,7 +816,7 @@ internal class Menus(private val game: Game) {
         val bx = ui.w - d(12f) - bw
         val top = ui.top + d(8f)
         ui.area("vip", bx, top, bw, bh) {
-            game.checkVip()
+            game.checkPurchases()
             open(Screen.VIP)
         }
         val by = top + if (ui.down("vip")) d(2f) else 0f
@@ -725,12 +839,17 @@ internal class Menus(private val game: Game) {
         val vip = Rules(vip = true)
         fun percent(k: Float): Int = Math.round(abs(k - 1f) * 100f)
         return listOf(
+            Triple(Tx.VIP_ROW_COMMANDERS.t, "—", null),
+            Triple(Tx.VIP_ROW_RESERVE.t, "—", Tx.VIP_LIVES.f(Vip.RESERVE_LIVES)),
             Triple(Tx.VIP_ROW_START.t, "—", "+${percent(Vip.START_MONEY)}%"),
             Triple(Tx.VIP_ROW_BOUNTY.t, "—", "+${percent(Vip.BOUNTY)}%"),
             Triple(Tx.VIP_ROW_COOLDOWN.t, "—", "−${percent(Vip.COOLDOWN)}%"),
             Triple(Tx.VIP_ROW_SPEED.t, Tx.VIP_UP_TO.f(free.maxSpeed), Tx.VIP_UP_TO.f(vip.maxSpeed)),
+            Triple(Tx.VIP_ROW_XP.t, "—", "+${percent(vip.xpMul)}%"),
+            Triple(Tx.VIP_ROW_COMMANDER.t, Tx.VIP_LEVEL.f(free.commanderLevel + 1), Tx.VIP_LEVEL.f(vip.commanderLevel + 1)),
             Triple(Tx.VIP_ROW_UNDO.t, Tx.VIP_SECONDS.f(free.undoTime.toInt()), Tx.VIP_SECONDS.f(vip.undoTime.toInt())),
             Triple(Tx.VIP_ROW_DAILY.t, "1", "${Vip.DAILY_POINTS}"),
+            Triple(Tx.VIP_ROW_GIFT.t, "—", "+${Vip.DAILY_GIFT}"),
             Triple(Tx.VIP_ROW_CROWN.t, "—", null),
         )
     }
@@ -738,7 +857,7 @@ internal class Menus(private val game: Game) {
     fun vip(g: Gfx) {
         val top = ui.header(g, Tx.VIP.t) { game.go(Screen.MENU) }
         val active = game.vip
-        val shop = game.vipShop
+        val shop = game.shop
         val busy = clock - vipBusyAt < VIP_WAIT
         val x = d(14f)
         val w = ui.w - d(28f)
@@ -751,7 +870,11 @@ internal class Menus(private val game: Game) {
         g.glow(cx, y + d(42f), d(74f), Colors.alpha(Ui.GOLD, 0.22f))
         ui.icon(g, Icon.CROWN, cx, y + d(42f), d(60f), Ui.GOLD)
         ui.textMid(g, Tx.VIP_TITLE.t, cx, y + d(96f), d(24f), Ui.GOLD, font = Font.DISPLAY)
-        val line = if (active) Tx.VIP_ACTIVE.f(date(profile.vipUntil)) else Tx.VIP_PRICE.f(Vip.PRICE_RUBLES)
+        val line = when {
+            profile.vipForever -> Tx.VIP_ACTIVE_FOREVER.t
+            active -> Tx.VIP_ACTIVE.f(date(profile.vipUntil))
+            else -> Tx.VIP_PRICE.f(Product.VIP_MONTH.rubles)
+        }
         ui.textMid(g, line, cx, y + d(124f), d(16f), if (active) Ui.GREEN else Ui.TEXT)
         y += d(146f)
 
@@ -781,24 +904,24 @@ internal class Menus(private val game: Game) {
         }
         y += tableH + d(16f)
 
-        // Buying it, or getting back one paid before.
+        // Buying it by the month or for good, or getting back what was paid before.
+        val here = shop == Shop.HERE
         if (!active) {
-            val here = shop == VipShop.HERE
-            val sub = if (here) Tx.VIP_PRICE.f(Vip.PRICE_RUBLES) else Tx.VIP_ELSEWHERE.t
+            val sub = if (here) Tx.VIP_PRICE.f(Product.VIP_MONTH.rubles) else Tx.VIP_ELSEWHERE.t
             ui.button(g, "vipbuy", x, y, w, d(58f), Tx.VIP_BUY.t, Style.PRIMARY, here && !busy, size = 19f, icon = Icon.CROWN, sub = sub) {
-                vipBusyAt = clock
-                game.buyVip { vipBusyAt = -100f }
+                buy(Product.VIP_MONTH)
             }
-            y += d(74f)
+            y += d(70f)
         }
-        if (shop == VipShop.HERE) {
-            ui.button(g, "viprestore", x, y, w, d(44f), Tx.VIP_RESTORE.t, Style.GHOST, !busy, size = 13f, icon = Icon.UNDO) {
-                vipBusyAt = clock
-                game.checkVip { found ->
-                    vipBusyAt = -100f
-                    game.toast(if (found) Tx.VIP_RESTORED.t else Tx.VIP_NOT_FOUND.t, if (found) Icon.CROWN else Icon.WARNING)
-                }
+        if (!profile.vipForever) {
+            val sub = if (here) Tx.VIP_ONCE.f(Product.VIP_FOREVER.rubles) else Tx.VIP_ELSEWHERE.t
+            ui.button(g, "vipforever", x, y, w, d(52f), Tx.VIP_FOREVER.t, Style.NORMAL, here && !busy, size = 16f, icon = Icon.CROWN, sub = sub) {
+                buy(Product.VIP_FOREVER)
             }
+            y += d(66f)
+        }
+        if (here) {
+            restoreButton(g, x, y, w, busy)
             y += d(58f)
             y += ui.paragraph(g, Tx.VIP_NOTE.t, cx, y, w - d(16f), d(11.5f), Ui.DIM, Align.CENTER)
         }
@@ -806,8 +929,144 @@ internal class Menus(private val game: Game) {
         ui.endScroll(g, Screen.VIP.name)
     }
 
+    private fun buy(product: Product) {
+        vipBusyAt = clock
+        game.buy(product) { vipBusyAt = -100f }
+    }
+
+    private fun restoreButton(g: Gfx, x: Float, y: Float, w: Float, busy: Boolean) {
+        ui.button(g, "restore", x, y, w, d(44f), Tx.RESTORE.t, Style.GHOST, !busy, size = 13f, icon = Icon.UNDO) {
+            vipBusyAt = clock
+            game.checkPurchases { found ->
+                vipBusyAt = -100f
+                game.toast(if (found) Tx.RESTORED.t else Tx.NOT_FOUND.t, if (found) Icon.CHECK else Icon.WARNING)
+            }
+        }
+    }
+
+    // --- commanders -----------------------------------------------------------------------
+
+    fun commanders(g: Gfx) {
+        val top = ui.header(g, Tx.COMMANDERS.t) { game.go(Screen.MENU) }
+        starTotal(g, ui.w - d(12f), ui.top + d(30f))
+        val shop = game.shop
+        val busy = clock - vipBusyAt < VIP_WAIT
+        val x = d(14f)
+        val w = ui.w - d(28f)
+        val viewH = ui.h - ui.bottom - top
+        val off = ui.beginScroll(g, Screen.COMMANDERS.name, 0f, top, ui.w, viewH, if (commandersBottom > 0f) commandersBottom else viewH)
+        var y = top - off
+
+        // The recruit pack, while the engineer in it is still new to the player.
+        if (shop != Shop.NONE && !profile.owned(Product.STARTER) && !profile.commanderOwned(CommanderType.ENGINEER)) {
+            val ph = d(150f)
+            ui.panel(g, x, y, w, ph, Ui.GOLD)
+            ui.well(g, x + d(14f), y + d(16f), d(56f), d(56f), d(6f))
+            renderer.drawCommanderIcon(g, CommanderType.ENGINEER, x + d(42f), y + d(44f), d(46f))
+            ui.text(g, Tx.STARTER.t, x + d(82f), y + d(34f), d(16f), Ui.GOLD, maxW = w - d(96f), font = Font.DISPLAY)
+            ui.paragraph(g, Tx.STARTER_TEXT.f(Product.STARTER_POINTS), x + d(82f), y + d(42f), w - d(96f), d(11.5f), Ui.TEXT, spacing = 1.15f)
+            val sub = if (shop == Shop.HERE) Tx.PRICE.f(Product.STARTER.rubles) else Tx.VIP_ELSEWHERE.t
+            ui.button(g, "starter", x + d(14f), y + ph - d(64f), w - d(28f), d(50f), Tx.STARTER_BUY.t, Style.PRIMARY, shop == Shop.HERE && !busy, size = 16f, icon = Icon.CART, sub = sub) {
+                buy(Product.STARTER)
+            }
+            y += ph + d(12f)
+        }
+
+        for (c in CommanderType.entries) {
+            y += commanderCard(g, c, x, y, w, shop, busy) + d(12f)
+        }
+        if (shop == Shop.HERE) {
+            restoreButton(g, x, y, w, busy)
+            y += d(56f)
+        }
+        commandersBottom = y + d(12f) - (top - off)
+        ui.endScroll(g, Screen.COMMANDERS.name)
+    }
+
+    /** One commander: who he is, his weapon and skills, and how to get him; returns its height. */
+    private fun commanderCard(g: Gfx, c: CommanderType, x: Float, y: Float, w: Float, shop: Shop, busy: Boolean): Float {
+        val open = profile.commanderOpen(c)
+        val lent = open && !profile.commanderOwned(c)
+        val picked = profile.battleCommander == c
+        val textX = x + d(96f)
+        val textW = w - d(108f)
+        val roleH = ui.lines(g, c.role.t, d(11.5f), textW).size * d(11.5f) * 1.15f
+        val skillH = d(36f)
+        val ph = d(62f) + roleH + d(26f) + skillH * 2 + d(64f) + (if (lent) d(18f) else 0f)
+        ui.panel(g, x, y, w, ph, if (picked) Ui.GOLD else Ui.EDGE)
+        ui.well(g, x + d(14f), y + d(16f), d(70f), d(70f), d(6f))
+        renderer.drawCommanderIcon(g, c, x + d(49f), y + d(51f), d(58f))
+        if (!open) ui.lock(g, x + d(74f), y + d(24f), d(16f), Ui.ACCENT)
+        ui.text(g, c.title.t, textX, y + d(34f), d(17f), if (picked) Ui.GOLD else Ui.TEXT, maxW = textW, font = Font.DISPLAY)
+        if (lent) ui.icon(g, Icon.CROWN, x + d(24f), y + d(26f), d(14f), Ui.GOLD)
+        var ty = y + d(42f)
+        ty += ui.paragraph(g, c.role.t, textX, ty, textW, d(11.5f), Ui.DIM, spacing = 1.15f)
+        val gun = c.levels[0]
+        val reach = if (c.hitsAir) Tx.GROUND_AIR.t else Tx.GROUND_ONLY.t
+        ui.chips(g, listOf(c.weapon.t, Tx.DMG.f(Num.int(gun.damage)), Tx.PER_SECOND.f(Num.one(gun.rate)), reach), textX, ty + d(6f), textW, size = d(10f))
+        var sy = max(ty + d(30f), y + d(96f))
+        ui.caption(g, Tx.SKILLS.t, x + d(16f), sy + d(4f))
+        sy += d(12f)
+        for (skill in c.skills) {
+            ui.well(g, x + d(14f), sy, d(30f), d(30f), d(5f))
+            ui.icon(g, skillIcon(skill), x + d(29f), sy + d(15f), d(18f), Ui.ACCENT)
+            ui.text(g, skill.title.t, x + d(54f), sy + d(13f), d(13f), Ui.TEXT, maxW = w - d(66f))
+            ui.text(g, skill.hint.t, x + d(54f), sy + d(27f), d(10.5f), Ui.DIM, maxW = w - d(66f), font = Font.BODY)
+            sy += skillH
+        }
+        ui.text(g, Tx.GROWS.t, x + d(16f), sy + d(10f), d(10.5f), Ui.FADED, maxW = w - d(32f), font = Font.BODY)
+        val by = y + ph - d(50f)
+        val bw = w - d(28f)
+        when {
+            picked -> {
+                ui.tag(g, Tx.IN_BATTLE.t, x + w / 2f - (g.textWidth(Tx.IN_BATTLE.t, d(14f), Font.DISPLAY) + d(14f)) / 2f, by + d(19f), d(14f), Ui.GOLD, Ui.DARK_TEXT)
+            }
+            open -> {
+                if (lent) ui.textMid(g, Tx.VIP_OPEN.t, x + w / 2f, by - d(9f), d(10.5f), Ui.GOLD, maxW = bw)
+                ui.button(g, "take${c.name}", x + d(14f), by, bw, d(38f), Tx.TAKE.t, Style.PRIMARY, size = 15f, icon = Icon.COMMANDER) {
+                    profile.commander = c
+                    game.sound(Sfx.UPGRADE, 0.6f)
+                }
+            }
+            else -> {
+                val product = c.product
+                val stars = Tx.FREE_FOR_STARS.f(c.stars, profile.totalStars)
+                if (product != null && shop != Shop.NONE) {
+                    val half = (bw - d(8f)) / 2f
+                    ui.paragraph(g, stars, x + d(14f) + half / 2f, by + d(4f), half, d(10.5f), Ui.DIM, Align.CENTER)
+                    val sub = if (shop == Shop.HERE) Tx.PRICE.f(product.rubles) else Tx.VIP_ELSEWHERE.t
+                    ui.button(g, "buy${c.name}", x + d(22f) + half, by, half, d(38f), Tx.BUY.t, Style.PRIMARY, shop == Shop.HERE && !busy, size = 14f, sub = sub) {
+                        buy(product)
+                    }
+                } else {
+                    ui.textMid(g, stars, x + w / 2f, by + d(19f), d(12f), Ui.DIM, maxW = bw)
+                }
+            }
+        }
+        return ph
+    }
+
+    private fun skillIcon(s: Skill): Icon = when (s) {
+        Skill.GRENADE -> Icon.GRENADE
+        Skill.RALLY -> Icon.FIST
+        Skill.SENTRY -> Icon.WRENCH
+        Skill.EMP -> Icon.BOLT
+        Skill.PIERCE -> Icon.TARGET
+        Skill.BARRAGE -> Icon.BLAST
+    }
+
     private companion object {
         /** Seconds the store gets to answer before the VIP buttons work again. */
         const val VIP_WAIT = 30f
+
+        /** A window waits this long after the menu opens. */
+        const val POPUP_DELAY = 1.2f
+
+        /** The VIP offer shows to players with this many stars, at most every this many days. */
+        const val PROMO_STARS = 6
+        const val PROMO_GAP = 3
+
+        /** Days after VIP runs out when the reminder may still show. */
+        const val ENDED_DAYS = 14
     }
 }

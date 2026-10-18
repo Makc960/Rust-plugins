@@ -9,8 +9,8 @@ plugins {
 val uploadKey = System.getenv("UPLOAD_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
 
 // Which store a build is for: "github" (the APK in the repository's releases), "rustore" or "play".
-// Only RuStore builds sell VIP: they carry RuStore's Pay SDK (src/rustore). Google Play allows no
-// payments outside its own billing and rejects donation links, so its bundle has neither.
+// Only RuStore builds sell VIP and the rest of the shop: they carry RuStore's Pay SDK (src/rustore).
+// Google Play allows no payments outside its own billing and rejects donation links, so its bundle has neither.
 val store = (findProperty("store") as String?) ?: "github"
 
 // The app's ID in the RuStore Console (the number in the console's address after /apps/).
@@ -30,14 +30,14 @@ android {
         targetSdk = 36
         // Every CI build counts up, so each one installs over the last and Play accepts it.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100) ?: 2
-        versionName = "2.4"
+        versionName = "2.5"
         buildConfigField("String", "SUPPORT_URL", "\"${if (store == "play") "" else supportUrl}\"")
         val shop = when (store) {
             "rustore" -> "HERE"
             "play" -> "NONE"
             else -> "ELSEWHERE"
         }
-        buildConfigField("String", "VIP_SHOP", "\"$shop\"")
+        buildConfigField("String", "SHOP", "\"$shop\"")
         resValue("string", "rustore_app_id", rustoreAppId)
         // Payment apps open this scheme to come back to the game.
         manifestPlaceholders["payScheme"] = "com.makc.basedefense"

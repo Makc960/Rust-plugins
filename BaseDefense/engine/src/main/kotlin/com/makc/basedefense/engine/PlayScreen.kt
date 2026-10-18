@@ -27,6 +27,26 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private var acc = 0f
     internal var placing: TowerType? = null
     internal var selected: Tower? = null
+
+    /** The commander is picked: a tap on the map sends him there. */
+    internal var heroPicked = false
+
+    /** Steps of the training battle, each waiting for one thing the player does. */
+    internal enum class Lesson(val text: L) {
+        INTRO(Tx.TUT_INTRO), PICK(Tx.TUT_PICK), PLACE(Tx.TUT_PLACE), START(Tx.TUT_START), WATCH(Tx.TUT_WATCH),
+        SELECT(Tx.TUT_SELECT), UPGRADE(Tx.TUT_UPGRADE), HERO(Tx.TUT_HERO), MOVE(Tx.TUT_MOVE), WAVE2(Tx.TUT_WAVE2),
+        SKILL(Tx.TUT_SKILL), STRIKE(Tx.TUT_STRIKE), SPEED(Tx.TUT_SPEED), FINISH(Tx.TUT_FINISH),
+    }
+
+    internal var lesson: Lesson? = null
+        private set
+
+    /** The grass cell the lesson suggests for the first squad, and where the commander stood. */
+    internal var lessonCell = -1
+        private set
+    private var heroHomeX = 0f
+    private var heroHomeY = 0f
+    private var lessonPlateH = 0f
     internal var obstacle = -1
     internal var aiming = false
     private var aimX = -1f
@@ -107,6 +127,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         acc = 0f
         placing = null
         selected = null
+        heroPicked = false
         obstacle = -1
         aiming = false
         ghostCol = -1
@@ -129,6 +150,21 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         cards.clear()
         ui.resetScroll("shop")
         if (!resumed) introCards(s)
+        val hero = s.world.commander
+        lesson = null
+        if (s.mode == Mode.TUTORIAL) {
+            lesson = Lesson.INTRO
+            lessonCell = bestCell(s.world, TowerType.TURRET.levels[0].range)
+            heroHomeX = hero?.tx ?: 0f
+            heroHomeY = hero?.ty ?: 0f
+            profile.markSeen(Tips.COMMANDER)
+        }
+        if (hero != null && !profile.seen(Tips.COMMANDER)) {
+            profile.markSeen(Tips.COMMANDER)
+            if (profile.tips) {
+                cards += Card(Tx.CARD_TIP, Tx.TIP_COMMANDER.t, Tx.TIP_COMMANDER_TEXT.t) { g, cx, cy, sz -> renderer.drawCommanderIcon(g, hero.type, cx, cy, sz * 0.9f) }
+            }
+        }
     }
 
     /** What this level brings for the first time: new towers, abilities and tips. */
@@ -183,11 +219,14 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             }
         }
         if (selected?.let { it !in wd.towers } == true) selected = null
+        if (heroPicked && wd.commander == null) heroPicked = false
+        updateLesson(wd)
         if (obstacle >= 0 && !wd.map.obstacle(obstacle % COLS, obstacle / COLS)) obstacle = -1
         if (aiming && !wd.abilityReady(Ability.AIRSTRIKE)) aiming = false
         if (wd.over && overlay != Overlay.RESULT) {
             placing = null
             selected = null
+            heroPicked = false
             aiming = false
             obstacle = -1
             cards.clear()
@@ -245,6 +284,10 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 profile.recordDaily(s.day, waves, won, s.vip)
                 if (won && wd.leaked == 0) profile.addStat(Stat.FLAWLESS, 1)
             }
+            Mode.TUTORIAL -> {
+                lesson = null
+                if (won) profile.tutorialDone = true
+            }
         }
         profile.save = null
         resultAchievements = profile.checkAchievements()
@@ -261,6 +304,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             Overlay.NONE -> when {
                 aiming -> aiming = false
                 placing != null -> placing = null
+                heroPicked -> heroPicked = false
                 selected != null -> selected = null
                 obstacle >= 0 -> obstacle = -1
                 else -> openPause()
@@ -424,6 +468,19 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             return
         }
         if (action != Touch.UP) return
+        val hero = wd.commander
+        val onHero = hero != null && hypot(fx - hero.x, fy - hero.y) < HERO_TAP
+        if (hero != null && heroPicked) {
+            // A tap on him lets him go; anywhere else he walks to.
+            if (onHero) heroPicked = false else if (wd.moveCommander(fx, fy)) game.vibrate(10)
+            return
+        }
+        if (onHero) {
+            heroPicked = true
+            selected = null
+            obstacle = -1
+            return
+        }
         val t = wd.towerAt(c, r)
         when {
             t != null -> {
@@ -451,6 +508,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     internal fun pickTower(type: TowerType) {
         val wd = world ?: return
         selected = null
+        heroPicked = false
         obstacle = -1
         aiming = false
         if (placing == type) {
@@ -484,6 +542,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 aiming = !aiming
                 placing = null
                 selected = null
+                heroPicked = false
                 obstacle = -1
             } else {
                 game.sound(Sfx.ERROR, 0.4f)
@@ -491,6 +550,137 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             Ability.FREEZE -> if (wd.freeze()) game.vibrate(25) else game.sound(Sfx.ERROR, 0.4f)
             Ability.REPAIR -> if (wd.repair()) game.vibrate(25) else game.sound(Sfx.ERROR, 0.4f)
         }
+    }
+
+    // --- the tutorial ---------------------------------------------------------------------
+
+    /** The grass cell that sees the most road: where the lesson puts the first squad. */
+    private fun bestCell(wd: World, range: Float): Int {
+        val p = FloatArray(4)
+        var best = -1
+        var most = -1
+        for (r in 0 until ROWS) for (c in 0 until COLS) {
+            if (!wd.map.buildable(c, r)) continue
+            var n = 0
+            for (path in wd.map.paths) {
+                var d = 0f
+                while (d <= path.length) {
+                    path.pointAt(d, p)
+                    if (hypot(p[0] - c - 0.5f, p[1] - r - 0.5f) <= range) n++
+                    d += 0.5f
+                }
+            }
+            if (n > most) {
+                most = n
+                best = r * COLS + c
+            }
+        }
+        return best
+    }
+
+    /** Moves the lesson on when its step is done, and helps where the step needs it. */
+    private fun updateLesson(wd: World) {
+        val step = lesson ?: return
+        val hero = wd.commander
+        val waveOver = wd.wavesStarted >= 1 && !wd.spawning && wd.enemies.isEmpty()
+        val done = when (step) {
+            Lesson.INTRO, Lesson.FINISH -> false
+            Lesson.PICK -> placing != null || wd.towers.isNotEmpty()
+            Lesson.PLACE -> wd.towers.isNotEmpty()
+            Lesson.START -> wd.wavesStarted >= 1
+            Lesson.WATCH -> waveOver
+            Lesson.SELECT -> selected != null
+            Lesson.UPGRADE -> wd.towers.any { it.level > 0 || it.branch != null }
+            Lesson.HERO -> hero == null || heroPicked
+            Lesson.MOVE -> hero == null || hero.tx != heroHomeX || hero.ty != heroHomeY
+            Lesson.WAVE2 -> wd.wavesStarted >= 2
+            // A missed grenade is no reason to get stuck: the lesson moves on when the wave is beaten.
+            Lesson.SKILL -> hero == null || hero.skillCooldowns.any { it > 0f } || waveOver
+            Lesson.STRIKE -> wd.airstrikes > 0
+            Lesson.SPEED -> speed > 1
+        }
+        if (done) lesson = Lesson.entries[step.ordinal + 1]
+        val now = lesson ?: return
+        if (now == Lesson.PLACE && placing == null && wd.towers.isEmpty()) lesson = Lesson.PICK
+        // The next wave waits while the player learns between waves.
+        wd.holdWaves = now.ordinal in Lesson.WATCH.ordinal..Lesson.WAVE2.ordinal
+        when (now) {
+            Lesson.UPGRADE -> wd.towers.firstOrNull()?.let { if (it.canUpgrade && wd.money < wd.upgradeCost(it)) wd.money = wd.upgradeCost(it) }
+            Lesson.STRIKE -> if (!aiming) wd.cooldowns[Ability.AIRSTRIKE.ordinal] = 0f
+            else -> Unit
+        }
+    }
+
+    /** Where the lesson points: a control by its id, or a spot on the map. */
+    private fun lessonTarget(wd: World, step: Lesson): FloatArray? {
+        fun spot(i: Int): FloatArray? = if (i < 0) null else {
+            val c = i % COLS
+            val r = i / COLS
+            floatArrayOf(screenX(c.toFloat()), screenY(r.toFloat()), cell * zoom, cell * zoom)
+        }
+        val hero = wd.commander
+        return when (step) {
+            Lesson.PICK -> ui.rect("shop${TowerType.TURRET.name}")
+            Lesson.PLACE -> spot(lessonCell)
+            Lesson.START, Lesson.WAVE2 -> ui.rect("wave")
+            Lesson.SELECT -> wd.towers.firstOrNull()?.let { spot(it.row * COLS + it.col) }
+            Lesson.UPGRADE -> ui.rect("up")
+            Lesson.HERO -> hero?.let {
+                val r = cell * zoom * 0.6f
+                floatArrayOf(screenX(it.x) - r, screenY(it.y) - r, r * 2f, r * 2f)
+            }
+            Lesson.SKILL -> if (heroPicked) ui.rect("skill0") else ui.rect("shopHero")
+            Lesson.STRIKE -> if (aiming) null else ui.rect("ab${Ability.AIRSTRIKE.name}")
+            Lesson.SPEED -> ui.rect("speed")
+            else -> null
+        }
+    }
+
+    /** The lesson's note over the map and a pulsing frame around what to press. */
+    private fun drawLesson(g: Gfx, wd: World) {
+        val step = lesson ?: return
+        val target = lessonTarget(wd, step)
+        if (target != null) {
+            val pad = d(4f)
+            val pulse = 0.55f + 0.45f * sin(clock * 6f)
+            ui.outline(g, target[0] - pad, target[1] - pad, target[2] + pad * 2f, target[3] + pad * 2f, d(8f), Colors.alpha(Ui.GOLD, pulse), d(3f))
+            // An arrow above it, bobbing.
+            val ax = target[0] + target[2] / 2f
+            val ay = target[1] - pad - d(6f) - d(5f) * abs(sin(clock * 4f))
+            val s = d(10f)
+            g.fillPolygon(floatArrayOf(ax - s, ax + s, ax), floatArrayOf(ay - s * 1.3f, ay - s * 1.3f, ay), 3, Ui.EDGE)
+            g.fillPolygon(floatArrayOf(ax - s * 0.75f, ax + s * 0.75f, ax), floatArrayOf(ay - s * 1.15f, ay - s * 1.15f, ay - s * 0.2f), 3, Ui.GOLD)
+        }
+        val text = step.text.t
+        val pw = min(ui.w - d(20f), d(380f))
+        val withNext = step == Lesson.INTRO
+        val textW = pw - d(32f) - (if (withNext) d(92f) else 0f)
+        val textH = ui.lines(g, text, d(13f), textW).size * d(13f) * 1.25f
+        val ph = max(d(54f), textH + d(34f))
+        lessonPlateH = ph
+        val px = (ui.w - pw) / 2f
+        val py = mapY + d(8f)
+        ui.chamfer(g, px, py, pw, ph, d(8f), Ui.EDGE)
+        ui.chamfer(g, px + d(1f), py + d(1f), pw - d(2f), ph - d(2f), d(8f), Ui.ACCENT)
+        ui.chamfer(g, px + d(1f), py + d(4f), pw - d(2f), ph - d(5f), d(8f), Colors.alpha(Ui.BAND, 0.97f))
+        ui.tag(g, Tx.TUT_LABEL.f(step.ordinal + 1, Lesson.entries.size), px + d(12f), py + d(14f), d(9f))
+        ui.paragraph(g, text, px + d(14f), py + d(24f), textW, d(13f), Ui.TEXT, spacing = 1.25f)
+        if (withNext) {
+            ui.button(g, "lessonNext", px + pw - d(98f), py + ph / 2f - d(19f), d(86f), d(38f), Tx.TUT_NEXT.t, Style.PRIMARY, size = 14f) {
+                lesson = Lesson.PICK
+            }
+        }
+    }
+
+    /** Fires the commander's skill [k], or says why it cannot. */
+    internal fun useSkill(k: Int) {
+        val wd = world ?: return
+        if (wd.useSkill(k)) {
+            game.vibrate(20)
+            return
+        }
+        game.sound(Sfx.ERROR, 0.4f)
+        if (wd.skillReady(k)) notify(Tx.NO_TARGET.t)
     }
 
     private fun sell(wd: World, t: Tower) {
@@ -554,11 +744,14 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         drawHud(g, wd)
         drawStrip(g, wd)
         val sel = selected
+        val hero = wd.commander
         when {
+            heroPicked && hero != null -> drawCommanderPanel(g, wd, hero)
             sel != null -> drawTowerPanel(g, wd, sel)
             obstacle >= 0 -> drawObstaclePanel(g, wd)
             else -> drawShop(g, wd)
         }
+        if (overlay == Overlay.NONE) drawLesson(g, wd)
 
         if (overlay != Overlay.NONE) {
             ui.begin()
@@ -574,6 +767,18 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     }
 
     private fun drawPlacement(g: Gfx, wd: World) {
+        val hero = wd.commander
+        if (hero != null && heroPicked) {
+            val range = wd.commanderRange(hero)
+            g.fillCircle(hero.x, hero.y, range, Colors.alpha(Ui.WHITE, 0.08f))
+            g.strokeCircle(hero.x, hero.y, range, Colors.alpha(Ui.GOLD, 0.7f), 0.04f)
+            g.strokeCircle(hero.x, hero.y, 0.44f, Ui.ACCENT, 0.06f)
+        }
+        if (hero != null && hero.moving) {
+            g.line(hero.x, hero.y, hero.tx, hero.ty, Colors.alpha(Ui.GOLD, 0.45f), 0.04f)
+            g.strokeCircle(hero.tx, hero.ty, 0.18f + 0.04f * sin(clock * 8f), Colors.alpha(Ui.GOLD, 0.9f), 0.05f)
+            g.fillCircle(hero.tx, hero.ty, 0.05f, Ui.GOLD)
+        }
         val sel = selected
         if (sel != null) {
             val range = wd.rangeOf(sel)
@@ -660,7 +865,8 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         val bw = min(ui.w - d(32f), max(g.textWidth(title, d(18f), Font.DISPLAY), if (sub != null) g.textWidth(sub, d(12.5f)) else 0f) + d(48f))
         val bh = if (sub != null) d(60f) else d(42f)
         val x = (ui.w - bw) / 2f
-        val y = mapY + d(12f)
+        // Under the tutorial's note, when there is one.
+        val y = mapY + d(12f) + (if (lesson != null) lessonPlateH + d(4f) else 0f)
         notePlate(g, x, y, bw, bh, b.color, a)
         ui.textMid(g, title, ui.w / 2f, y + d(21f), d(18f), Colors.alpha(b.color, a), maxW = bw - d(32f), font = Font.DISPLAY)
         if (sub != null) ui.textMid(g, sub, ui.w / 2f, y + d(43f), d(12.5f), Colors.alpha(Ui.TEXT, a), maxW = bw - d(32f))
@@ -854,16 +1060,21 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private fun drawShop(g: Gfx, wd: World) {
         panelBase(g)
         val types = wd.rules.towers
-        if (types.isEmpty()) return
+        val hero = wd.commander
+        // The commander's card comes first.
+        val first = if (hero != null) 1 else 0
+        val n = types.size + first
+        if (n == 0) return
         val margin = d(8f)
         val gap = d(6f)
-        val fits = types.size <= 6
-        val cw = if (fits) (ui.w - margin * 2 - gap * (types.size - 1)) / types.size else (ui.w - margin * 2 - gap * 5) / 5.5f
+        val fits = n <= 6
+        val cw = if (fits) (ui.w - margin * 2 - gap * (n - 1)) / n else (ui.w - margin * 2 - gap * 5) / 5.5f
         val ch = shopH - d(18f)
-        val content = margin * 2 + types.size * cw + (types.size - 1) * gap
+        val content = margin * 2 + n * cw + (n - 1) * gap
         val off = ui.beginScroll(g, "shop", 0f, shopY, ui.w, shopH, content, horizontal = true)
+        if (hero != null) drawHeroCard(g, wd, hero, margin - off, shopY + d(9f), cw, ch)
         for ((i, type) in types.withIndex()) {
-            val x = margin + i * (cw + gap) - off
+            val x = margin + (i + first) * (cw + gap) - off
             val y0 = shopY + d(9f)
             if (x > ui.w || x + cw < 0f) continue
             val cost = wd.buildCost(type)
@@ -885,6 +1096,108 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             if (!affordable) ui.chamfer(g, x, y, cw, ch, d(6f), 0x66101309)
         }
         ui.endScroll(g, "shop")
+    }
+
+    /** The commander in the shop row: his portrait, his level and a light when a skill is ready. */
+    private fun drawHeroCard(g: Gfx, wd: World, c: Commander, x: Float, y0: Float, cw: Float, ch: Float) {
+        if (x > ui.w || x + cw < 0f) return
+        ui.area("shopHero", x, y0, cw, ch) {
+            heroPicked = !heroPicked
+            placing = null
+            selected = null
+            obstacle = -1
+            aiming = false
+        }
+        val y = y0 + if (ui.down("shopHero")) d(2f) else 0f
+        ui.plate(g, x, y, cw, ch, if (heroPicked) Ui.PANEL_HI else Ui.PANEL_LIGHT, if (heroPicked) Ui.ACCENT else Ui.GOLD)
+        val icon = min(cw * 0.62f, d(40f))
+        renderer.drawCommanderIcon(g, c.type, x + cw / 2f, y + d(7f) + icon / 2f, icon)
+        val name = c.type.title.t.substringAfterLast(' ')
+        ui.textMid(g, name, x + cw / 2f, y + ch - d(30f), d(10.5f), Ui.TEXT, maxW = cw - d(8f))
+        val next = c.nextXp
+        val bw = cw - d(14f)
+        if (next != null) {
+            val from = Commander.XP[c.level]
+            ui.bar(g, x + d(7f), y + ch - d(18f), bw, d(7f), (c.xp - from) / (next - from), Ui.GOLD)
+        }
+        ui.tag(g, Tx.LEVEL_SHORT.f(c.level + 1), x + d(4f), y + d(10f), d(7f), Ui.GOLD, Ui.DARK_TEXT)
+        val ready = (0 until 2).any { wd.skillReady(it) }
+        if (ready) {
+            g.fillCircle(x + cw - d(8f), y + d(9f), d(6f), Ui.EDGE)
+            g.fillCircle(x + cw - d(8f), y + d(9f), d(4.5f), Colors.mix(Ui.ACCENT, Ui.GOLD, 0.5f + 0.5f * sin(clock * 5f)))
+        }
+    }
+
+    private fun skillIcon(s: Skill): Icon = when (s) {
+        Skill.GRENADE -> Icon.GRENADE
+        Skill.RALLY -> Icon.FIST
+        Skill.SENTRY -> Icon.WRENCH
+        Skill.EMP -> Icon.BOLT
+        Skill.PIERCE -> Icon.TARGET
+        Skill.BARRAGE -> Icon.BLAST
+    }
+
+    /** What the commander's gun does now, as short pieces. */
+    fun heroStats(wd: World, c: Commander): List<String> = buildList {
+        add(Tx.DMG.f(Num.int(wd.commanderDamage(c))))
+        add(Tx.PER_SECOND.f(Num.one(c.stats.rate)))
+        add(Tx.RANGE.f(Num.one(wd.commanderRange(c))))
+        when (c.type) {
+            CommanderType.ENGINEER -> add(Tx.CHAIN.f(World.ZAP_JUMPS))
+            CommanderType.GROM -> add(Tx.BLAST.f(Num.one(World.GROM_BLAST)))
+            CommanderType.SERGEANT -> Unit
+        }
+    }
+
+    private fun drawCommanderPanel(g: Gfx, wd: World, c: Commander) {
+        panelBase(g)
+        val x0 = d(12f)
+        val icon = d(44f)
+        ui.well(g, x0, shopY + d(12f), icon + d(8f), icon + d(8f), d(6f))
+        renderer.drawCommanderIcon(g, c.type, x0 + d(4f) + icon / 2f, shopY + d(16f) + icon / 2f, icon)
+        val tx = x0 + icon + d(18f)
+        val maxW = ui.w - tx - d(12f)
+        val name = c.type.title.t
+        val sz = ui.fit(g, name, d(15f), maxW - d(56f), Font.DISPLAY)
+        ui.textMid(g, name, tx, shopY + d(19f), sz, Ui.TEXT, Align.LEFT, font = Font.DISPLAY)
+        ui.tag(g, Tx.LEVEL_SHORT.f(c.level + 1), tx + g.textWidth(name, sz, Font.DISPLAY) + d(8f), shopY + d(19f), d(10f), Ui.GOLD, Ui.DARK_TEXT)
+        ui.chips(g, heroStats(wd, c) + Tx.KILLS.f(c.kills), tx, shopY + d(29f), maxW, size = d(10.5f))
+        val next = c.nextXp
+        var hx = tx
+        if (next != null) {
+            val from = Commander.XP[c.level]
+            ui.bar(g, tx, shopY + d(53f), d(62f), d(8f), (c.xp - from) / (next - from), Ui.GOLD)
+            hx += d(70f)
+        }
+        val line = when {
+            c.jammed > 0f -> Tx.JAMMED.t
+            !wd.skillsAllowed -> Tx.SKILLS_OFF.t
+            else -> Tx.SEND_HINT.t
+        }
+        ui.text(g, line, hx, shopY + d(61f), d(10.5f), if (c.jammed > 0f) Ui.ACCENT else Ui.GREEN, maxW = ui.w - hx - d(12f), font = Font.BODY)
+
+        val by = shopY + d(70f)
+        val bh = d(32f)
+        val gap = d(6f)
+        val closeW = d(42f)
+        val sw = (ui.w - d(24f) - closeW - gap * 2) / 2f
+        var x = d(12f)
+        for (k in 0 until 2) {
+            val skill = c.type.skills[k]
+            val left = c.skillCooldowns[k]
+            val usable = wd.skillsAllowed && wd.phase == Phase.RUNNING && c.jammed <= 0f && left <= 0f
+            val label = if (left > 0f && wd.skillsAllowed) "${skill.title.t.uppercase()} ${ceil(left).toInt()}" else skill.title.t.uppercase()
+            ui.button(g, "skill$k", x, by, sw, bh, label, if (usable) Style.PRIMARY else Style.NORMAL, usable, size = 12f, icon = skillIcon(skill)) {
+                useSkill(k)
+            }
+            if (left > 0f && wd.skillsAllowed) {
+                val f = 1f - left / wd.skillCooldown(skill)
+                val sink = if (ui.down("skill$k")) d(2f) else 0f
+                g.fillRect(x + d(7f), by + bh - d(6f) + sink, (sw - d(14f)) * f, d(2.5f), Ui.ACCENT)
+            }
+            x += sw + gap
+        }
+        ui.button(g, "close", x, by, closeW, bh, "", Style.GHOST, icon = Icon.CROSS) { heroPicked = false }
     }
 
     private fun drawTowerPanel(g: Gfx, wd: World, t: Tower) {
@@ -1197,15 +1510,23 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 }
                 lines += Tx.KILLED.f(wd.kills) to Ui.TEXT
             }
+            Mode.TUTORIAL -> {
+                if (won) lines += Tx.TUT_DONE_TEXT.t to Ui.GOLD
+                lines += Tx.KILLED.f(wd.kills) to Ui.TEXT
+            }
         }
+        // After a defeat, what VIP's second chance would have done.
+        val offerVip = !won && s.mode != Mode.TUTORIAL && game.shop != Shop.NONE && !s.vip
         val achievements = resultAchievements.take(3)
         val rowH = d(26f)
-        val buttonsH = if (next != null) d(172f) else d(118f)
+        val tutorialWon = s.mode == Mode.TUTORIAL && won
+        val buttonsH = (if (next != null || tutorialWon) d(172f) else d(118f)) + (if (offerVip) d(64f) else 0f)
         val headH = if (s.mode == Mode.ENDLESS || (s.mode == Mode.CAMPAIGN && won)) d(92f) else d(12f)
         val achH = if (achievements.isEmpty()) 0f else d(30f) + achievements.size * d(24f)
         val ph = d(56f) + headH + lines.size * rowH + achH + buttonsH + d(34f)
         val band = if (won) 0xFF3B5A24.toInt() else 0xFF6B2219.toInt()
-        val (px, _, pw, top) = dialog(g, ph, if (won) Tx.VICTORY.t else Tx.DEFEAT.t, band)
+        val title = if (tutorialWon) Tx.TUT_DONE.t else if (won) Tx.VICTORY.t else Tx.DEFEAT.t
+        val (px, _, pw, top) = dialog(g, ph, title, band)
         val since = clock - resultAt
         var y = top + d(8f)
         if (s.mode == Mode.CAMPAIGN && won) {
@@ -1252,7 +1573,21 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         y += d(18f)
         val bx = px + d(22f)
         val bw = pw - d(44f)
-        if (next != null) {
+        if (offerVip) {
+            ui.button(g, "defeatVip", bx, y, bw, d(52f), Tx.VIP.t, Style.NORMAL, size = 16f, icon = Icon.CROWN, sub = Tx.DEFEAT_VIP.f(Vip.RESERVE_LIVES)) {
+                game.checkPurchases()
+                game.leaveBattle(Screen.VIP)
+            }
+            y += d(64f)
+        }
+        if (tutorialWon) {
+            ui.button(g, "campaign", bx, y, bw, d(52f), Tx.TO_CAMPAIGN.t, Style.PRIMARY, size = 16f, icon = Icon.FLAG) {
+                game.leaveBattle(Screen.LEVELS)
+            }
+            y += d(64f)
+            ui.button(g, "again", bx, y, bw, d(44f), Tx.AGAIN.t, icon = Icon.UNDO) { game.restart() }
+            y += d(54f)
+        } else if (next != null) {
             ui.button(g, "next", bx, y, bw, d(52f), Tx.NEXT_LEVEL_BTN.f(next.name.t.uppercase()), Style.PRIMARY, size = 16f, icon = Icon.PLAY) {
                 game.startCampaign(next, s.difficulty.takeIf { profile.stars(next.id) > 0 || it != Difficulty.HARD } ?: Difficulty.NORMAL, false)
             }
@@ -1275,5 +1610,8 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         const val NOTICE_TIME = 2.5f
         const val SLOWMO_TIME = 0.6f
         const val SLOWMO_SCALE = 0.35f
+
+        /** How close to the commander, in cells, a tap picks him. */
+        const val HERO_TAP = 0.55f
     }
 }

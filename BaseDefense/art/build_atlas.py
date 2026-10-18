@@ -856,6 +856,85 @@ def vest(im):
     return recolor(im, fn)
 
 
+# --- commanders ------------------------------------------------------------------------
+#
+# A commander is a soldier too: his own uniform, a beret or a hard hat over the head
+# with a gold star, and a weapon of his own.
+
+def star_points(cx, cy, r, inner=0.42):
+    pts = []
+    for i in range(10):
+        a = -math.pi / 2 + i * math.pi / 5
+        rr_ = r if i % 2 == 0 else r * inner
+        pts.append((cx + rr_ * math.cos(a), cy + rr_ * math.sin(a)))
+    return pts
+
+
+def both(*painters):
+    def paint(d, c):
+        for p in painters:
+            p(d, c)
+    return paint
+
+
+def beret(colour):
+    """A beret pulled to one side over the head, a gold star on it."""
+    def front(d, c):
+        d.ellipse((c - 40, c - 38, c + 28, c + 34), fill=darker(colour))
+        d.ellipse((c - 35, c - 33, c + 22, c + 28), fill=colour)
+        d.ellipse((c - 28, c - 26, c + 4, c + 2), fill=lighter(colour, 0.18))
+        d.polygon(star_points(c - 8, c - 14, 15), fill=(120, 84, 10, 255))
+        d.polygon(star_points(c - 8, c - 14, 12), fill=GOLD)
+    return front
+
+
+def hard_hat(colour):
+    """An engineer's hard hat with a ridge and a star."""
+    def front(d, c):
+        d.ellipse((c - 40, c - 40, c + 36, c + 36), fill=darker(colour))
+        d.ellipse((c - 35, c - 35, c + 31, c + 31), fill=colour)
+        d.rounded_rectangle((c - 34, c - 5, c + 30, c + 3), radius=3, fill=darker(colour, 0.8))
+        d.polygon(star_points(c - 10, c - 18, 9), fill=(255, 255, 255, 235))
+    return front
+
+
+def tool_pack(d, c):
+    rr(d, c, -100, -34, -30, 34, (47, 156, 143, 255), r=8)
+    d.line((c - 86, c - 18, c - 46, c + 18), fill=STEEL, width=8)
+    d.ellipse((c - 52, c + 10, c - 36, c + 26), outline=STEEL, width=6)
+
+
+def ammo_pack(d, c):
+    rr(d, c, -98, -40, -28, 40, (70, 78, 60, 255), r=8)
+    for y in (-22, 0, 22):
+        dot(d, c, -64, y, 9, (196, 150, 60, 255), w=3)
+
+
+def grenade_launcher(d, c):
+    rr(d, c, 16, -14, 70, 14, GUNMETAL)
+    dot(d, c, 92, 0, 27, GUN, w=4)
+    for a in range(0, 360, 60):
+        dot(d, c, 92 + 15 * math.cos(math.radians(a)), 15 * math.sin(math.radians(a)), 6, GUNMETAL, w=2)
+    rr(d, c, 112, -11, 200, 11, GUN, w=3, r=4)
+    rr(d, c, 188, -16, 204, 16, GUN, w=3, r=3)
+
+
+def sentry_gun():
+    """The engineer's machine gun on a tripod, seen from above, facing right."""
+    im, d, c = canvas()
+    for a in (60, 180, 300):
+        x = c + math.cos(math.radians(a)) * 30 * U
+        y = c + math.sin(math.radians(a)) * 30 * U
+        d.line((c, c, x, y), fill=STEEL_DARK, width=int(4.5 * U))
+        disc(d, c, (x - c) / U, (y - c) / U, 4, STEEL_DARK, width=1.5)
+    part(d, 'round', box(c, -10, 6, 6, 22), (104, 118, 64, 255), width=2, radius=2)
+    part(d, 'round', box(c, -16, -11, 18, 11), (96, 102, 110, 255), width=3, radius=4)
+    part(d, 'round', box(c, 14, -4, 50, 4), (52, 56, 62, 255), width=1.5, radius=1)
+    part(d, 'round', box(c, 44, -6, 52, 6), (52, 56, 62, 255), width=1.5, radius=1)
+    disc(d, c, 0, 0, 5, (230, 180, 40, 255), width=1.5)
+    return shrink(im)
+
+
 # --- the squads' pits and props ------------------------------------------------------------
 
 PIT_FLOOR = {'green': (126, 94, 60, 255), 'desert': (194, 158, 108, 255), 'winter': (170, 162, 156, 255)}
@@ -1040,6 +1119,12 @@ S['quarry.bit'] = drill_bit()
 S['quarry.bank'] = scale(tanks('crateMetal'), 1.45)
 S['quarry.dial'] = vault_dial()
 
+# Commanders: their own uniforms, headgear and weapons.
+S['commander.sergeant'] = trooper('soldier1_machine', rgba(0x4C6B32), beret(rgba(0xB3302B)))
+S['commander.engineer'] = trooper('womanGreen_hold', rgba(0xD9822B), both(tesla_gun((255, 227, 107, 255)), hard_hat(rgba(0xF2C230))), tool_pack)
+S['commander.grom'] = trooper('soldier1_hold', rgba(0x3E4654), both(grenade_launcher, beret(rgba(0x22262C))), ammo_pack)
+S['sentry'] = sentry_gun()
+
 # Enemies, facing right and centred on the body.
 S['enemy.bandit'] = character('manBrown_gun')
 S['enemy.runner'] = character('womanGreen_stand')
@@ -1155,6 +1240,35 @@ def crown_icon(d, k):
         d.ellipse(ib(k, x - 4, 61, x + 4, 69), fill=0)
 
 
+def commander_icon(d, k):
+    # A shoulder board with a star cut out of it.
+    d.rounded_rectangle(ib(k, 25, 10, 75, 90), 12 * k, fill=255)
+    d.polygon([(x * k, y * k) for (x, y) in star_points(50, 52, 21)], fill=0)
+
+
+def grenade_icon(d, k):
+    d.ellipse(ib(k, 24, 30, 76, 90), fill=255)
+    d.rectangle(ib(k, 47.5, 30, 52.5, 90), fill=0)
+    d.rectangle(ib(k, 24, 57, 76, 62), fill=0)
+    d.rounded_rectangle(ib(k, 39, 16, 61, 33), 3 * k, fill=255)
+    d.line([(58 * k, 20 * k), (82 * k, 44 * k)], fill=255, width=int(7 * k))
+    d.ellipse(ib(k, 18, 6, 38, 26), outline=255, width=int(5 * k))
+
+
+def bolt_icon(d, k):
+    d.polygon([(60 * k, 8 * k), (22 * k, 56 * k), (46 * k, 56 * k), (36 * k, 92 * k), (78 * k, 40 * k), (54 * k, 40 * k), (66 * k, 8 * k)], fill=255)
+
+
+def blast_icon(d, k):
+    pts = []
+    for i in range(16):
+        a = -math.pi / 2 + i * math.pi / 8
+        r = 44 if i % 2 == 0 else 22
+        pts.append(((50 + r * math.cos(a)) * k, (50 + r * math.sin(a)) * k))
+    d.polygon(pts, fill=255)
+    d.ellipse(ib(k, 40, 40, 60, 60), fill=0)
+
+
 for name, src in {
     'back': 'arrowLeft', 'gear': 'gear', 'trophy': 'trophy', 'play': 'right', 'pause': 'pause', 'cross': 'cross',
     'undo': 'return', 'lock': 'locked', 'star': 'star', 'medal': 'medal1', 'speed': 'fastForward',
@@ -1170,6 +1284,13 @@ S['icon.calendar'] = glyph(calendar_icon)
 S['icon.infinity'] = glyph(infinity_icon)
 S['icon.ranks'] = glyph(ranks_icon)
 S['icon.crown'] = glyph(crown_icon)
+S['icon.commander'] = glyph(commander_icon)
+S['icon.grenade'] = glyph(grenade_icon)
+S['icon.fist'] = kicon('fightFist', MORE_ICONS)
+S['icon.wrench'] = kicon('wrench')
+S['icon.bolt'] = glyph(bolt_icon)
+S['icon.blast'] = glyph(blast_icon)
+S['icon.cart'] = kicon('shoppingCart')
 
 
 # --- packing -----------------------------------------------------------------------------

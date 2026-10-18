@@ -16,7 +16,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var platform: AndroidPlatform
     private lateinit var game: Game
     private lateinit var view: GameView
-    private val store = VipStores.create()
+    private val store = Stores.create()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

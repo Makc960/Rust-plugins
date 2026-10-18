@@ -255,6 +255,7 @@ object Levels {
     const val PER_WORLD = 8
     const val ENDLESS_ID = 100
     const val DAILY_ID = 200
+    const val TUTORIAL_ID = 300
 
     private val B = EnemyType.BANDIT
     private val RU = EnemyType.RUNNER
@@ -979,6 +980,16 @@ object Levels {
                 0, joins.filter { it.first.campaign <= max(progress, 4) },
                 budget = 9f, growth = 0.4f, hp = 1.1f, hpGrowth = 1.12f, seed = 100, bossEvery = 10,
             ),
+        )
+    }
+
+    /** The training battle: the first map and a few weak waves. */
+    fun tutorial(): LevelDef {
+        val first = all[0]
+        return LevelDef(
+            TUTORIAL_ID, L("Учебный бой", "Training battle"), first.biome, first.ascii, first.paths,
+            startMoney = 220,
+            plan = WavePlan(5, listOf(B to 0, RU to 2), budget = 5f, growth = 0.3f, hp = 0.8f, hpGrowth = 1.08f, seed = 7),
         )
     }
 

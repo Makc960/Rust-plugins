@@ -49,8 +49,12 @@ internal class Art private constructor() {
     val planeShadow = need("shadow.plane")
     val rocket = need("rocket")
     val rocketBig = need("rocket.big")
+    private val commanders = CommanderType.entries.map { need("commander." + it.name.lowercase()) }
+    val sentry = need("sentry")
 
     fun trooper(type: TowerType): Sprite = towerTroopers[type.ordinal]
+
+    fun commander(type: CommanderType): Sprite = commanders[type.ordinal]
 
     fun trooper(branch: Branch): Sprite = branchTroopers[branch.ordinal]
 

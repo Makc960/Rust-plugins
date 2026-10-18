@@ -105,9 +105,6 @@ enum class Stat {
 
 /** What the VIP subscription gives; the rules and the comparison screen both read it here. */
 object Vip {
-    /** The subscription's product ID in the RuStore Console. */
-    const val PRODUCT = "vip_month"
-    const val PRICE_RUBLES = 50
     const val START_MONEY = 1.2f
     const val BOUNTY = 1.1f
     const val COOLDOWN = 0.8f
@@ -115,8 +112,21 @@ object Vip {
     const val UNDO_TIME = 8f
     const val DAILY_POINTS = 2
 
+    /** The commander starts a battle at this level (0 is the first), and gains experience this much faster. */
+    const val COMMANDER_LEVEL = 1
+    const val XP = 1.5f
+
+    /** Once a battle, when the base falls, reserves bring this many lives. */
+    const val RESERVE_LIVES = 5
+
+    /** Upgrade points given on every day with VIP. */
+    const val DAILY_GIFT = 1
+
     /** How long VIP lasts when a store says it is paid but not until when. */
     const val DAYS = 31
+
+    /** The last day of VIP bought for good: far beyond any phone's calendar. */
+    const val FOREVER = 2_000_000
 }
 
 enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (Profile) -> Int) {
@@ -159,6 +169,8 @@ class Rules(
     /** Highest campaign level reached: towers and abilities unlock with it. */
     val progress: Int = 99,
     val vip: Boolean = false,
+    /** Who leads the squads; null is nobody. */
+    val commander: CommanderType? = null,
 ) {
     val towers: List<TowerType> = TowerType.entries.filter {
         it.unlock <= progress && (challenge?.kind != ChallengeKind.ONLY || it in challenge.types)
@@ -199,4 +211,9 @@ class Rules(
     val cooldownMul: Float = max(0.4f, 1f - 0.12f * perks[Perk.COOLDOWN]) * (if (vip) Vip.COOLDOWN else 1f)
     val maxSpeed: Int = if (vip) Vip.MAX_SPEED else 3
     val undoTime: Float = if (vip) Vip.UNDO_TIME else 4f
+    val commanderLevel: Int = if (vip) Vip.COMMANDER_LEVEL else 0
+    val xpMul: Float = if (vip) Vip.XP else 1f
+
+    /** A second chance: reserves arrive once when the base falls. */
+    val reserve: Boolean = vip
 }

@@ -14,7 +14,10 @@ object Tx {
     val ENDLESS = L("БЕСКОНЕЧНЫЙ РЕЖИМ", "ENDLESS MODE")
     val ENDLESS_LOCKED = L("откроется после 3 уровня", "opens after level 3")
     val UPGRADES = L("УЛУЧШЕНИЯ", "UPGRADES")
+    val COMMANDERS = L("КОМАНДИРЫ", "COMMANDERS")
+    val COMMANDERS_SUB = L("в бою: %s", "in battle: %s")
     val CODEX = L("Энциклопедия", "Codex")
+    val TUTORIAL = L("Обучение", "Tutorial")
     val ACHIEVEMENTS = L("Достижения", "Achievements")
     val SETTINGS = L("Настройки", "Settings")
     val BEST_WAVES = L("Рекорд: %d волн", "Best: %d waves")
@@ -133,6 +136,11 @@ object Tx {
         "В метель отряды стреляют реже, а по льду враги бегут быстрее. Береги ледяные участки дороги.",
         "In a blizzard squads fire slower, and enemies run faster on ice. Guard the icy stretches.",
     )
+    val TIP_COMMANDER = L("Командир", "Commander")
+    val TIP_COMMANDER_TEXT = L(
+        "Нажми на командира или на его карточку внизу, потом на карту — он пойдёт туда. Стреляет он сам и растёт в уровне прямо в бою, а навыки — в его панели.",
+        "Tap the commander or his card below, then the map, and he walks there. He fires on his own and levels up during the battle; his skills are in his panel.",
+    )
     val TIP_ZOOM = L("Масштаб", "Zoom")
     val TIP_ZOOM_TEXT = L(
         "Разведи два пальца, чтобы приблизить карту, и веди двумя пальцами, чтобы её двигать.",
@@ -210,15 +218,94 @@ object Tx {
     val VIP_SECONDS = L("%d с", "%d s")
     val VIP_BUY = L("ОФОРМИТЬ VIP", "GET VIP")
     val VIP_ELSEWHERE = L("в версии игры из RuStore", "in the game's RuStore version")
-    val VIP_RESTORE = L("ВОССТАНОВИТЬ ПОКУПКУ", "RESTORE PURCHASE")
+    val VIP_FOREVER = L("VIP НАВСЕГДА", "VIP FOREVER")
+    val VIP_ONCE = L("%d ₽ один раз, без подписки", "%d ₽ once, no subscription")
+    val VIP_ACTIVE_FOREVER = L("Активен навсегда", "Active forever")
+    val VIP_ROW_COMMANDER = L("Командир в начале боя", "Commander at the start")
+    val VIP_LEVEL = L("ур. %d", "lv %d")
+    val VIP_ROW_COMMANDERS = L("Все командиры", "Every commander")
+    val VIP_ROW_RESERVE = L("Второй шанс в бою", "Second chance")
+    val VIP_ROW_XP = L("Опыт командира", "Commander experience")
+    val VIP_ROW_GIFT = L("Подарок каждый день", "A gift every day")
+    val VIP_LIVES = L("+%d жизней", "+%d lives")
+    val VIP_GIFT = L("Подарок VIP: +%d очко улучшений", "VIP gift: +%d upgrade point")
+    val VIP_OPEN = L("Открыт, пока действует VIP", "Yours while VIP lasts")
+
+    // Pop-ups
+    val PROMO_1 = L("Все командиры в твоём распоряжении", "Every commander at your command")
+    val PROMO_2 = L("Второй шанс: +%d жизней, когда база пала", "A second chance: +%d lives when the base falls")
+    val PROMO_3 = L("+%d%% монет на старте и +%d%% за врагов", "+%d%% starting coins and +%d%% per kill")
+    val PROMO_4 = L("Бой до ×%d и подарок каждый день", "Battles up to ×%d and a gift every day")
+    val PROMO_MORE = L("ПОДРОБНЕЕ", "LEARN MORE")
+    val PROMO_LATER = L("НЕ СЕЙЧАС", "NOT NOW")
+    val ENDED_TITLE = L("VIP ЗАКОНЧИЛСЯ", "VIP HAS ENDED")
+    val ENDED_TEXT = L(
+        "Продли VIP, чтобы вернуть второй шанс, бонусные монеты и всех командиров.",
+        "Renew VIP to get back the second chance, the bonus coins and every commander.",
+    )
+    val ENDED_RENEW = L("ПРОДЛИТЬ", "RENEW")
+    val DEFEAT_VIP = L("С VIP был бы второй шанс: +%d жизней", "With VIP you'd get a second chance: +%d lives")
+    val WELCOME_TITLE = L("ДОБРО ПОЖАЛОВАТЬ!", "WELCOME!")
+    val WELCOME_TEXT = L(
+        "Пройди короткое обучение: покажем, как ставить отряды, улучшать их и вести командира в бой.",
+        "Take a short tutorial: we'll show you how to place squads, upgrade them and lead your commander.",
+    )
+    val WELCOME_GO = L("ПРОЙТИ ОБУЧЕНИЕ", "START TUTORIAL")
+    val WELCOME_SKIP = L("ПРОПУСТИТЬ", "SKIP")
+
+    // Tutorial
+    val TUT_LABEL = L("ОБУЧЕНИЕ %d/%d", "TUTORIAL %d/%d")
+    val TUT_NEXT = L("ДАЛЕЕ", "NEXT")
+    val TUT_INTRO = L("Это учебный бой. Враги идут по дороге к твоей базе. Не дай им дойти!", "A training battle. Enemies walk the road to your base. Don't let them through!")
+    val TUT_PICK = L("Выбери отряд внизу, например «Стрелки».", "Pick a squad below, say the Riflemen.")
+    val TUT_PLACE = L("Нажми на подсвеченную клетку травы у дороги.", "Tap the highlighted grass by the road.")
+    val TUT_START = L("Нажми «НАЧАТЬ ВОЛНУ». Отряды стреляют сами.", "Press START WAVE. Squads fire on their own.")
+    val TUT_WATCH = L("За каждого врага дают монеты. Дождись конца волны.", "Every enemy pays coins. Wait for the wave to end.")
+    val TUT_SELECT = L("Нажми на свой отряд на карте.", "Tap your squad on the map.")
+    val TUT_UPGRADE = L("Нажми «УЛУЧШИТЬ»: отряд станет сильнее.", "Press UPGRADE to make the squad stronger.")
+    val TUT_HERO = L("Это твой командир. Нажми на него.", "This is your commander. Tap him.")
+    val TUT_MOVE = L("Теперь нажми на карту у дороги: командир пойдёт туда.", "Now tap the map by the road and he walks there.")
+    val TUT_WAVE2 = L("Начни следующую волну.", "Start the next wave.")
+    val TUT_SKILL = L("Когда враги подойдут к командиру, нажми «ГРАНАТА» в его панели.", "When enemies come near the commander, press GRENADE in his panel.")
+    val TUT_STRIKE = L("Авиаудар: нажми кнопку слева внизу, потом на врагов.", "Airstrike: press the button at the bottom left, then tap the enemies.")
+    val TUT_SPEED = L("Кнопка ×1 ускоряет бой. Нажми на неё.", "The ×1 button speeds the battle up. Press it.")
+    val TUT_FINISH = L("Отбей последние волны! Ставь ещё отряды и улучшай их.", "Hold off the last waves! Place more squads and upgrade them.")
+    val TUT_DONE = L("ОБУЧЕНИЕ ПРОЙДЕНО", "TUTORIAL COMPLETE")
+    val TUT_DONE_TEXT = L("Ты готов к бою, командир!", "You're ready for battle, commander!")
+    val TO_CAMPAIGN = L("В КАМПАНИЮ", "TO THE CAMPAIGN")
     val VIP_NOTE = L(
         "Подписка оформляется через RuStore и продлевается каждый месяц. Отменить её можно в любой момент в RuStore, в разделе «Подписки».",
         "The subscription goes through RuStore and renews every month. You can cancel it any time in RuStore, under Subscriptions.",
     )
     val VIP_THANKS = L("VIP включён. Спасибо за поддержку!", "VIP is on. Thank you for the support!")
-    val VIP_FAILED = L("Оплата не прошла", "The payment did not go through")
-    val VIP_NOT_FOUND = L("Подписка VIP не найдена", "No VIP subscription found")
-    val VIP_RESTORED = L("VIP восстановлен", "VIP restored")
+
+    // Shop
+    val BOUGHT = L("Покупка прошла. Спасибо за поддержку!", "Purchase complete. Thank you for the support!")
+    val PAY_FAILED = L("Оплата не прошла", "The payment did not go through")
+    val RESTORE = L("ВОССТАНОВИТЬ ПОКУПКИ", "RESTORE PURCHASES")
+    val RESTORED = L("Покупки восстановлены", "Purchases restored")
+    val NOT_FOUND = L("Покупки не найдены", "No purchases found")
+    val PRICE = L("%d ₽", "%d ₽")
+    val BUY = L("КУПИТЬ", "BUY")
+    val STARTER = L("НАБОР НОВОБРАНЦА", "RECRUIT PACK")
+    val STARTER_TEXT = L("Инженер Ковалёва и %d очков улучшений. Только один раз", "Engineer Kovaleva and %d upgrade points. Once only")
+    val STARTER_BUY = L("ВЗЯТЬ НАБОР", "GET THE PACK")
+
+    // Commanders
+    val IN_BATTLE = L("В БОЮ", "IN BATTLE")
+    val TAKE = L("ВЗЯТЬ В БОЙ", "TAKE INTO BATTLE")
+    val FREE_FOR_STARS = L("Бесплатно за %d звёзд кампании, у тебя %d", "Free for %d campaign stars, you have %d")
+    val SKILLS = L("Навыки", "Skills")
+    val GROWS = L("В бою растёт до 5 уровня: урон, дальность и сила навыков", "Grows to level 5 in battle: damage, range and skill power")
+    val GROUND_AIR = L("по земле и воздуху", "ground and air")
+    val GROUND_ONLY = L("только по земле", "ground only")
+    val LEVEL_SHORT = L("УР. %d", "LV %d")
+    val SEND_HINT = L("Тапни по карте — командир пойдёт туда", "Tap the map to send the commander there")
+    val JAMMED = L("Заглушён сапёром", "Jammed by a sapper")
+    val NO_TARGET = L("Рядом некого бить", "No one within reach")
+    val SKILLS_OFF = L("Навыки отключены", "Skills are off")
+    val SECONDS = L("%s с", "%s s")
+    val STUN_FOR = L("оглушение %s с", "stun %s s")
 
     /** Everything above, for the translation test. */
     val all: List<L>

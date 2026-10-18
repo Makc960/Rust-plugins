@@ -85,10 +85,11 @@ class ScreensTest {
     private fun unlockAll(p: Platform) {
         for (l in Levels.all) if (l.id <= 23) p.putInt("stars_${l.id}", 3)
         for (key in Codex.keys) p.putInt("seen_$key", 1)
+        p.putInt("seen_${Tips.COMMANDER}", 1)
     }
 
-    /** Pixel position of a map cell on the battle screen at zoom 1. */
-    private fun cellCentre(phone: Phone, c: Int, r: Int): Pair<Float, Float> {
+    /** Pixel position of a map point on the battle screen at zoom 1. */
+    private fun mapPoint(phone: Phone, x: Float, y: Float): Pair<Float, Float> {
         val d = phone.density
         val shopY = phone.h - phone.bottom - 110 * d
         val stripY = shopY - 50 * d
@@ -97,7 +98,19 @@ class ScreensTest {
         val cell = minOf(phone.w / COLS.toFloat(), mapH / ROWS)
         val mapX = (phone.w - cell * COLS) / 2f
         val mapY = mapTop + (mapH - cell * ROWS) / 2f
-        return (mapX + (c + 0.5f) * cell) to (mapY + (r + 0.5f) * cell)
+        return (mapX + x * cell) to (mapY + y * cell)
+    }
+
+    private fun cellCentre(phone: Phone, c: Int, r: Int): Pair<Float, Float> = mapPoint(phone, c + 0.5f, r + 0.5f)
+
+    /** Runs the game until [done], closing any card that pops up on the way. */
+    private fun runUntil(game: Game, phone: Phone, seconds: Float, done: () -> Boolean) {
+        var t = 0f
+        while (t < seconds && !done()) {
+            if (has(game, phone, "gotit")) press(game, phone, "gotit", 0f)
+            game.update(1f / 30f)
+            t += 1f / 30f
+        }
     }
 
     @Test
@@ -105,6 +118,10 @@ class ScreensTest {
         for ((tag, phone) in listOf("tall" to tall, "small" to small)) {
             val g = game(phone)
             run(g, 20f)
+            // A new player is offered the tutorial first.
+            assertTrue(has(g, phone, "popupGo"), "the tutorial is offered")
+            shot(g, phone, "${tag}_00_welcome")
+            press(g, phone, "popupLater")
             shot(g, phone, "${tag}_01_menu")
             press(g, phone, "play")
             assertEquals(Screen.LEVELS, g.screen)
@@ -114,6 +131,11 @@ class ScreensTest {
             press(g, phone, "fight")
             assertEquals(Screen.PLAY, g.screen)
             val w = g.play.world!!
+            // The first battle with a commander explains him.
+            assertTrue(has(g, phone, "gotit"), "a card about the commander")
+            shot(g, phone, "${tag}_04_commander_card")
+            press(g, phone, "gotit", 0f)
+            assertNotNull(w.commander)
             shot(g, phone, "${tag}_04_ready")
 
             press(g, phone, "shopTURRET", 0f)
@@ -337,9 +359,17 @@ class ScreensTest {
     fun vipIsShownComparedAndBought() {
         val platform = SilentPlatform()
         unlockAll(platform)
-        platform.vipShop = VipShop.HERE
+        platform.shop = Shop.HERE
         val g = game(tall, platform)
-        run(g, 1f)
+        run(g, 2f)
+        // Now and then the menu tells about VIP; not again for a few days.
+        assertTrue(has(g, tall, "popupGo"), "the VIP offer pops up")
+        shot(g, tall, "tall_79_vip_offer")
+        press(g, tall, "popupLater")
+        press(g, tall, "perks")
+        g.back()
+        run(g, 2f)
+        assertTrue(!has(g, tall, "popupGo"), "the offer does not nag")
         shot(g, tall, "tall_80_menu_vip")
         press(g, tall, "vip")
         assertEquals(Screen.VIP, g.screen)
@@ -352,29 +382,219 @@ class ScreensTest {
         run(g, 0.4f)
         shot(g, tall, "tall_83_menu_vip_on")
 
+        g.profile.tips = false
         g.startCampaign(Levels.all.first { it.id == 5 }, Difficulty.NORMAL, false)
         run(g, 0.5f)
         repeat(3) { press(g, tall, "speed", 0f) }
         assertEquals(Vip.MAX_SPEED, g.play.speed, "VIP adds a fourth speed")
         press(g, tall, "speed", 0f)
         assertEquals(1, g.play.speed)
-        g.profile.tips = false
+        assertEquals(Vip.COMMANDER_LEVEL, g.play.world!!.commander!!.level, "a VIP commander starts a level up")
         botPlay(g, 40f)
         shot(g, tall, "tall_84_battle_vip")
 
         // The APK from GitHub shows VIP but sends players to RuStore for it.
         val github = SilentPlatform()
-        github.vipShop = VipShop.ELSEWHERE
+        github.shop = Shop.ELSEWHERE
         val g2 = game(small, github)
         run(g2, 1f)
         press(g2, small, "vip")
         shot(g2, small, "small_81_vip_elsewhere")
-        assertTrue(!has(g2, small, "viprestore"))
+        assertTrue(!has(g2, small, "restore"))
 
         // The Google Play build has no VIP at all.
         val play = game(tall, SilentPlatform())
         run(play, 1f)
         assertTrue(!has(play, tall, "vip"), "no VIP on Google Play")
+    }
+
+    @Test
+    fun vipRemindersAfterADefeatAndWhenItEnds() {
+        // A defeat in the RuStore version shows what VIP's second chance would do.
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.shop = Shop.HERE
+        val g = game(tall, platform)
+        g.profile.tips = false
+        g.startCampaign(Levels.all.first { it.id == 9 }, Difficulty.HARD, false)
+        run(g, 0.5f)
+        val w = g.play.world!!
+        w.callWave()
+        while (!w.over) w.step(1f / 60f)
+        run(g, 3f)
+        assertTrue(has(g, tall, "defeatVip"))
+        shot(g, tall, "tall_85_defeat_vip")
+        press(g, tall, "defeatVip")
+        assertEquals(Screen.VIP, g.screen)
+
+        // Once VIP has run out, the menu offers to renew it, once.
+        val ended = SilentPlatform(day = 2000)
+        unlockAll(ended)
+        ended.shop = Shop.HERE
+        ended.putInt("vip_until", 1995)
+        val g2 = game(tall, ended)
+        run(g2, 2f)
+        assertTrue(has(g2, tall, "popupGo"))
+        shot(g2, tall, "tall_86_vip_ended")
+        press(g2, tall, "popupGo")
+        assertEquals(Screen.VIP, g2.screen)
+        val g3 = game(tall, ended)
+        run(g3, 2f)
+        assertTrue(!has(g3, tall, "popupGo"), "the reminder shows once")
+    }
+
+    @Test
+    fun commandersInMenusAndBattle() {
+        val platform = SilentPlatform()
+        for (l in Levels.all) if (l.id <= 8) platform.putInt("stars_${l.id}", 3)
+        for (key in Codex.keys) platform.putInt("seen_$key", 1)
+        platform.putInt("seen_${Tips.COMMANDER}", 1)
+        platform.shop = Shop.HERE
+        platform.putInt("promo_day", platform.today())
+        val g = game(tall, platform)
+        run(g, 2f)
+        shot(g, tall, "tall_87_menu_commanders")
+        press(g, tall, "commanders")
+        assertEquals(Screen.COMMANDERS, g.screen)
+        shot(g, tall, "tall_88_commanders")
+        g.ui.scrollTo(Screen.COMMANDERS.name, 10_000f)
+        press(g, tall, "buyGROM", 0.5f)
+        assertTrue(g.profile.owned(Product.GROM))
+        press(g, tall, "takeGROM", 0f)
+        assertEquals(CommanderType.GROM, g.profile.battleCommander)
+        shot(g, tall, "tall_89_commanders_bought")
+        g.ui.scrollTo(Screen.COMMANDERS.name, 0f)
+        press(g, tall, "starter", 0.5f)
+        assertTrue(g.profile.commanderOwned(CommanderType.ENGINEER), "the recruit pack brings the engineer")
+
+        // In battle: pick him, send him, use a skill.
+        g.profile.tips = false
+        g.startCampaign(Levels.all.first { it.id == 6 }, Difficulty.NORMAL, false)
+        run(g, 0.5f)
+        val w = g.play.world!!
+        val c = assertNotNull(w.commander)
+        assertEquals(CommanderType.GROM, c.type)
+        press(g, tall, "shopHero", 0f)
+        assertTrue(g.play.heroPicked)
+        shot(g, tall, "tall_90_commander_panel")
+        // Beside the middle of the road, where the fighting will be.
+        val road = w.map.paths[0]
+        val p = FloatArray(4)
+        road.pointAt(road.length * 0.5f, p)
+        val (mx, my) = mapPoint(tall, (p[0] - p[3] * 0.8f).coerceIn(0.5f, COLS - 0.5f), (p[1] + p[2] * 0.8f).coerceIn(0.5f, ROWS - 0.5f))
+        tap(g, mx, my)
+        assertTrue(c.moving, "a tap on the map sends him")
+        run(g, 0.4f)
+        shot(g, tall, "tall_91_commander_moving")
+        press(g, tall, "wave", 0f)
+        botPlay(g, 30f)
+        // A few raiders walk right up to him.
+        var near = 0f
+        var best = Float.MAX_VALUE
+        var d = 0f
+        while (d < road.length) {
+            road.pointAt(d, p)
+            val dd = kotlin.math.hypot(p[0] - c.x, p[1] - c.y)
+            if (dd < best) {
+                best = dd
+                near = d
+            }
+            d += 0.1f
+        }
+        repeat(4) { w.spawnForTest(EnemyType.BRUTE, near - it * 0.3f) }
+        press(g, tall, "skill1", 0f)
+        assertTrue(c.skillCooldowns[1] > 0f, "the barrage went off")
+        run(g, 0.25f)
+        shot(g, tall, "tall_92_barrage")
+
+        // The APK from GitHub shows commanders but sells them only in RuStore.
+        val github = SilentPlatform()
+        github.shop = Shop.ELSEWHERE
+        github.putInt("seen_${Tips.COMMANDER}", 1)
+        github.putInt("tutorial_offered", 1)
+        val g2 = game(small, github)
+        run(g2, 1f)
+        press(g2, small, "commanders")
+        shot(g2, small, "small_88_commanders_elsewhere")
+        assertTrue(!has(g2, small, "restore"))
+    }
+
+    @Test
+    fun theTutorialTeachesStepByStep() {
+        val g = game(tall)
+        run(g, 2f)
+        press(g, tall, "popupGo")
+        val s = assertNotNull(g.session)
+        assertEquals(Mode.TUTORIAL, s.mode)
+        val w = g.play.world!!
+        shot(g, tall, "tall_93_tutorial_intro")
+        assertEquals(PlayScreen.Lesson.INTRO, g.play.lesson)
+        press(g, tall, "lessonNext", 0f)
+        assertEquals(PlayScreen.Lesson.PICK, g.play.lesson)
+        shot(g, tall, "tall_94_tutorial_pick")
+        press(g, tall, "shopTURRET", 0.1f)
+        assertEquals(PlayScreen.Lesson.PLACE, g.play.lesson)
+        shot(g, tall, "tall_95_tutorial_place")
+        val cell = g.play.lessonCell
+        val (x, y) = cellCentre(tall, cell % COLS, cell / COLS)
+        tap(g, x, y)
+        run(g, 0.1f)
+        assertEquals(1, w.towers.size)
+        assertEquals(PlayScreen.Lesson.START, g.play.lesson)
+        press(g, tall, "wave", 0.1f)
+        assertEquals(PlayScreen.Lesson.WATCH, g.play.lesson)
+        runUntil(g, tall, 180f) { g.play.lesson != PlayScreen.Lesson.WATCH }
+        assertEquals(PlayScreen.Lesson.SELECT, g.play.lesson)
+        assertTrue(w.holdWaves, "the next wave waits for the lesson")
+        val t = w.towers[0]
+        val (tx, ty) = cellCentre(tall, t.col, t.row)
+        tap(g, tx, ty)
+        run(g, 0.1f)
+        assertEquals(PlayScreen.Lesson.UPGRADE, g.play.lesson)
+        shot(g, tall, "tall_96_tutorial_upgrade")
+        press(g, tall, "up", 0.1f)
+        assertEquals(1, t.level)
+        assertEquals(PlayScreen.Lesson.HERO, g.play.lesson)
+        val c = w.commander!!
+        val (hx, hy) = mapPoint(tall, c.x, c.y)
+        tap(g, hx, hy)
+        run(g, 0.1f)
+        assertEquals(PlayScreen.Lesson.MOVE, g.play.lesson)
+        shot(g, tall, "tall_97_tutorial_hero")
+        val road = w.map.paths[0]
+        val p = FloatArray(4)
+        road.pointAt(road.length * 0.55f, p)
+        val (rx, ry) = mapPoint(tall, (p[0] + 0.8f).coerceAtMost(COLS - 0.5f), p[1])
+        tap(g, rx, ry)
+        run(g, 0.1f)
+        assertEquals(PlayScreen.Lesson.WAVE2, g.play.lesson)
+        press(g, tall, "wave", 0.1f)
+        assertEquals(PlayScreen.Lesson.SKILL, g.play.lesson)
+        runUntil(g, tall, 180f) {
+            if (w.skillReady(0) && w.enemies.any { kotlin.math.hypot(it.x - c.x, it.y - c.y) < w.commanderRange(c) && !it.type.air }) {
+                shot(g, tall, "tall_98_tutorial_skill")
+                press(g, tall, "skill0", 0f)
+            }
+            g.play.lesson != PlayScreen.Lesson.SKILL
+        }
+        assertEquals(PlayScreen.Lesson.STRIKE, g.play.lesson)
+        press(g, tall, "abAIRSTRIKE", 0f)
+        assertTrue(g.play.aiming)
+        val (ax, ay) = cellCentre(tall, 4, 7)
+        tap(g, ax, ay)
+        run(g, 0.1f)
+        assertEquals(PlayScreen.Lesson.SPEED, g.play.lesson)
+        press(g, tall, "speed", 0.1f)
+        assertEquals(PlayScreen.Lesson.FINISH, g.play.lesson)
+        shot(g, tall, "tall_99_tutorial_finish")
+        botPlay(g, 1000f)
+        run(g, 3f)
+        assertEquals(Phase.WON, w.phase)
+        assertTrue(g.profile.tutorialDone)
+        shot(g, tall, "tall_100_tutorial_done")
+        press(g, tall, "campaign")
+        assertEquals(Screen.LEVELS, g.screen)
+        assertNull(g.profile.save, "the tutorial leaves no battle to continue")
     }
 
     @Test

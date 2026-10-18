@@ -66,6 +66,8 @@ class Renderer {
         for (e in w.enemies) {
             if (e.type.air) drawShadow(g, e) else drawEnemy(g, e, time)
         }
+        for (s in w.sentries) drawSentry(g, s)
+        w.commander?.let { drawCommander(g, it, time) }
         for (b in w.bombs) drawBomb(g, b)
         for (p in w.projectiles) drawProjectile(g, p)
         for (t in w.tracers) drawTracer(g, t)
@@ -1018,6 +1020,112 @@ class Renderer {
 
     // --- enemies --------------------------------------------------------------------------
 
+    // --- the commander --------------------------------------------------------------------
+
+    /** The commander with his ring of rank, a pip for each level, and his rally when it is on. */
+    fun drawCommander(g: Gfx, c: Commander, time: Float) {
+        if (c.rally > 0f) {
+            val k = min(1f, c.rally / 0.5f)
+            g.fillCircle(c.x, c.y, World.RALLY_RADIUS, Colors.alpha(GOLD, 0.06f * k))
+            g.strokeCircle(c.x, c.y, World.RALLY_RADIUS, Colors.alpha(GOLD, (0.35f + 0.15f * sin(time * 6f)) * k), 0.04f)
+        }
+        val glow = (c.promoted / World.PROMOTED_GLOW).coerceIn(0f, 1f)
+        if (glow > 0f) g.glow(c.x, c.y, 0.55f + 0.35f * glow, Colors.alpha(GOLD, 0.6f * glow))
+        g.fillCircle(c.x + 0.04f, c.y + 0.07f, 0.3f, SHADOW)
+        g.strokeCircle(c.x, c.y, 0.34f, Colors.alpha(GOLD, 0.9f), 0.045f)
+        // A little bob in his step.
+        val bob = if (c.moving) sin(c.walked * 14f) * 0.025f else 0f
+        val a = art(g)
+        if (a != null) {
+            val s = a.commander(c.type)
+            g.put(s, c.x, c.y + bob, HERO_SCALE, c.angle)
+            if (c.flash > 0f) {
+                val rad = Math.toRadians(c.angle.toDouble())
+                val dx = cos(rad).toFloat()
+                val dy = sin(rad).toFloat()
+                val tip = (s.shownDx + s.shownW / 2f) * HERO_SCALE
+                val mx = c.x + dx * (tip + 0.08f)
+                val my = c.y + bob + dy * (tip + 0.08f)
+                when (c.type) {
+                    CommanderType.ENGINEER -> g.glow(mx, my, 0.18f, Colors.alpha(BOLT, 0.9f))
+                    CommanderType.GROM -> g.put(a.flashBig, mx, my, 0.7f, c.angle, min(1f, c.flash / 0.05f))
+                    CommanderType.SERGEANT -> g.put(a.flash, mx, my, 0.55f, c.angle, min(1f, c.flash / 0.05f))
+                }
+            }
+        } else {
+            drawHeroShape(g, c.type, c.x, c.y + bob, c.angle, c.flash)
+        }
+        for (i in 0..c.level) g.fillCircle(c.x + (i - c.level / 2f) * 0.11f, c.y + 0.43f, 0.042f, PIP)
+        if (c.jammed > 0f) {
+            val ph = time * 20f
+            for (j in 0 until 3) {
+                val x0 = c.x - 0.25f + j * 0.25f
+                g.line(x0, c.y - 0.4f, x0 + 0.08f, c.y - 0.3f + 0.04f * sin(ph + j), JAM, 0.035f)
+                g.line(x0 + 0.08f, c.y - 0.3f + 0.04f * sin(ph + j), x0 + 0.02f, c.y - 0.2f, JAM, 0.035f)
+            }
+        }
+    }
+
+    private fun drawHeroShape(g: Gfx, type: CommanderType, x: Float, y: Float, angle: Float, flash: Float) {
+        val body = heroColor(type)
+        g.save()
+        g.translate(x, y)
+        g.rotate(angle)
+        g.fillRoundRect(0.02f, -0.05f, if (type == CommanderType.GROM) 0.42f else 0.36f, 0.1f, 0.03f, GUN)
+        g.fillCircle(0f, 0f, 0.22f, Colors.darker(body, 0.3f))
+        g.fillCircle(0f, 0f, 0.17f, body)
+        if (flash > 0f) g.glow(0.42f, 0f, 0.22f, Colors.alpha(if (type == CommanderType.ENGINEER) BOLT else MUZZLE, 0.9f))
+        g.restore()
+        star(g, x, y, 0.08f, PIP)
+    }
+
+    /** The engineer's machine gun on its tripod, with a bar of the time it has left. */
+    fun drawSentry(g: Gfx, s: Sentry) {
+        g.fillCircle(s.x + 0.03f, s.y + 0.05f, 0.22f, SHADOW)
+        val a = art(g)
+        if (a != null) {
+            g.put(a.sentry, s.x, s.y, 1f, s.angle)
+            if (s.flash > 0f) {
+                val rad = Math.toRadians(s.angle.toDouble())
+                val tip = (a.sentry.shownDx + a.sentry.shownW / 2f) + 0.06f
+                g.put(a.flash, s.x + cos(rad).toFloat() * tip, s.y + sin(rad).toFloat() * tip, 0.45f, s.angle)
+            }
+        } else {
+            g.save()
+            g.translate(s.x, s.y)
+            g.rotate(s.angle)
+            g.fillRoundRect(-0.16f, -0.12f, 0.3f, 0.24f, 0.05f, 0xFF4A5056.toInt())
+            g.fillRoundRect(0f, -0.04f, 0.34f, 0.08f, 0.03f, GUN)
+            if (s.flash > 0f) g.glow(0.38f, 0f, 0.2f, Colors.alpha(MUZZLE, 0.9f))
+            g.restore()
+        }
+        val f = (s.life / s.maxLife).coerceIn(0f, 1f)
+        g.fillRect(s.x - 0.2f, s.y + 0.3f, 0.4f, 0.05f, 0x99000000.toInt())
+        g.fillRect(s.x - 0.2f, s.y + 0.3f, 0.4f * f, 0.05f, GOLD)
+    }
+
+    /** A commander facing up, fitted into [size]: his portrait in menus and panels. */
+    fun drawCommanderIcon(g: Gfx, type: CommanderType, cx: Float, cy: Float, size: Float) {
+        val a = art(g)
+        g.save()
+        g.translate(cx, cy)
+        if (a != null) {
+            val s = a.commander(type)
+            g.scale(size / max(s.shownW, s.shownH))
+            g.put(s, -s.shownDy, s.shownDx, 1f, -90f)
+        } else {
+            g.scale(size * 1.9f)
+            drawHeroShape(g, type, 0f, 0f, -90f, 0f)
+        }
+        g.restore()
+    }
+
+    fun heroColor(type: CommanderType): Int = when (type) {
+        CommanderType.SERGEANT -> 0xFF5E7A3A.toInt()
+        CommanderType.ENGINEER -> 0xFFD9822B.toInt()
+        CommanderType.GROM -> 0xFF3E4654.toInt()
+    }
+
     private fun drawShadow(g: Gfx, e: Enemy) {
         val a = art(g)
         if (a != null && e.type == EnemyType.DRONE) {
@@ -1302,8 +1410,10 @@ class Renderer {
                 g.restore()
             }
             Shot.BOMBLET -> {
-                g.fillCircle(p.x, p.y, 0.06f, 0xFF2E2E2E.toInt())
-                g.fillCircle(p.x - 0.015f, p.y - 0.015f, 0.025f, 0xFF6A6A6A.toInt())
+                // A commander's grenade is bigger than a bomblet.
+                val r = if (p.big) 0.09f else 0.06f
+                g.fillCircle(p.x, p.y, r, 0xFF2E2E2E.toInt())
+                g.fillCircle(p.x - r * 0.25f, p.y - r * 0.25f, r * 0.42f, 0xFF6A6A6A.toInt())
             }
         }
     }
@@ -1560,6 +1670,9 @@ class Renderer {
             floatArrayOf(0f, 0.27f, -0.25f, -0.1f, 0.25f, -0.1f),
         )
         private val SQUAD_SCALE = floatArrayOf(0.86f, 0.7f, 0.62f)
+
+        /** A commander stands a head taller than his men. */
+        private const val HERO_SCALE = 1.0f
 
         // The colours of the atlas tiles, for maps painted without them.
         val GREEN = Palette(

@@ -49,6 +49,15 @@ class I18nTest {
             add(a.name to a.hint)
         }
         for (b in Biome.entries) add(b.name to b.title)
+        for (s in Skill.entries) {
+            add(s.name to s.title)
+            add(s.name to s.hint)
+        }
+        for (c in CommanderType.entries) {
+            add(c.name to c.title)
+            add(c.name to c.role)
+            add(c.name to c.weapon)
+        }
         for (l in Levels.all) add("level ${l.id}" to l.name)
     }
 

@@ -3,9 +3,9 @@ package com.makc.basedefense.engine
 import kotlin.math.abs
 import kotlin.math.min
 
-internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP }
+internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS }
 
-enum class Mode { CAMPAIGN, ENDLESS, DAILY }
+enum class Mode { CAMPAIGN, ENDLESS, DAILY, TUTORIAL }
 
 /** One battle and everything chosen for it. */
 internal class Session(
@@ -17,15 +17,17 @@ internal class Session(
     val progress: Int,
     val perks: Perks,
     val vip: Boolean,
+    val commander: CommanderType?,
     listener: WorldListener,
 ) {
     val mods: List<Mod> = if (mode == Mode.DAILY) Mod.forDay(day) else emptyList()
-    val rules = Rules(difficulty, if (challenge) level.challenge else null, perks, mods, progress, vip)
+    val rules = Rules(difficulty, if (challenge) level.challenge else null, perks, mods, progress, vip, commander)
     val world = World(level, rules, listener)
 
     fun save(): String =
         "game=2\nmode=${mode.name}\nlevel=${level.id}\ndifficulty=${difficulty.name}\nchallenge=${if (challenge) 1 else 0}\n" +
-            "day=$day\nprogress=$progress\nperks=${perks.encode()}\nvip=${if (vip) 1 else 0}\n" + world.save()
+            "day=$day\nprogress=$progress\nperks=${perks.encode()}\nvip=${if (vip) 1 else 0}\ncommander=${commander?.name ?: "-"}\n" +
+            world.save()
 
     companion object {
         /** Rebuilds a battle from [save], or null when the text is not a usable save. */
@@ -45,10 +47,13 @@ internal class Session(
                     Mode.CAMPAIGN -> Levels.all.first { it.id == head.getValue("level").toInt() }
                     Mode.ENDLESS -> Levels.endless(progress)
                     Mode.DAILY -> Levels.daily(day, progress)
+                    Mode.TUTORIAL -> Levels.tutorial()
                 }
+                // Battles saved before commanders came along go on without one.
+                val commander = CommanderType.entries.firstOrNull { it.name == head["commander"] }
                 val s = Session(
                     mode, level, Difficulty.valueOf(head.getValue("difficulty")), head["challenge"] == "1", day, progress,
-                    Perks.decode(head["perks"] ?: ""), head["vip"] == "1", listener,
+                    Perks.decode(head["perks"] ?: ""), head["vip"] == "1", commander, listener,
                 )
                 s.world.restore(text)
                 if (s.world.over) null else s
@@ -88,32 +93,40 @@ class Game(private val platform: Platform) {
 
     init {
         I18n.lang = profile.language
-        checkVip()
+        checkPurchases()
+        menus.enterMenu()
     }
 
     internal val today: Int get() = platform.today()
 
-    internal val vipShop: VipShop get() = platform.vipShop
+    internal val shop: Shop get() = platform.shop
 
     internal val vip: Boolean get() = profile.vip(today)
 
-    /** Asks the store whether VIP was paid, maybe on another phone or after a renewal. */
-    internal fun checkVip(onDone: ((Boolean) -> Unit)? = null) {
-        platform.checkVip { until ->
-            if (until != null) profile.grantVip(until)
-            onDone?.invoke(until != null && until >= today)
+    /** Asks the store what was paid for, maybe on another phone or after a renewal; [onDone] hears whether it found anything. */
+    internal fun checkPurchases(onDone: ((Boolean) -> Unit)? = null) {
+        platform.checkPurchases { found ->
+            if (found != null) {
+                found.vipUntil?.let { profile.grantVip(it) }
+                for (p in found.owned) profile.grant(p)
+            }
+            onDone?.invoke(found != null && ((found.vipUntil ?: -1) >= today || found.owned.isNotEmpty()))
         }
     }
 
-    /** Buys VIP through the store; [onDone] hears whether it went through. */
-    internal fun buyVip(onDone: (Payment) -> Unit) {
-        platform.buyVip { payment, until ->
+    /** Buys [product] through the store; [onDone] hears whether it went through. */
+    internal fun buy(product: Product, onDone: (Payment) -> Unit) {
+        platform.buy(product) { payment, until ->
             if (payment == Payment.PAID) {
-                profile.grantVip(if (until >= today) until else today + Vip.DAYS)
-                toast(Tx.VIP_THANKS.t, Icon.CROWN)
+                if (product.subscription) profile.grantVip(if (until >= today) until else today + Vip.DAYS) else profile.grant(product)
+                val (text, icon) = when (product) {
+                    Product.VIP_MONTH, Product.VIP_FOREVER -> Tx.VIP_THANKS.t to Icon.CROWN
+                    else -> Tx.BOUGHT.t to Icon.COMMANDER
+                }
+                toast(text, icon)
                 sound(Sfx.ACHIEVEMENT, 0.8f)
             } else if (payment == Payment.FAILED) {
-                toast(Tx.VIP_FAILED.t, Icon.WARNING)
+                toast(Tx.PAY_FAILED.t, Icon.WARNING)
             }
             onDone(payment)
         }
@@ -138,7 +151,10 @@ class Game(private val platform: Platform) {
         if (target != null) {
             val before = fade
             fade += step / FADE_TIME
-            if (before < 0.5f && fade >= 0.5f) screen = target
+            if (before < 0.5f && fade >= 0.5f) {
+                screen = target
+                if (target == Screen.MENU) menus.enterMenu()
+            }
             if (fade >= 1f) {
                 nextScreen = null
                 fade = 0f
@@ -178,6 +194,7 @@ class Game(private val platform: Platform) {
             Screen.CODEX -> menus.codex(g)
             Screen.DAILY -> menus.daily(g)
             Screen.VIP -> menus.vip(g)
+            Screen.COMMANDERS -> menus.commanders(g)
             Screen.PLAY -> play.render(g)
         }
         drawToasts(g)
@@ -284,23 +301,31 @@ class Game(private val platform: Platform) {
 
     // --- battles --------------------------------------------------------------------------
 
+    private val commander: CommanderType get() = profile.battleCommander
+
     internal fun startCampaign(level: LevelDef, difficulty: Difficulty, challenge: Boolean) {
-        begin(Session(Mode.CAMPAIGN, level, difficulty, challenge, today, profile.progress, profile.perks, vip, play))
+        begin(Session(Mode.CAMPAIGN, level, difficulty, challenge, today, profile.progress, profile.perks, vip, commander, play))
     }
 
     internal fun startEndless() {
-        begin(Session(Mode.ENDLESS, Levels.endless(profile.progress), Difficulty.NORMAL, false, today, profile.progress, profile.perks, vip, play))
+        begin(Session(Mode.ENDLESS, Levels.endless(profile.progress), Difficulty.NORMAL, false, today, profile.progress, profile.perks, vip, commander, play))
     }
 
     internal fun startDaily() {
         val day = today
-        begin(Session(Mode.DAILY, Levels.daily(day, profile.progress), Difficulty.NORMAL, false, day, profile.progress, profile.perks, vip, play))
+        begin(Session(Mode.DAILY, Levels.daily(day, profile.progress), Difficulty.NORMAL, false, day, profile.progress, profile.perks, vip, commander, play))
+    }
+
+    /** The training battle, the same for everyone: the sergeant, no VIP, the first squads. */
+    internal fun startTutorial() {
+        begin(Session(Mode.TUTORIAL, Levels.tutorial(), Difficulty.EASY, false, today, TUTORIAL_PROGRESS, Perks.NONE, false, CommanderType.SERGEANT, play))
     }
 
     internal fun restart() {
         val s = session ?: return
         play.flushStats()
-        begin(Session(s.mode, s.level, s.difficulty, s.challenge, s.day, s.progress, profile.perks, vip, play))
+        if (s.mode == Mode.TUTORIAL) return startTutorial()
+        begin(Session(s.mode, s.level, s.difficulty, s.challenge, s.day, s.progress, profile.perks, vip, commander, play))
     }
 
     /** The saved battle, if there is one that still loads. */
@@ -327,7 +352,8 @@ class Game(private val platform: Platform) {
 
     internal fun saveSession() {
         val s = session ?: return
-        if (s.world.over) {
+        // A tutorial is not worth continuing from the menu.
+        if (s.world.over || s.mode == Mode.TUTORIAL) {
             profile.save = null
             return
         }
@@ -342,8 +368,11 @@ class Game(private val platform: Platform) {
 
     companion object {
         const val STEP = 1f / 60f
-        const val VERSION = "2.4"
+        const val VERSION = "2.5"
         const val FADE_TIME = 0.28f
         const val TOAST_TIME = 3.2f
+
+        /** The tutorial has the squads and the airstrike of a player past the first level. */
+        const val TUTORIAL_PROGRESS = 2
     }
 }

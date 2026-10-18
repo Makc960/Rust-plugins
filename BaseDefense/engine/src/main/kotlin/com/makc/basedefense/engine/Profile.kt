@@ -89,8 +89,11 @@ class Profile(private val p: Platform) {
 
     val perks: Perks get() = Perks.decode(Perk.entries.joinToString(".") { perk(it).toString() })
 
-    /** Stars, hard wins, medals and daily wins all count. */
-    val points: Int get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS) + stat(Stat.VIP_POINTS)
+    /** Stars, hard wins, medals and daily wins all count, VIP's gifts and points bought in the starter pack. */
+    val points: Int get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS) + stat(Stat.VIP_POINTS) + boughtPoints
+
+    /** Upgrade points from purchases; resetting progress keeps them. */
+    val boughtPoints: Int get() = p.getInt("bought_points", 0)
 
     val spent: Int get() = Perk.entries.sumOf { perk(it) * it.cost }
 
@@ -194,6 +197,70 @@ class Profile(private val p: Platform) {
         if (until > vipUntil) p.putInt("vip_until", until)
     }
 
+    val vipForever: Boolean get() = vipUntil >= Vip.FOREVER
+
+    // --- purchases and commanders ---------------------------------------------------------
+
+    /** Bought once and kept, even when progress is reset. */
+    fun owned(product: Product): Boolean = p.getInt("own_${product.id}", 0) != 0
+
+    /** Hands over what [product] gives, once; buying the subscription goes through [grantVip] instead. */
+    fun grant(product: Product) {
+        if (product.subscription || owned(product)) return
+        p.putInt("own_${product.id}", 1)
+        when (product) {
+            Product.VIP_FOREVER -> grantVip(Vip.FOREVER)
+            Product.STARTER -> {
+                grant(Product.ENGINEER)
+                p.putInt("bought_points", boughtPoints + Product.STARTER_POINTS)
+            }
+            else -> Unit
+        }
+    }
+
+    /** Free from the start, earned with stars, bought, or lent by VIP while it lasts. */
+    fun commanderOpen(c: CommanderType): Boolean = commanderOwned(c) || vip(p.today())
+
+    /** Open for good: free, earned or bought. */
+    fun commanderOwned(c: CommanderType): Boolean = totalStars >= c.stars || (c.product != null && owned(c.product))
+
+    /** VIP's present for the day; true when one was given just now. */
+    fun vipGift(today: Int): Boolean {
+        if (!vip(today) || p.getInt("vip_gift_day", -1) == today) return false
+        p.putInt("vip_gift_day", today)
+        addStat(Stat.VIP_POINTS, Vip.DAILY_GIFT)
+        return true
+    }
+
+    // --- pop-ups --------------------------------------------------------------------------
+
+    /** The day the VIP offer last popped up. */
+    var promoDay: Int
+        get() = p.getInt("promo_day", -1000)
+        set(v) = p.putInt("promo_day", v)
+
+    /** The last paid day the "VIP has ended" reminder was shown for. */
+    var endedShown: Int
+        get() = p.getInt("vip_ended_shown", 0)
+        set(v) = p.putInt("vip_ended_shown", v)
+
+    /** The tutorial was offered once, and whether it was finished. */
+    var tutorialOffered: Boolean
+        get() = p.getInt("tutorial_offered", 0) != 0
+        set(v) = p.putInt("tutorial_offered", if (v) 1 else 0)
+
+    var tutorialDone: Boolean
+        get() = p.getInt("tutorial_done", 0) != 0
+        set(v) = p.putInt("tutorial_done", if (v) 1 else 0)
+
+    /** The commander the player picked, whether open or not. */
+    var commander: CommanderType
+        get() = p.getString("commander")?.let { name -> CommanderType.entries.firstOrNull { it.name == name } } ?: CommanderType.SERGEANT
+        set(v) = p.putString("commander", v.name)
+
+    /** Who goes into battle: the one picked, or the sergeant while the pick is closed. */
+    val battleCommander: CommanderType get() = commander.takeIf { commanderOpen(it) } ?: CommanderType.SERGEANT
+
     // --- the game in progress -------------------------------------------------------------
 
     var save: String?
@@ -240,5 +307,6 @@ object Tips {
     const val WEATHER = "tip:weather"
     const val WINTER = "tip:winter"
     const val ZOOM = "tip:zoom"
-    val keys = listOf(ABILITIES, BRANCHES, OBSTACLES, WEATHER, WINTER, ZOOM)
+    const val COMMANDER = "tip:commander"
+    val keys = listOf(ABILITIES, BRANCHES, OBSTACLES, WEATHER, WINTER, ZOOM, COMMANDER)
 }
