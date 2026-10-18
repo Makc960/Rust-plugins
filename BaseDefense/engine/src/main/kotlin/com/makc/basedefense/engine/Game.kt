@@ -313,7 +313,7 @@ class Game(private val platform: Platform) {
 
     companion object {
         const val STEP = 1f / 60f
-        const val VERSION = "2.3.1"
+        const val VERSION = "2.3.2"
         const val FADE_TIME = 0.28f
         const val TOAST_TIME = 3.2f
     }
