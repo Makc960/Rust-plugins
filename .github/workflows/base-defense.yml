@@ -60,10 +60,6 @@ jobs:
           UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
           UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
         run: |
-          if ! grep -Eq 'rustoreAppId = .*\?: "[0-9]+"' app/build.gradle.kts; then
-            echo "No RuStore app ID in app/build.gradle.kts yet"
-            exit 0
-          fi
           echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore
           cp app/build/outputs/apk/release/app-release.apk BaseDefense-RuStore.apk
@@ -107,7 +103,7 @@ jobs:
             --notes "Сборка из ${GITHUB_SHA::7}. Скачай BaseDefense.apk на телефон и установи поверх старой версии (прогресс сохранится). Поддержать автора: https://pay.cloudtips.ru/p/5b9bb7e3"
 
   # RuStore builds pull in RuStore's Pay SDK; this checks they still compile against it,
-  # even before the app has its RuStore Console ID (a stand-in ID is used here).
+  # even without the upload key secrets (the APK is signed with the shared key and thrown away).
   rustore-check:
     runs-on: ubuntu-latest
     defaults:
@@ -123,5 +119,5 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build a RuStore APK with a stand-in ID
-        run: ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore -PrustoreAppId=1
+      - name: Build a RuStore APK
+        run: ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore

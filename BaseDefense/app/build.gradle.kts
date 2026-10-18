@@ -14,7 +14,7 @@ val uploadKey = System.getenv("UPLOAD_KEYSTORE_FILE")?.let { file(it) }?.takeIf 
 val store = (findProperty("store") as String?) ?: "github"
 
 // The app's ID in the RuStore Console (the number in the console's address after /apps/).
-val rustoreAppId = (findProperty("rustoreAppId") as String?) ?: ""
+val rustoreAppId = (findProperty("rustoreAppId") as String?) ?: "2063772062"
 if (store == "rustore") require(rustoreAppId.isNotEmpty()) { "A RuStore build needs rustoreAppId in app/build.gradle.kts" }
 
 // The page where players can support the author; empty hides the button in the settings.
