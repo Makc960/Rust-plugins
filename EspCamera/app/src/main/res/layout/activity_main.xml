@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/preview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <com.makc.espcamera.EspOverlayView
+        android:id="@+id/overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:background="@drawable/hud_button"
+        android:fontFamily="monospace"
+        android:gravity="center"
+        android:lineSpacingExtra="4dp"
+        android:padding="16dp"
+        android:textColor="@color/hud_text"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="horizontal"
+        android:paddingStart="9dp"
+        android:paddingEnd="9dp"
+        android:paddingBottom="12dp">
+
+        <TextView
+            android:id="@+id/btnFilter"
+            style="@style/HudButton" />
+
+        <TextView
+            android:id="@+id/btnBoxes"
+            style="@style/HudButton" />
+
+        <TextView
+            android:id="@+id/btnLines"
+            style="@style/HudButton" />
+
+        <TextView
+            android:id="@+id/btnCamera"
+            style="@style/HudButton" />
+    </LinearLayout>
+</FrameLayout>
