@@ -19,6 +19,9 @@ class Renderer {
     private val tmp = FloatArray(4)
     private val art = Art.load()
 
+    /** The world drawn last; pits and icons take its ground. */
+    private var biome = Biome.GREEN
+
     private fun art(g: Gfx): Art? = if (g.sprites) art else null
 
     /** Draws [s] at its own size times [k]. */
@@ -50,6 +53,7 @@ class Renderer {
     fun drawWorld(g: Gfx, w: World, time: Float, pxPerCell: Float) {
         val map = w.map
         val a = art(g)
+        biome = map.biome
         g.cached(terrainKey(map), COLS.toFloat(), ROWS.toFloat(), pxPerCell) { drawTerrain(it, map, detail = true) }
         drawWaves(g, map, time)
         drawSpawns(g, w.map, time, w.spawning)
@@ -557,9 +561,9 @@ class Renderer {
         g.save()
         g.translate(t.x, t.y)
         g.scale(pop)
-        drawTowerShape(g, t.type, t.level, t.branch, 0f, 0f, t.angle, t.flash, t.burning, time, t.spinAngle, t.armed)
+        drawTowerShape(g, t.type, t.level, t.branch, 0f, 0f, t.angle, t.flash, t.burning, time, t.spinAngle, t.armed, t.shots)
         if (t.jammed > 0f) {
-            g.fillRoundRect(-0.42f, -0.42f, 0.84f, 0.84f, 0.16f, Colors.alpha(0xFF000000.toInt(), 0.35f))
+            g.fillCircle(0f, 0f, 0.44f, Colors.alpha(0xFF000000.toInt(), 0.35f))
             val ph = time * 20f
             for (j in 0 until 3) {
                 val x0 = -0.25f + j * 0.25f
@@ -584,10 +588,11 @@ class Renderer {
         time: Float,
         spin: Float = 0f,
         armed: Boolean = true,
+        shots: Int = 0,
     ) {
         val a = art(g)
         if (a != null) {
-            drawTowerArt(g, a, type, level, branch, x, y, angle, flash, burning, time, armed)
+            drawTowerArt(g, a, type, level, branch, x, y, angle, flash, burning, time, armed, shots)
             return
         }
         if (type.role == Role.ROAD) {
@@ -742,6 +747,11 @@ class Renderer {
         g.restore()
     }
 
+    /**
+     * A squad in its pit: a soldier for each level, three for a specialisation with
+     * the special one first. They stand still and turn to [angle]; [shots] says
+     * whose turn it was to fire.
+     */
     private fun drawTowerArt(
         g: Gfx,
         a: Art,
@@ -755,91 +765,111 @@ class Renderer {
         burning: Float,
         time: Float,
         armed: Boolean,
+        shots: Int,
     ) {
         if (type.role == Role.ROAD) {
             drawMineArt(g, a, level, branch, x, y, armed, flash, time)
             return
         }
-        g.put(if (branch != null) a.plateElite else a.plate, x, y)
-        if (branch != null) {
-            star(g, x, y + 0.36f, 0.075f, PIP)
-        } else {
-            for (i in 0..level) g.fillCircle(x + (i - level / 2f) * 0.13f, y + 0.36f, 0.045f, PIP)
+        g.put(if (branch != null) a.pitElite[biome.ordinal] else a.pit[biome.ordinal], x, y)
+        val props = type == TowerType.RADAR || type == TowerType.QUARRY
+        if (props) drawProps(g, a, type, branch, x, y, time)
+        val n = if (branch != null) 3 else level + 1
+        val spots = if (props) AROUND[n - 1] else SPOTS[n - 1]
+        val k = SQUAD_SCALE[n - 1]
+        for (i in 0 until n) {
+            val ox = spots[i * 2]
+            val oy = spots[i * 2 + 1]
+            val sx = x + ox
+            val sy = y + oy
+            val s = if (branch != null && i == 0) a.trooper(branch) else a.trooper(type)
+            val out = Math.toDegrees(atan2(oy, ox).toDouble()).toFloat()
+            val face = when (type) {
+                // Signallers look around, the supply team at its work.
+                TowerType.RADAR -> out + 25f * sin(time * 0.7f + i * 2f)
+                TowerType.QUARRY -> out + 180f
+                else -> angle
+            }
+            g.put(s, sx, sy, k, face)
+            if (props) continue
+            // Soldiers face right in the atlas, so the right edge of what shows is the muzzle.
+            val rad = Math.toRadians(face.toDouble())
+            val dx = cos(rad).toFloat()
+            val dy = sin(rad).toFloat()
+            val tip = (s.shownDx + s.shownW / 2f) * k
+            val mx = sx + dx * tip
+            val my = sy + dy * tip
+            when (type) {
+                TowerType.FLAMER -> if (burning > 0f) {
+                    if (branch == Branch.CRYO && i == 0) {
+                        g.glow(mx, my, 0.25f, Colors.alpha(0xFF8FDCFF.toInt(), 0.9f))
+                    } else {
+                        val f = a.fire[((time * 14f).toInt() + i).mod(a.fire.size)]
+                        g.put(f, mx + dx * 0.14f, my + dy * 0.14f, 0.3f / f.cellsH, face + 90f, 0.9f)
+                    }
+                }
+                TowerType.TESLA -> {
+                    val glow = if (branch == Branch.STUN && i == 0) 0xFFFFE36B.toInt() else BOLT
+                    g.glow(mx - dx * 0.04f, my - dy * 0.04f, 0.1f + 0.03f * sin(time * 9f + i), Colors.alpha(glow, 0.7f))
+                }
+                TowerType.TURRET, TowerType.SHOTGUN, TowerType.SNIPER -> if (flash > 0f && i == shots % n) {
+                    val big = type == TowerType.SNIPER || branch == Branch.SLUG || branch == Branch.PIERCER
+                    g.put(if (big) a.flashBig else a.flash, mx + dx * 0.08f, my + dy * 0.08f, if (big) 0.7f else 0.55f, face, min(1f, flash / 0.05f))
+                }
+                else -> Unit
+            }
         }
-        val tier = if (branch != null) 3 else level
-        val k = 0.9f + 0.055f * tier
-        when (type) {
-            TowerType.QUARRY -> when (branch) {
-                Branch.DRILL -> {
-                    g.put(a.drill, x, y, k * 0.95f)
-                    g.put(a.bit, x, y, k, (time * 220f) % 360f)
-                }
-                Branch.BANK -> {
-                    g.put(a.bank, x, y, k)
-                    g.put(a.dial, x, y, k * 0.9f, (time * 40f) % 360f)
-                }
-                else -> g.put(a.quarry, x, y, k * 0.9f)
-            }
-            TowerType.TESLA -> {
-                g.put(a.head(type, branch) ?: return, x, y, k)
-                val glow = if (branch == Branch.STUN) 0xFFFFE36B.toInt() else BOLT
-                g.glow(x, y, 0.22f + 0.05f * sin(time * 7f) + 0.04f * tier, Colors.alpha(glow, 0.6f))
-                val spin = time * 5f
-                val arcs = if (branch != null) 3 else 2
-                for (j in 0 until arcs) {
-                    val aa = spin + j * 6.283f / arcs
-                    g.line(x + cos(aa) * 0.1f, y + sin(aa) * 0.1f, x + cos(aa + 0.5f) * 0.3f * k, y + sin(aa + 0.5f) * 0.3f * k, Colors.alpha(glow, 0.85f), 0.025f)
-                }
-            }
-            TowerType.RADAR -> when (branch) {
+        if (branch != null) {
+            star(g, x, y + 0.4f, 0.075f, PIP)
+        } else {
+            for (i in 0..level) g.fillCircle(x + (i - level / 2f) * 0.13f, y + 0.4f, 0.045f, PIP)
+        }
+        if (type == TowerType.QUARRY && flash > 0f) g.glow(x, y, 0.5f, Colors.alpha(GOLD, flash))
+    }
+
+    /** What a squad that does not shoot works with, in the middle of its pit. */
+    private fun drawProps(g: Gfx, a: Art, type: TowerType, branch: Branch?, x: Float, y: Float, time: Float) {
+        if (type == TowerType.RADAR) {
+            when (branch) {
                 Branch.COMMAND -> {
-                    g.put(a.head(type, branch) ?: return, x, y, k)
-                    drawFlag(g, x - 0.05f, y - 0.05f, time)
+                    g.put(a.table, x, y)
+                    drawFlag(g, x + 0.06f, y - 0.06f, time)
                 }
                 Branch.JAMMER -> {
-                    g.put(a.head(type, branch) ?: return, x, y, k)
+                    g.put(a.jamDevice, x, y)
                     val r = (time * 0.8f) % 1f
                     g.strokeCircle(x, y, 0.2f + r * 0.3f, Colors.alpha(type.color, 1f - r), 0.025f)
-                    if ((time * 2.5f).toInt() % 2 == 0) g.glow(x, y, 0.12f, Colors.alpha(0xFFFF3B3B.toInt(), 0.8f))
+                    if ((time * 2.5f).toInt() % 2 == 0) g.glow(x, y, 0.1f, Colors.alpha(0xFFFF3B3B.toInt(), 0.8f))
                 }
-                else -> g.put(a.head(type, branch) ?: return, x, y, k, (time * 90f) % 360f)
+                else -> g.put(a.dish, x, y, 1f, (time * 90f) % 360f)
             }
-            else -> {
-                val head = a.head(type, branch) ?: return
-                g.put(head, x, y, k, angle)
-                val rad = Math.toRadians(angle.toDouble())
-                val dx = cos(rad).toFloat()
-                val dy = sin(rad).toFloat()
-                // Heads face right, so the right edge of what shows is the muzzle.
-                val tip = (head.shownDx + head.shownW / 2f) * k
-                if (type == TowerType.FLAMER) {
-                    val cryo = branch == Branch.CRYO
-                    val jet = burning > 0f
-                    val flicker = 0.07f + 0.02f * sin(time * 30f)
-                    g.glow(x + dx * tip, y + dy * tip, if (jet) 0.32f else flicker * 1.6f, Colors.alpha(if (cryo) 0xFF8FDCFF.toInt() else FIRE, 0.9f))
-                    if (jet && !cryo) {
-                        val f = a.fire[((time * 14f).toInt()).mod(a.fire.size)]
-                        g.put(f, x + dx * (tip + 0.2f), y + dy * (tip + 0.2f), 0.4f / f.cellsH, angle + 90f, 0.9f)
-                    }
-                } else if (flash > 0f && type != TowerType.ROCKET && type != TowerType.SAM) {
-                    val big = type == TowerType.SNIPER || branch == Branch.SLUG || branch == Branch.PIERCER
-                    val s = if (big) a.flashBig else a.flash
-                    g.put(s, x + dx * (tip + 0.1f), y + dy * (tip + 0.1f), if (big) 0.9f else 0.75f, angle, min(1f, flash / 0.05f))
-                }
+            return
+        }
+        when (branch) {
+            Branch.DRILL -> {
+                g.put(a.drill, x, y, 0.55f)
+                g.put(a.bit, x, y, 0.6f, (time * 220f) % 360f)
             }
+            Branch.BANK -> {
+                g.put(a.bank, x, y, 0.62f)
+                g.put(a.dial, x, y, 0.55f, (time * 40f) % 360f)
+            }
+            else -> g.put(a.quarry, x, y, 0.55f)
         }
     }
 
     private fun drawMineArt(g: Gfx, a: Art, level: Int, branch: Branch?, x: Float, y: Float, armed: Boolean, flash: Float, time: Float) {
         if (branch == Branch.SPIKES) {
             g.put(a.spikes, x, y, 1.25f)
-            return
+        } else {
+            val big = branch == Branch.LANDMINE
+            g.put(if (big) a.mineBig else a.mine, x, y, if (big) 1.1f else 1f + 0.12f * level, 0f, if (armed) 1f else 0.6f)
+            val on = armed && (time * 2f).toInt() % 2 == 0
+            if (on) g.glow(x, y, 0.16f, Colors.alpha(0xFFFF3B3B.toInt(), 0.7f))
+            if (flash > 0f) g.strokeCircle(x, y, 0.3f, Colors.alpha(0xFFFF6B4A.toInt(), flash * 3f), 0.03f)
         }
-        val big = branch == Branch.LANDMINE
-        g.put(if (big) a.mineBig else a.mine, x, y, if (big) 1.1f else 1f + 0.12f * level, 0f, if (armed) 1f else 0.6f)
-        val on = armed && (time * 2f).toInt() % 2 == 0
-        if (on) g.glow(x, y, 0.16f, Colors.alpha(0xFFFF3B3B.toInt(), 0.7f))
-        if (flash > 0f) g.strokeCircle(x, y, 0.3f, Colors.alpha(0xFFFF6B4A.toInt(), flash * 3f), 0.03f)
+        // The minelayer keeps to the roadside, in a corner of the cell, watching his mine.
+        g.put(if (branch != null) a.trooper(branch) else a.trooper(TowerType.MINES), x - 0.3f, y + 0.3f, 0.55f, -45f)
     }
 
     private fun drawTurret(g: Gfx, c: Int, level: Int, branch: Branch?, flash: Float, spin: Float) {
@@ -1516,6 +1546,21 @@ class Renderer {
     }
 
     companion object {
+        /** Where 1, 2 or 3 soldiers stand in their pit, the special one first. */
+        private val SPOTS = arrayOf(
+            floatArrayOf(0f, 0f),
+            floatArrayOf(-0.19f, 0.06f, 0.19f, -0.06f),
+            floatArrayOf(0f, -0.19f, -0.2f, 0.13f, 0.2f, 0.13f),
+        )
+
+        /** The same around something standing in the middle of the pit. */
+        private val AROUND = arrayOf(
+            floatArrayOf(0f, 0.25f),
+            floatArrayOf(-0.24f, 0.12f, 0.24f, 0.12f),
+            floatArrayOf(0f, 0.27f, -0.25f, -0.1f, 0.25f, -0.1f),
+        )
+        private val SQUAD_SCALE = floatArrayOf(0.86f, 0.7f, 0.62f)
+
         // The colours of the atlas tiles, for maps painted without them.
         val GREEN = Palette(
             grassA = 0xFF39C272.toInt(), grassB = 0xFF35B86B.toInt(), tuft = 0xFF2FA862.toInt(),

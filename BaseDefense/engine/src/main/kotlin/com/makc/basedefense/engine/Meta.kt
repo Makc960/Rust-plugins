@@ -19,8 +19,8 @@ enum class ChallengeKind { NO_SELL, MAX_TOWERS, NO_LEAKS, NO_ABILITIES, ONLY, LO
 class Challenge(val kind: ChallengeKind, val value: Int = 0, val types: List<TowerType> = emptyList()) {
     val title: String
         get() = when (kind) {
-            ChallengeKind.NO_SELL -> L("Без продажи башен", "No selling towers").t
-            ChallengeKind.MAX_TOWERS -> L("Не больше %d башен", "At most %d towers").f(value)
+            ChallengeKind.NO_SELL -> L("Без продажи отрядов", "No selling squads").t
+            ChallengeKind.MAX_TOWERS -> L("Не больше %d отрядов", "At most %d squads").f(value)
             ChallengeKind.NO_LEAKS -> L("Ни один враг не дойдёт до базы", "Let no enemy reach the base").t
             ChallengeKind.NO_ABILITIES -> L("Без способностей", "No abilities").t
             ChallengeKind.ONLY -> {
@@ -46,11 +46,11 @@ class Challenge(val kind: ChallengeKind, val value: Int = 0, val types: List<Tow
 enum class Perk(val title: L, val hint: L, val maxRank: Int, val cost: Int) {
     START_MONEY(L("Запасы", "Supplies"), L("+30 монет на старте", "+30 starting coins"), 3, 2),
     LIVES(L("Укрепления", "Fortifications"), L("+3 жизни базе", "+3 base lives"), 3, 2),
-    DAMAGE(L("Боеприпасы", "Ammunition"), L("+5% урона всем башням", "+5% damage for every tower"), 3, 3),
-    RANGE(L("Оптика", "Optics"), L("+5% дальности башен", "+5% tower range"), 2, 3),
-    DISCOUNT(L("Снабжение", "Logistics"), L("Башни и улучшения на 5% дешевле", "Towers and upgrades cost 5% less"), 2, 3),
+    DAMAGE(L("Боеприпасы", "Ammunition"), L("+5% урона всем отрядам", "+5% damage for every squad"), 3, 3),
+    RANGE(L("Оптика", "Optics"), L("+5% дальности отрядов", "+5% squad range"), 2, 3),
+    DISCOUNT(L("Снабжение", "Logistics"), L("Отряды и улучшения на 5% дешевле", "Squads and upgrades cost 5% less"), 2, 3),
     COOLDOWN(L("Связь", "Radio"), L("Способности заряжаются на 12% быстрее", "Abilities recharge 12% faster"), 3, 2),
-    REFUND(L("Утилизация", "Salvage"), L("+5% денег при продаже башни", "+5% back when selling a tower"), 2, 2),
+    REFUND(L("Утилизация", "Salvage"), L("+5% денег при продаже отряда", "+5% back when selling a squad"), 2, 2),
     BOUNTY(L("Трофеи", "Trophies"), L("+10% монет за врагов", "+10% coins per kill"), 2, 3),
 }
 
@@ -76,7 +76,7 @@ enum class Mod(val title: L, val hint: L) {
     RICH(L("Казна", "Treasury"), L("В полтора раза больше денег на старте", "50% more starting money")),
     POOR(L("Нужда", "Scarcity"), L("На 30% меньше денег на старте", "30% less starting money")),
     NO_ABILITIES(L("Радиомолчание", "Radio silence"), L("Способности отключены", "Abilities are off")),
-    FEW_TOWERS(L("Теснота", "Cramped"), L("Не больше 10 башен", "At most 10 towers")),
+    FEW_TOWERS(L("Теснота", "Cramped"), L("Не больше 10 отрядов", "At most 10 squads")),
     CHEAP_UPGRADES(L("Мастерская", "Workshop"), L("Улучшения на 30% дешевле", "Upgrades cost 30% less")),
     BOSS_RUSH(L("Парад боссов", "Boss parade"), L("Босс каждые 5 волн", "A boss every 5 waves")),
     ;
@@ -110,9 +110,9 @@ enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (
     KILLS_10000(L("Мясорубка", "Meat grinder"), L("Уничтожь 10 000 врагов", "Destroy 10,000 enemies"), 10000, { it.stat(Stat.KILLS) }),
     BOSSES(L("Охотник на боссов", "Boss hunter"), L("Победи 10 боссов", "Defeat 10 bosses"), 10, { it.stat(Stat.BOSS_KILLS) }),
     GHOSTS(L("Охотник за привидениями", "Ghostbuster"), L("Уничтожь 100 невидимок", "Destroy 100 ghosts"), 100, { it.stat(Stat.GHOST_KILLS) }),
-    BUILDER(L("Строитель", "Builder"), L("Построй 200 башен", "Build 200 towers"), 200, { it.stat(Stat.BUILT) }),
-    ARSENAL(L("Арсенал", "Arsenal"), L("Построй башни всех 10 видов", "Build all 10 kinds of tower"), 10, { Integer.bitCount(it.stat(Stat.TOWER_TYPES)) }),
-    SPECIALIST(L("Специалист", "Specialist"), L("Выбери специализацию башни", "Pick a tower specialisation"), 1, { min(1, Integer.bitCount(it.stat(Stat.BRANCHES))) }),
+    BUILDER(L("Строитель", "Builder"), L("Поставь 200 отрядов", "Deploy 200 squads"), 200, { it.stat(Stat.BUILT) }),
+    ARSENAL(L("Арсенал", "Arsenal"), L("Поставь отряды всех 10 видов", "Deploy all 10 kinds of squad"), 10, { Integer.bitCount(it.stat(Stat.TOWER_TYPES)) }),
+    SPECIALIST(L("Специалист", "Specialist"), L("Выбери специализацию отряда", "Pick a squad specialisation"), 1, { min(1, Integer.bitCount(it.stat(Stat.BRANCHES))) }),
     ALL_BRANCHES(L("Мастер на все руки", "Jack of all trades"), L("Попробуй все 20 специализаций", "Try all 20 specialisations"), 20, { Integer.bitCount(it.stat(Stat.BRANCHES)) }),
     AIRSTRIKES(L("Небесный гнев", "Wrath from above"), L("Вызови 30 авиаударов", "Call 30 airstrikes"), 30, { it.stat(Stat.AIRSTRIKES) }),
     HARD_WIN(L("Закалённый", "Hardened"), L("Пройди уровень на сложном", "Win a level on hard"), 1, { it.hardWins }),

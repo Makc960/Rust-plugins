@@ -94,6 +94,9 @@ class Tower(val type: TowerType, val col: Int, val row: Int) {
     var flash = 0f
     var burning = 0f
     var tube = 0
+
+    /** Counts shots, so the squad's soldiers can take turns firing. */
+    var shots = 0
     var age = 0f
     var jammed = 0f
 
@@ -693,9 +696,9 @@ class World(
         if (weatherWait > 0f) return
         weather = WEATHER_TIME
         banner = if (map.biome == Biome.DESERT) {
-            Banner({ L("ПЕСЧАНАЯ БУРЯ", "SANDSTORM").t }, { L("Дальность башен −30%", "Tower range −30%").t }, SAND, 2.6f)
+            Banner({ L("ПЕСЧАНАЯ БУРЯ", "SANDSTORM").t }, { L("Дальность отрядов −30%", "Squad range −30%").t }, SAND, 2.6f)
         } else {
-            Banner({ L("МЕТЕЛЬ", "BLIZZARD").t }, { L("Башни стреляют на 25% реже", "Towers fire 25% slower").t }, ICE, 2.6f)
+            Banner({ L("МЕТЕЛЬ", "BLIZZARD").t }, { L("Отряды стреляют на 25% реже", "Squads fire 25% slower").t }, ICE, 2.6f)
         }
     }
 
@@ -1073,6 +1076,7 @@ class World(
             TowerType.SNIPER -> fireSniper(t, s, target, dmg, mx, my)
             TowerType.MINES, TowerType.RADAR, TowerType.QUARRY -> Unit
         }
+        t.shots++
         t.cooldown = max(t.cooldown, 0f) + period
     }
 

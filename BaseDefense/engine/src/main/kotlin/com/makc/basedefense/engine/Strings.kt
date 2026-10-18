@@ -5,7 +5,7 @@ object Tx {
     // Menu
     val TITLE_1 = L("ОБОРОНА", "BASE")
     val TITLE_2 = L("БАЗЫ", "DEFENSE")
-    val TAGLINE = L("башни · волны · боссы", "towers · waves · bosses")
+    val TAGLINE = L("отряды · волны · боссы", "squads · waves · bosses")
     val CONTINUE = L("ПРОДОЛЖИТЬ БОЙ", "CONTINUE BATTLE")
     val CONTINUE_SUB = L("%s · волна %d", "%s · wave %d")
     val CAMPAIGN = L("КАМПАНИЯ", "CAMPAIGN")
@@ -24,7 +24,7 @@ object Tx {
     val WORLD_LOCKED = L("Сначала пройди «%s»", "Beat %s first")
     val WAVES_COUNT = L("%d волн", "%d waves")
     val NEW_ENEMIES = L("Новые враги", "New enemies")
-    val NEW_TOWER = L("Новая башня", "New tower")
+    val NEW_TOWER = L("Новый отряд", "New squad")
     val NEW_ABILITY = L("Способность", "Ability")
     val DIFFICULTY = L("Сложность", "Difficulty")
     val HARD_LOCKED = L("Сложный режим откроется после победы", "Hard opens after a win")
@@ -43,12 +43,12 @@ object Tx {
     val LAST_WAVE = L("Последняя волна!", "Final wave!")
     val UNDO = L("ОТМЕНА", "UNDO")
     val AIM_AIRSTRIKE = L("Тапни по карте для удара", "Tap the map to strike")
-    val HINT_PICK = L("Выбери башню внизу и поставь её у дороги", "Pick a tower below and place it by the road")
+    val HINT_PICK = L("Выбери отряд внизу и поставь его у дороги", "Pick a squad below and place it by the road")
     val HINT_DRAG = L("Проведи пальцем по траве у дороги и отпусти", "Drag along the grass by the road and let go")
     val HINT_START = L("Поставь ещё или жми «НАЧАТЬ ВОЛНУ»", "Place more or press START WAVE")
     val ON_ROAD = L("Мины ставятся прямо на дорогу", "Mines go right on the road")
-    val TOWER_LIMIT = L("Больше башен ставить нельзя: лимит %d", "No more towers: the limit is %d")
-    val QUARRY_LIMIT = L("Не больше %d карьеров", "At most %d quarries")
+    val TOWER_LIMIT = L("Больше отрядов ставить нельзя: лимит %d", "No more squads: the limit is %d")
+    val QUARRY_LIMIT = L("Не больше %d складов", "At most %d supply squads")
     val ROAD = L("дорога", "road")
 
     // Tower panel
@@ -111,30 +111,30 @@ object Tx {
 
     // Cards
     val CARD_ENEMY = L("НОВЫЙ ВРАГ", "NEW ENEMY")
-    val CARD_TOWER = L("НОВАЯ БАШНЯ", "NEW TOWER")
+    val CARD_TOWER = L("НОВЫЙ ОТРЯД", "NEW SQUAD")
     val CARD_ABILITY = L("НОВАЯ СПОСОБНОСТЬ", "NEW ABILITY")
     val CARD_TIP = L("СОВЕТ", "TIP")
     val GOT_IT = L("ПОНЯТНО", "GOT IT")
     val ENEMY_STATS = L("Здоровье %d · Скорость %s · Броня %d", "Health %d · Speed %s · Armor %d")
     val TIP_BRANCHES = L("Специализации", "Specialisations")
     val TIP_BRANCHES_TEXT = L(
-        "Башню 3 уровня можно превратить в одну из двух специализаций. Выбери ту, что лучше против врагов этого уровня.",
-        "A level 3 tower can turn into one of two specialisations. Pick the one that works best against this level's enemies.",
+        "Отряд 3 уровня можно превратить в одну из двух специализаций. Выбери ту, что лучше против врагов этого уровня.",
+        "A level 3 squad can turn into one of two specialisations. Pick the one that works best against this level's enemies.",
     )
     val TIP_OBSTACLES = L("Камни и деревья", "Rocks and trees")
     val TIP_OBSTACLES_TEXT = L(
-        "Нажми на камень, дерево или кактус, чтобы убрать его за монеты и освободить место для башни.",
-        "Tap a rock, tree or cactus to clear it for coins and make room for a tower.",
+        "Нажми на камень, дерево или кактус, чтобы убрать его за монеты и освободить место для отряда.",
+        "Tap a rock, tree or cactus to clear it for coins and make room for a squad.",
     )
     val TIP_DESERT = L("Песчаные бури", "Sandstorms")
     val TIP_DESERT_TEXT = L(
-        "Иногда налетает буря, и дальность всех башен падает на 30%. Ставь башни поближе к дороге.",
-        "Now and then a storm blows in and every tower's range drops by 30%. Build close to the road.",
+        "Иногда налетает буря, и дальность всех отрядов падает на 30%. Ставь отряды поближе к дороге.",
+        "Now and then a storm blows in and every squad's range drops by 30%. Dig in close to the road.",
     )
     val TIP_WINTER = L("Метель и лёд", "Blizzards and ice")
     val TIP_WINTER_TEXT = L(
-        "В метель башни стреляют реже, а по льду враги бегут быстрее. Береги ледяные участки дороги.",
-        "In a blizzard towers fire slower, and enemies run faster on ice. Guard the icy stretches.",
+        "В метель отряды стреляют реже, а по льду враги бегут быстрее. Береги ледяные участки дороги.",
+        "In a blizzard squads fire slower, and enemies run faster on ice. Guard the icy stretches.",
     )
     val TIP_ZOOM = L("Масштаб", "Zoom")
     val TIP_ZOOM_TEXT = L(
@@ -178,7 +178,7 @@ object Tx {
 
     // Codex
     val TAB_ENEMIES = L("Враги", "Enemies")
-    val TAB_TOWERS = L("Башни", "Towers")
+    val TAB_TOWERS = L("Отряды", "Squads")
     val TAB_ABILITIES = L("Способности", "Abilities")
     val NOT_MET = L("Ещё не встречался", "Not met yet")
     val UNLOCKS_ON = L("Откроется на %d уровне", "Unlocks on level %d")

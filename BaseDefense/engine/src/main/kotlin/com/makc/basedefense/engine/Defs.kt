@@ -45,7 +45,7 @@ enum class EnemyType(
         110f, 1.0f, 1f, 12, 1, 0.27f, false, 3f, 2.0f, 0xFFF2F2F2.toInt(), 4,
     ),
     DRONE(
-        L("Дрон", "Drone"), L("Летает: бьют турель, зенитка, тесла и снайпер", "Flies: hit by turrets, SAMs, teslas and snipers"),
+        L("Дрон", "Drone"), L("Летает: бьют стрелки, ПЗРК, тесла и снайперы", "Flies: hit by riflemen, Stingers, Tesla and snipers"),
         55f, 1.55f, 0f, 7, 1, 0.25f, true, 1.6f, 0.8f, 0xFF4A90D9.toInt(), 4,
     ),
     SHIELD(
@@ -53,11 +53,11 @@ enum class EnemyType(
         150f, 0.9f, 1f, 14, 2, 0.32f, false, 4.2f, 1.6f, 0xFF5B8FB9.toInt(), 10, shield = 0.8f,
     ),
     GHOST(
-        L("Невидимка", "Ghost"), L("Башни видят его только рядом с радаром. Взрывы и огонь задевают", "Towers see it only near a radar. Blasts and fire still hit it"),
+        L("Невидимка", "Ghost"), L("Отряды видят его только рядом с радаром. Взрывы и огонь задевают", "Squads see it only near a radar. Blasts and fire still hit it"),
         70f, 1.45f, 0f, 9, 1, 0.26f, false, 2f, 1.0f, 0xFF9A6BD6.toInt(), 12, stealth = true,
     ),
     SAPPER(
-        L("Сапёр", "Sapper"), L("Глушит башни, мимо которых проходит", "Jams the towers it walks past"),
+        L("Сапёр", "Sapper"), L("Глушит отряды, мимо которых проходит", "Jams the squads it walks past"),
         95f, 1.3f, 0f, 10, 1, 0.27f, false, 2.4f, 1.4f, 0xFFE0B020.toInt(), 13,
     ),
     MOTHER(
@@ -69,7 +69,7 @@ enum class EnemyType(
         2600f, 0.42f, 8f, 150, 8, 0.55f, false, 0f, 0f, 0xFF5D6B33.toInt(), 6,
     ),
     HELI(
-        L("Вертолёт", "Helicopter"), L("Босс в воздухе: нужны зенитки", "Flying boss: bring SAMs"),
+        L("Вертолёт", "Helicopter"), L("Босс в воздухе: нужны ПЗРК", "Flying boss: bring Stingers"),
         2200f, 0.55f, 3f, 150, 8, 0.6f, true, 0f, 0f, 0xFF3A4652.toInt(), 7,
     ),
     ;
@@ -106,58 +106,58 @@ enum class TowerType(
     val levels: List<TowerLevel>,
 ) {
     TURRET(
-        L("Турель", "Turret"), L("Турель", "Turret"), L("Быстрые пули по земле и воздуху", "Fast bullets at ground and air"),
+        L("Стрелки", "Riflemen"), L("Стрелки", "Riflemen"), L("Автоматы: быстрые пули по земле и воздуху", "Rifles: fast bullets at ground and air"),
         Role.ATTACK, true, true, 0xFF9AA7B4.toInt(), 1,
         listOf(TowerLevel(50, 7f, 3.5f, 2.5f), TowerLevel(60, 11f, 4.2f, 2.7f), TowerLevel(110, 18f, 5f, 3.0f)),
     ),
     SHOTGUN(
-        L("Дробовик", "Shotgun"), L("Дробовик", "Shotgun"), L("Залп дробью в упор", "A spread of pellets at close range"),
+        L("Штурмовики", "Shotgunners"), L("Дробовик", "Shotgun"), L("Залп дробью в упор", "A spread of pellets at close range"),
         Role.ATTACK, true, false, 0xFFC08A4A.toInt(), 1,
         // extra = pellets
         listOf(TowerLevel(70, 7f, 1.1f, 1.9f, 6f), TowerLevel(70, 10f, 1.25f, 2.0f, 7f), TowerLevel(130, 15f, 1.4f, 2.2f, 8f)),
     ),
     ROCKET(
-        L("Ракетница", "Rockets"), L("Ракеты", "Rockets"), L("Медленные ракеты со взрывом", "Slow rockets that blow up an area"),
+        L("Гранатомётчики", "Bazooka team"), L("Базука", "Bazooka"), L("Медленные ракеты со взрывом", "Slow rockets that blow up an area"),
         Role.ATTACK, true, false, 0xFF8A9A4A.toInt(), 1,
         // extra = blast radius
         listOf(TowerLevel(110, 75f, 0.6f, 3.4f, 1.0f), TowerLevel(110, 115f, 0.65f, 3.6f, 1.15f), TowerLevel(190, 175f, 0.7f, 3.9f, 1.3f)),
     ),
     FLAMER(
-        L("Огнемёт", "Flamer"), L("Огнемёт", "Flamer"), L("Жжёт всех в конусе, броня не спасает", "Burns everyone in a cone, armor does not help"),
+        L("Огнемётчики", "Flamethrowers"), L("Огнемёт", "Flamer"), L("Жжёт всех в конусе, броня не спасает", "Burns everyone in a cone, armor does not help"),
         Role.ATTACK, true, false, 0xFFE0592B.toInt(), 2,
         // damage = per second, extra = afterburn seconds
         listOf(TowerLevel(90, 22f, 10f, 1.75f, 1.5f), TowerLevel(90, 34f, 10f, 1.85f, 1.8f), TowerLevel(160, 52f, 10f, 2.0f, 2.1f)),
     ),
     SAM(
-        L("Зенитка", "SAM site"), L("Зенитка", "SAM"), L("Ракеты с наведением, только по воздуху", "Homing missiles, air only"),
+        L("Расчёт ПЗРК", "Stinger team"), L("ПЗРК", "Stinger"), L("Ракеты с плеча с наведением, только по воздуху", "Shoulder-fired homing missiles, air only"),
         Role.ATTACK, false, true, 0xFF6F86A8.toInt(), 4,
         listOf(TowerLevel(100, 55f, 1.0f, 4.4f), TowerLevel(100, 85f, 1.1f, 4.8f), TowerLevel(170, 130f, 1.25f, 5.2f)),
     ),
     TESLA(
-        L("Тесла", "Tesla"), L("Тесла", "Tesla"), L("Молния прыгает по врагам и замедляет", "Lightning chains between enemies and slows them"),
+        L("Тесла-пехота", "Tesla troopers"), L("Тесла", "Tesla"), L("Молния прыгает по врагам и замедляет", "Lightning chains between enemies and slows them"),
         Role.ATTACK, true, true, 0xFF4FD8FF.toInt(), 5,
         // extra = chain length, extra2 = slow
         listOf(TowerLevel(110, 26f, 0.8f, 2.3f, 3f, 0.35f), TowerLevel(100, 38f, 0.9f, 2.5f, 4f, 0.4f), TowerLevel(170, 56f, 1.0f, 2.7f, 5f, 0.5f)),
     ),
     SNIPER(
-        L("Снайпер", "Sniper"), L("Снайпер", "Sniper"), L("Очень дальний мощный выстрел, броня вдвое слабее", "Long heavy shots; armor counts half"),
+        L("Снайперы", "Snipers"), L("Снайпер", "Sniper"), L("Очень дальний мощный выстрел, броня вдвое слабее", "Long heavy shots; armor counts half"),
         Role.ATTACK, true, true, 0xFF7E8C6A.toInt(), 9,
         listOf(TowerLevel(120, 90f, 0.45f, 5.5f), TowerLevel(110, 145f, 0.5f, 6.0f), TowerLevel(180, 230f, 0.55f, 6.5f)),
     ),
     MINES(
-        L("Мины", "Mines"), L("Мины", "Mines"), L("Ставятся на дорогу и взрываются под врагами", "Go on the road and blow up under enemies"),
+        L("Минёры", "Minelayers"), L("Мины", "Mines"), L("Минёр ставит мину на дорогу, она взрывается под врагами", "A minelayer puts a mine on the road that blows up under enemies"),
         Role.ROAD, true, false, 0xFFB0463A.toInt(), 11,
         // rate = re-arms per second, range = blast radius
         listOf(TowerLevel(60, 90f, 1 / 3f, 0.9f), TowerLevel(60, 140f, 1 / 2.6f, 1.0f), TowerLevel(110, 210f, 1 / 2.2f, 1.1f)),
     ),
     RADAR(
-        L("Радар", "Radar"), L("Радар", "Radar"), L("Показывает невидимок и усиливает башни рядом", "Reveals ghosts and boosts nearby towers"),
+        L("Радар", "Radar post"), L("Радар", "Radar"), L("Показывает невидимок и усиливает отряды рядом", "Reveals ghosts and boosts nearby squads"),
         Role.SUPPORT, false, false, 0xFF5FA8A0.toInt(), 12,
         // extra = damage aura
         listOf(TowerLevel(90, 0f, 0f, 2.6f, 0.08f), TowerLevel(80, 0f, 0f, 3.0f, 0.12f), TowerLevel(130, 0f, 0f, 3.4f, 0.16f)),
     ),
     QUARRY(
-        L("Карьер", "Quarry"), L("Карьер", "Quarry"), L("Приносит монеты в начале каждой волны", "Earns coins at the start of every wave"),
+        L("Снабжение", "Supply"), L("Склад", "Supply"), L("Приносит монеты в начале каждой волны", "Earns coins at the start of every wave"),
         Role.ECONOMY, false, false, 0xFFB08A50.toInt(), 17,
         // damage = coins per wave
         listOf(TowerLevel(100, 15f, 0f, 0f), TowerLevel(90, 28f, 0f, 0f), TowerLevel(140, 45f, 0f, 0f)),
@@ -234,11 +234,11 @@ enum class Branch(val tower: TowerType, val title: L, val hint: L, val stats: To
         TowerLevel(240, 650f, 0.25f, 1.5f),
     ),
     SPIKES(
-        TowerType.MINES, L("Шипы", "Spikes"), L("Постоянно ранят и замедляют всех на клетке", "Constantly hurt and slow everyone on the cell"),
+        TowerType.MINES, L("Колючка", "Barbed wire"), L("Колючая проволока ранит и замедляет всех на клетке", "Barbed wire hurts and slows everyone on the cell"),
         TowerLevel(220, 70f, 0f, 0.6f, 0.3f),
     ),
     COMMAND(
-        TowerType.RADAR, L("Штаб", "Command post"), L("+25% урона и +10% дальности башням рядом", "+25% damage and +10% range to nearby towers"),
+        TowerType.RADAR, L("Штаб", "Command post"), L("+25% урона и +10% дальности отрядам рядом", "+25% damage and +10% range to nearby squads"),
         TowerLevel(220, 0f, 0f, 3.8f, 0.25f, 0.1f),
     ),
     JAMMER(

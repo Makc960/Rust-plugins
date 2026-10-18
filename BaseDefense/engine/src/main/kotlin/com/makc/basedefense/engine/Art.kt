@@ -26,10 +26,15 @@ internal class Art private constructor() {
     val smoke = list("smoke", 5)
     val flash = need("flash")
     val flashBig = need("flash.big")
-    val plate = need("plate")
-    val plateElite = need("plate.elite")
-    private val towerHeads = TowerType.entries.map { headName(it)?.let(::need) }
-    private val branchHeads = Branch.entries.map { headName(it)?.let(::need) }
+
+    /** Every tower is a squad in a pit: its soldier, and the special one a specialisation adds. */
+    private val towerTroopers = TowerType.entries.map { need("trooper." + it.name.lowercase()) }
+    private val branchTroopers = Branch.entries.map { need("trooper." + it.name.lowercase().replace("_", "")) }
+    val pit = Array(biomes.size) { need("pit.${biomes[it]}") }
+    val pitElite = Array(biomes.size) { need("pit.${biomes[it]}.elite") }
+    val dish = need("prop.dish")
+    val table = need("prop.table")
+    val jamDevice = need("prop.jammer")
     val mine = need("mine")
     val mineBig = need("mine.big")
     val spikes = need("spikes")
@@ -45,9 +50,9 @@ internal class Art private constructor() {
     val rocket = need("rocket")
     val rocketBig = need("rocket.big")
 
-    /** The turning top of a tower; null for mines and quarries, which are drawn whole. */
-    fun head(type: TowerType, branch: Branch?): Sprite? =
-        if (branch != null) branchHeads[branch.ordinal] else towerHeads[type.ordinal]
+    fun trooper(type: TowerType): Sprite = towerTroopers[type.ordinal]
+
+    fun trooper(branch: Branch): Sprite = branchTroopers[branch.ordinal]
 
     private class Missing(name: String) : Exception(name)
 
@@ -56,17 +61,6 @@ internal class Art private constructor() {
             if (Sprites.count == 0) null else Art()
         } catch (e: Missing) {
             null
-        }
-
-        private fun headName(t: TowerType): String? = when (t) {
-            TowerType.MINES, TowerType.QUARRY -> null
-            else -> "head." + t.name.lowercase()
-        }
-
-        private fun headName(b: Branch): String? = when (b) {
-            Branch.LANDMINE, Branch.SPIKES, Branch.DRILL, Branch.BANK -> null
-            Branch.HEAVY_CAL -> "head.heavycal"
-            else -> "head." + b.name.lowercase()
         }
     }
 }

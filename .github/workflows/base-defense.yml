@@ -79,5 +79,5 @@ jobs:
           gh release create base-defense BaseDefense.apk \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "Оборона базы 2.1" \
+            --title "Оборона базы 2.2" \
             --notes "Сборка из ${GITHUB_SHA::7}. Скачай BaseDefense.apk на телефон и установи поверх старой версии (прогресс сохранится)."
