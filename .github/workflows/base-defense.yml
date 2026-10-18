@@ -20,6 +20,9 @@ jobs:
     defaults:
       run:
         working-directory: BaseDefense
+    env:
+      # The Play upload key is optional: without these secrets only the APK is built.
+      HAS_UPLOAD_KEY: ${{ secrets.UPLOAD_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,16 +39,37 @@ jobs:
       - name: Name APK
         run: cp app/build/outputs/apk/release/app-release.apk BaseDefense.apk
 
+      - name: Build the Google Play bundle
+        if: env.HAS_UPLOAD_KEY == 'true'
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+        run: |
+          echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:bundleRelease
+          cp app/build/outputs/bundle/release/app-release.aab BaseDefense.aab
+          rm "$RUNNER_TEMP/upload.jks"
+
       - uses: actions/upload-artifact@v4
         with:
           name: BaseDefense
           path: BaseDefense/BaseDefense.apk
 
       - uses: actions/upload-artifact@v4
+        if: env.HAS_UPLOAD_KEY == 'true'
+        with:
+          name: BaseDefense-GooglePlay
+          path: BaseDefense/BaseDefense.aab
+
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: BaseDefense-screens
-          path: BaseDefense/engine/build/screens
+          path: |
+            BaseDefense/engine/build/screens
+            BaseDefense/engine/build/store
 
       - name: Publish to the base-defense release
         env:
@@ -55,5 +79,5 @@ jobs:
           gh release create base-defense BaseDefense.apk \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "Оборона базы" \
-            --notes "Сборка из ${GITHUB_SHA::7}. Скачай BaseDefense.apk на телефон и установи (разреши установку из этого источника)."
+            --title "Оборона базы 2.0" \
+            --notes "Сборка из ${GITHUB_SHA::7}. Скачай BaseDefense.apk на телефон и установи поверх старой версии (прогресс сохранится)."

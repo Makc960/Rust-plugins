@@ -2,18 +2,28 @@ package com.makc.basedefense
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.media.SoundPool
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import com.makc.basedefense.engine.Music
 import com.makc.basedefense.engine.Platform
 import com.makc.basedefense.engine.Sfx
 import com.makc.basedefense.engine.Synth
+import com.makc.basedefense.engine.Track
 import java.io.File
+import java.time.LocalDate
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicIntegerArray
 
-/** Sound through SoundPool (effects are synthesized once into WAV files), vibration and saves. */
+/**
+ * Sound through SoundPool and MediaPlayer (effects and music are synthesized once
+ * into WAV files), vibration, saves and the date.
+ */
 class AndroidPlatform(context: Context) : Platform {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("base_defense", Context.MODE_PRIVATE)
@@ -22,37 +32,111 @@ class AndroidPlatform(context: Context) : Platform {
     } else {
         app.getSystemService(Vibrator::class.java)
     }
-    private val pool = SoundPool.Builder()
-        .setMaxStreams(12)
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_GAME)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build(),
-        )
+    private val attributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_GAME)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
+    private val pool = SoundPool.Builder().setMaxStreams(12).setAudioAttributes(attributes).build()
     private val ids = AtomicIntegerArray(Sfx.entries.size)
+    private val main = Handler(Looper.getMainLooper())
+
+    // Music: the track asked for, the one playing, and the files ready to play.
+    private var wanted: Track? = null
+    private var volume = 0f
+    private var playing: Track? = null
+    private var player: MediaPlayer? = null
+    private val ready = HashSet<Track>()
+    private var released = false
 
     init {
-        Thread({ loadSounds() }, "sfx").apply { isDaemon = true }.start()
+        Thread({ prepareAudio() }, "audio").apply { isDaemon = true }.start()
     }
 
-    private fun loadSounds() {
-        val dir = File(app.cacheDir, "sfx").apply { mkdirs() }
+    private fun prepareAudio() {
+        // The first version kept its sounds here.
+        File(app.cacheDir, "sfx").deleteRecursively()
+        val dir = File(app.cacheDir, "audio").apply { mkdirs() }
         for (s in Sfx.entries) {
             try {
-                val file = File(dir, "${s.name.lowercase()}_$SOUND_VERSION.wav")
-                if (!file.exists()) file.writeBytes(Synth.wav(Synth.render(s)))
+                val file = File(dir, "${s.name.lowercase()}_$AUDIO_VERSION.wav")
+                if (!file.exists()) write(file, Synth.wav(Synth.render(s)))
                 ids.set(s.ordinal, pool.load(file.path, 1))
             } catch (e: Exception) {
                 android.util.Log.w("BaseDefense", "Sound $s not loaded", e)
             }
         }
+        // The menu theme first: it is the one heard right away.
+        for (t in listOf(Track.MENU, Track.BATTLE, Track.BOSS)) {
+            try {
+                val file = musicFile(t)
+                if (!file.exists()) write(file, Synth.wav(Music.render(t)))
+                main.post {
+                    ready += t
+                    applyMusic()
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("BaseDefense", "Music $t not made", e)
+            }
+        }
     }
+
+    /** Writes through a temporary file, so a half-written file is never used. */
+    private fun write(file: File, bytes: ByteArray) {
+        val tmp = File(file.path + ".tmp")
+        tmp.writeBytes(bytes)
+        tmp.renameTo(file)
+    }
+
+    private fun musicFile(t: Track) = File(File(app.cacheDir, "audio"), "music_${t.name.lowercase()}_$AUDIO_VERSION.wav")
 
     override fun play(sfx: Sfx, volume: Float) {
         val id = ids.get(sfx.ordinal)
         if (id != 0) pool.play(id, volume, volume, 1, 0, 1f)
+    }
+
+    override fun music(track: Track?, volume: Float) {
+        wanted = track
+        this.volume = volume
+        applyMusic()
+    }
+
+    private fun applyMusic() {
+        if (released) return
+        val t = wanted
+        if (t == null || t !in ready) {
+            if (t == null) stopMusic()
+            return
+        }
+        if (t != playing) {
+            stopMusic()
+            try {
+                val p = MediaPlayer()
+                p.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                p.setDataSource(musicFile(t).path)
+                p.isLooping = true
+                p.prepare()
+                p.start()
+                player = p
+                playing = t
+            } catch (e: Exception) {
+                android.util.Log.w("BaseDefense", "Music $t did not start", e)
+                return
+            }
+        }
+        player?.setVolume(volume, volume)
+    }
+
+    private fun stopMusic() {
+        player?.let {
+            try {
+                it.stop()
+            } catch (e: IllegalStateException) {
+                // Already stopped.
+            }
+            it.release()
+        }
+        player = null
+        playing = null
     }
 
     override fun vibrate(ms: Int) {
@@ -65,12 +149,24 @@ class AndroidPlatform(context: Context) : Platform {
         prefs.edit().putInt(key, value).apply()
     }
 
+    override fun getString(key: String): String? = prefs.getString(key, null)
+
+    override fun putString(key: String, value: String?) {
+        prefs.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
+    }
+
+    override fun today(): Int = LocalDate.now().toEpochDay().toInt()
+
+    override fun systemLanguage(): String = Locale.getDefault().language
+
     fun release() {
+        released = true
+        stopMusic()
         pool.release()
     }
 
     private companion object {
-        /** Bump when Synth changes, so old cached files are not reused. */
-        const val SOUND_VERSION = 1
+        /** Bump when Synth or Music change, so old cached files are not reused. */
+        const val AUDIO_VERSION = 2
     }
 }

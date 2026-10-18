@@ -32,6 +32,15 @@ object Synth {
             Sfx.LOSE -> tones(floatArrayOf(392f, 330f, 262f, 196f), 0.26f, 0.6f)
             Sfx.CLICK -> tones(floatArrayOf(1800f), 0.025f, 0.35f)
             Sfx.ERROR -> buzz(0.14f)
+            Sfx.SNIPER -> boom(0.5f, 9f, 0.55f, 120f, 0.45f, rng)
+            Sfx.MINE -> boom(0.7f, 5f, 0.09f, 42f, 1f, rng)
+            Sfx.PLANE -> flyby(1.7f, rng)
+            Sfx.FREEZE -> frost(1.1f, rng)
+            Sfx.REPAIR -> tones(floatArrayOf(523f, 659f, 784f, 1047f), 0.08f, 0.8f)
+            Sfx.SIREN -> siren(1.8f)
+            Sfx.JAM -> static(0.45f, rng)
+            Sfx.CLEAR -> boom(0.35f, 11f, 0.4f, 90f, 0.6f, rng)
+            Sfx.ACHIEVEMENT -> tones(floatArrayOf(784f, 988f, 1175f, 1568f, 1568f), 0.09f, 0.9f)
         }
         return toPcm(out)
     }
@@ -186,6 +195,65 @@ object Synth {
             val t = i / RATE.toFloat()
             val f = i / o.size.toFloat()
             o[i] = (if (sin(2 * PI * 140 * t) > 0) 1f else -1f) * (1f - f)
+        }
+        return o
+    }
+
+    /** A jet passing overhead: rushing noise that rises and falls, with a dropping whine. */
+    private fun flyby(len: Float, rng: Random): FloatArray {
+        val o = buf(len)
+        var lp = 0f
+        var phase = 0.0
+        for (i in o.indices) {
+            val f = i / o.size.toFloat()
+            val near = exp(-((f - 0.45f) * (f - 0.45f)) / 0.03f)
+            lp += (rng.nextFloat() * 2f - 1f - lp) * (0.05f + 0.25f * near)
+            phase += 2 * PI * (900.0 - 500.0 * f) / RATE
+            o[i] = lp * (0.2f + near) + sin(phase).toFloat() * 0.15f * near
+        }
+        return o
+    }
+
+    private fun frost(len: Float, rng: Random): FloatArray {
+        val o = buf(len)
+        val notes = floatArrayOf(2093f, 1760f, 1568f, 1319f, 1175f, 1047f)
+        for (i in o.indices) {
+            val t = i / RATE.toFloat()
+            val f = i / o.size.toFloat()
+            var v = 0f
+            for ((k, n) in notes.withIndex()) {
+                val start = k * 0.07f
+                if (t < start) continue
+                v += sin(2 * PI * n * (t - start)).toFloat() * exp(-(t - start) * 4f) * 0.4f
+            }
+            val crackle = if (rng.nextFloat() < 0.02f * (1f - f)) rng.nextFloat() * 2f - 1f else 0f
+            o[i] = v + crackle * 0.6f
+        }
+        return o
+    }
+
+    private fun siren(len: Float): FloatArray {
+        val o = buf(len)
+        var phase = 0.0
+        for (i in o.indices) {
+            val t = i / RATE.toFloat()
+            val f = i / o.size.toFloat()
+            val freq = 620.0 + 260.0 * sin(2 * PI * 1.2 * t)
+            phase += 2 * PI * freq / RATE
+            val tri = (2.0 / PI * kotlin.math.asin(sin(phase))).toFloat()
+            o[i] = tri * min(1f, f * 12f) * (1f - f)
+        }
+        return o
+    }
+
+    private fun static(len: Float, rng: Random): FloatArray {
+        val o = buf(len)
+        var hold = 0f
+        for (i in o.indices) {
+            val f = i / o.size.toFloat()
+            if (i % 6 == 0) hold = rng.nextFloat() * 2f - 1f
+            val gate = if ((i / 700) % 2 == 0) 1f else 0.35f
+            o[i] = hold * gate * (1f - f)
         }
         return o
     }

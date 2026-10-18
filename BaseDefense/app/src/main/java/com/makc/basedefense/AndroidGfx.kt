@@ -185,6 +185,6 @@ class AndroidGfx : Gfx {
     }
 
     private companion object {
-        const val MAX_CACHE_PIXELS = 6_000_000L
+        const val MAX_CACHE_PIXELS = 12_000_000L
     }
 }
