@@ -10,12 +10,20 @@ import kotlin.math.sin
 
 /**
  * Paints a world in map cells: call it inside a transform where one unit is
- * one cell. Every shape is drawn here, no images.
+ * one cell. Pictures come from the sprite atlas; a [Gfx] without it gets the
+ * same world painted in plain shapes.
  */
 class Renderer {
     private val xs = FloatArray(24)
     private val ys = FloatArray(24)
     private val tmp = FloatArray(4)
+    private val art = Art.load()
+
+    private fun art(g: Gfx): Art? = if (g.sprites) art else null
+
+    /** Draws [s] at its own size times [k]. */
+    private fun Gfx.put(s: Sprite, x: Float, y: Float, k: Float = 1f, degrees: Float = 0f, alpha: Float = 1f) =
+        sprite(s, x, y, s.cellsW * k, s.cellsH * k, degrees, alpha)
 
     /** Colors of one world. */
     class Palette(
@@ -41,9 +49,11 @@ class Renderer {
     /** [pxPerCell] is how big a cell is on screen, for the cached terrain picture. */
     fun drawWorld(g: Gfx, w: World, time: Float, pxPerCell: Float) {
         val map = w.map
+        val a = art(g)
         g.cached(terrainKey(map), COLS.toFloat(), ROWS.toFloat(), pxPerCell) { drawTerrain(it, map, detail = true) }
         drawWaves(g, map, time)
         drawSpawns(g, w.map, time, w.spawning)
+        if (a != null) for (b in w.blasts) if (b.ground) drawScorch(g, a, b)
         for (p in w.patches) drawPatch(g, p, time)
         for (c in w.corpses) drawCorpse(g, c)
         drawBase(g, w.map, time, w.baseFlash)
@@ -55,6 +65,7 @@ class Renderer {
         for (b in w.bombs) drawBomb(g, b)
         for (p in w.projectiles) drawProjectile(g, p)
         for (t in w.tracers) drawTracer(g, t)
+        if (a != null) for (b in w.blasts) drawFireball(g, a, b)
         for (p in w.particles) g.fillCircle(p.x, p.y, p.size, Colors.alpha(p.color, p.life / p.maxLife))
         for (b in w.bolts) {
             val f = (b.life / 0.16f).coerceIn(0f, 1f)
@@ -79,9 +90,138 @@ class Renderer {
     /** Everything on the map that never moves: ground, water, roads, bridges and obstacles. */
     fun drawTerrain(g: Gfx, map: GameMap, detail: Boolean) {
         val pal = palette(map.biome)
+        val a = art(g)
+        if (a != null && detail) {
+            drawTiles(g, a, map, pal)
+            return
+        }
         drawGround(g, map, pal, detail)
         drawRoads(g, map, pal, detail)
         drawDecor(g, map, pal)
+    }
+
+    /** The map from the atlas: a ground or road piece per cell, water, then what stands on it. */
+    private fun drawTiles(g: Gfx, a: Art, map: GameMap, pal: Palette) {
+        val b = map.biome.ordinal
+        val joins = roadJoins(map)
+        for (r in 0 until ROWS) for (c in 0 until COLS) {
+            val h = hash(c, r)
+            val road = if (map.isRoad(c, r) && map.terrain(c, r) != '=') a.road[b][joins[r * COLS + c]] else null
+            // A hair bigger than a cell, so no seam shows between neighbours.
+            if (road != null) {
+                g.sprite(road, c + 0.51f, r + 0.51f, 1.02f, 1.02f)
+            } else {
+                g.sprite(a.ground[b][h and 1], c + 0.51f, r + 0.51f, 1.02f, 1.02f, ((h ushr 4) and 3) * 90f)
+            }
+        }
+        drawWater(g, map, pal)
+        for (r in 0 until ROWS) for (c in 0 until COLS) {
+            if (map.terrain(c, r) == 'i') drawIce(g, c, r, joins[r * COLS + c])
+        }
+        drawBridges(g, map, pal)
+        for (r in 0 until ROWS) for (c in 0 until COLS) {
+            val h = hash(c, r)
+            val x = c + 0.5f
+            val y = r + 0.5f
+            when (map.terrain(c, r)) {
+                'T' -> a.trees[b].let { g.put(it[(h ushr 8).mod(it.size)], x, y) }
+                'R' -> a.rocks[b].let { g.put(it[(h ushr 8).mod(it.size)], x, y) }
+                'C' -> g.put(a.cactus, x, y)
+            }
+        }
+    }
+
+    /** For every road cell, the sides its roads leave by: north 1, east 2, south 4, west 8. */
+    private fun roadJoins(map: GameMap): IntArray {
+        val joins = IntArray(COLS * ROWS)
+        fun side(c: Int, r: Int, bit: Int) {
+            if (map.inside(c, r)) joins[r * COLS + c] = joins[r * COLS + c] or bit
+        }
+        for (p in map.level.paths) {
+            var c = p[0]
+            var r = p[1]
+            for (i in 1 until p.size / 2) {
+                val c2 = p[i * 2]
+                val r2 = p[i * 2 + 1]
+                val dc = Integer.signum(c2 - c)
+                val dr = Integer.signum(r2 - r)
+                val out = if (dc > 0) 2 else if (dc < 0) 8 else if (dr > 0) 4 else 1
+                val back = if (dc > 0) 8 else if (dc < 0) 2 else if (dr > 0) 1 else 4
+                while (c != c2 || r != r2) {
+                    side(c, r, out)
+                    c += dc
+                    r += dr
+                    side(c, r, back)
+                }
+            }
+        }
+        return joins
+    }
+
+    private fun isWater(map: GameMap, c: Int, r: Int): Boolean =
+        !map.inside(c, r) || map.terrain(c, r).let { it == '~' || it == '=' }
+
+    /** Water over the ground, with a light rim where it meets the land and round outer corners. */
+    private fun drawWater(g: Gfx, map: GameMap, pal: Palette) {
+        val rad = 0.32f
+        val wide = 0.08f
+        // Opaque, so where two rims meet no brighter seam shows.
+        val rim = Colors.mix(pal.water, pal.waterLight, 0.85f)
+        for (r in 0 until ROWS) for (c in 0 until COLS) {
+            if (!isWater(map, c, r)) continue
+            val x = c.toFloat()
+            val y = r.toFloat()
+            val n = !isWater(map, c, r - 1)
+            val s = !isWater(map, c, r + 1)
+            val w = !isWater(map, c - 1, r)
+            val e = !isWater(map, c + 1, r)
+            // Reaching a little into water next door, so no seam shows.
+            val x0 = if (w) x else x - 0.01f
+            val x1 = if (e) x + 1f else x + 1.01f
+            val y0 = if (n) y else y - 0.01f
+            val y1 = if (s) y + 1f else y + 1.01f
+            g.fillRoundRect(x0, y0, x1 - x0, y1 - y0, rad, pal.water)
+            if (!(n && w)) g.fillRect(x0, y0, rad, rad, pal.water)
+            if (!(n && e)) g.fillRect(x1 - rad, y0, rad, rad, pal.water)
+            if (!(s && w)) g.fillRect(x0, y1 - rad, rad, rad, pal.water)
+            if (!(s && e)) g.fillRect(x1 - rad, y1 - rad, rad, rad, pal.water)
+            val top = if (n) rad else 0f
+            val bottom = if (s) rad else 0f
+            val left = if (w) rad else 0f
+            val right = if (e) rad else 0f
+            if (n) g.fillRect(x + left, y, 1f - left - right, wide, rim)
+            if (s) g.fillRect(x + left, y + 1f - wide, 1f - left - right, wide, rim)
+            if (w) g.fillRect(x, y + top, wide, 1f - top - bottom, rim)
+            if (e) g.fillRect(x + 1f - wide, y + top, wide, 1f - top - bottom, rim)
+            if (n && w) cornerRim(g, x + rad, y + rad, rad, wide, 180f, rim, pal.water)
+            if (n && e) cornerRim(g, x + 1f - rad, y + rad, rad, wide, 270f, rim, pal.water)
+            if (s && e) cornerRim(g, x + 1f - rad, y + 1f - rad, rad, wide, 0f, rim, pal.water)
+            if (s && w) cornerRim(g, x + rad, y + 1f - rad, rad, wide, 90f, rim, pal.water)
+        }
+    }
+
+    private fun cornerRim(g: Gfx, cx: Float, cy: Float, r: Float, wide: Float, start: Float, rim: Int, water: Int) {
+        g.fillArc(cx, cy, r, start, 90f, rim)
+        g.fillArc(cx, cy, r - wide, start, 90f, water)
+    }
+
+    /** A glaze of ice over the road part of a cell, along the sides it [joins]. */
+    private fun drawIce(g: Gfx, c: Int, r: Int, joins: Int) {
+        val ice = Colors.alpha(ICE_ROAD, 0.78f)
+        val half = 0.3f
+        val x = c + 0.5f
+        val y = r + 0.5f
+        g.fillRoundRect(x - half, y - half, half * 2f, half * 2f, 0.12f, ice)
+        if (joins and 1 != 0) g.fillRect(x - half, r.toFloat(), half * 2f, 0.5f, ice)
+        if (joins and 4 != 0) g.fillRect(x - half, y, half * 2f, 0.52f, ice)
+        if (joins and 8 != 0) g.fillRect(c.toFloat(), y - half, 0.5f, half * 2f, ice)
+        if (joins and 2 != 0) g.fillRect(x, y - half, 0.52f, half * 2f, ice)
+        val h = hash(c, r)
+        for (k in 0 until 3) {
+            val gx = c + 0.22f + ((h ushr (k * 5)) and 31) / 31f * 0.46f
+            val gy = r + 0.24f + ((h ushr (k * 5 + 2)) and 31) / 31f * 0.46f
+            g.line(gx, gy, gx + 0.16f, gy - 0.1f, Colors.alpha(WHITE, 0.85f), 0.03f)
+        }
     }
 
     private fun drawWaves(g: Gfx, map: GameMap, time: Float) {
@@ -171,7 +311,10 @@ class Renderer {
                 g.line(x, y, x + 0.16f, y - 0.1f, Colors.alpha(WHITE, 0.8f), 0.03f)
             }
         }
-        // Bridges over water.
+        drawBridges(g, map, pal)
+    }
+
+    private fun drawBridges(g: Gfx, map: GameMap, pal: Palette) {
         for (r in 0 until ROWS) for (c in 0 until COLS) {
             if (map.terrain(c, r) != '=') continue
             val vertical = map.isRoad(c, r - 1) || map.isRoad(c, r + 1)
@@ -294,6 +437,13 @@ class Renderer {
     fun drawBase(g: Gfx, map: GameMap, time: Float, flash: Float) {
         val x = map.baseCol + 0.5f
         val y = map.baseRow + 0.5f
+        val a = art(g)
+        if (a != null) {
+            g.put(a.base, x, y)
+            drawFlag(g, x + 0.3f, y - 0.3f, time)
+            if (flash > 0f) g.fillCircle(x, y, 0.5f, Colors.alpha(RED, flash * 1.2f))
+            return
+        }
         g.fillRoundRect(x - 0.47f + 0.05f, y - 0.47f + 0.07f, 0.94f, 0.94f, 0.12f, SHADOW)
         g.fillRoundRect(x - 0.47f, y - 0.47f, 0.94f, 0.94f, 0.12f, 0xFF4A4740.toInt())
         // Plank walls with a corrugated roof.
@@ -306,9 +456,12 @@ class Renderer {
         g.fillRoundRect(x - 0.24f, y - 0.24f, 0.48f, 0.48f, 0.04f, roof)
         g.line(x - 0.24f, y, x + 0.24f, y, Colors.darker(roof, 0.2f), 0.04f)
         g.strokeRoundRect(x - 0.38f, y - 0.38f, 0.76f, 0.76f, 0.06f, 0xFF4E3A24.toInt(), 0.05f)
-        // Flag.
-        val px = x + 0.3f
-        val py = y - 0.3f
+        drawFlag(g, x + 0.3f, y - 0.3f, time)
+        if (flash > 0f) g.fillRoundRect(x - 0.47f, y - 0.47f, 0.94f, 0.94f, 0.12f, Colors.alpha(RED, flash * 1.4f))
+    }
+
+    /** A flag on a pole standing at ([px], [py]). */
+    private fun drawFlag(g: Gfx, px: Float, py: Float, time: Float) {
         g.line(px, py, px, py - 0.55f, 0xFFD8D2C4.toInt(), 0.04f)
         for (k in 0..4) {
             val f = k / 4f
@@ -320,12 +473,26 @@ class Renderer {
             ys[9 - k] = ys[k] + 0.2f
         }
         g.fillPolygon(xs, ys, 10, FLAG)
-        if (flash > 0f) g.fillRoundRect(x - 0.47f, y - 0.47f, 0.94f, 0.94f, 0.12f, Colors.alpha(RED, flash * 1.4f))
     }
 
     private fun drawPatch(g: Gfx, p: Patch, time: Float) {
         val k = (p.life / p.maxLife).coerceIn(0f, 1f)
         val fade = min(1f, k * 3f)
+        val a = art(g)
+        if (a != null) {
+            val size = p.radius * 2.3f
+            g.sprite(a.oil, p.x, p.y, size, size, (p.x * 400f + p.y * 300f) % 360f, 0.75f * fade)
+            g.glow(p.x, p.y, p.radius * 1.3f, Colors.alpha(FIRE, 0.45f * fade))
+            for (j in 0 until 3) {
+                val ang = j * 2.1f + time * 1.5f
+                val fx = p.x + cos(ang) * p.radius * 0.45f
+                val fy = p.y + sin(ang) * p.radius * 0.35f
+                val frame = ((time * 10f + j * 1.7f).toInt()).mod(a.fire.size)
+                val s = 0.42f * fade * (0.85f + 0.15f * sin(time * 13f + j))
+                g.put(a.fire[frame], fx, fy - 0.08f, s / a.fire[frame].cellsH * 0.9f)
+            }
+            return
+        }
         g.fillCircle(p.x, p.y, p.radius, Colors.alpha(0xFF2A1A10.toInt(), 0.5f * fade))
         g.glow(p.x, p.y, p.radius * 1.3f, Colors.alpha(FIRE, 0.55f * fade))
         for (j in 0 until 3) {
@@ -336,10 +503,38 @@ class Renderer {
         }
     }
 
+    /** The black mark an explosion leaves on the ground. */
+    private fun drawScorch(g: Gfx, a: Art, b: Blast) {
+        val fade = min(1f, (b.life - b.age) / 1.5f) * min(1f, b.age / 0.15f)
+        val size = b.radius * 1.3f + 0.2f
+        g.sprite(a.scorch, b.x, b.y, size, size, b.angle, 0.45f * fade)
+    }
+
+    /** The fireball, frame by frame, then its smoke. */
+    private fun drawFireball(g: Gfx, a: Art, b: Blast) {
+        val t = b.age / Blast.FIRE_LIFE
+        if (t >= 1f) return
+        val size = b.radius * 2f + 0.3f
+        val smoke = a.smoke[min(4, (t * 5f).toInt() + 1)]
+        g.sprite(smoke, b.x, b.y - t * 0.15f, size * (0.8f + t * 0.5f), size * (0.8f + t * 0.5f), b.angle + 40f, 0.7f * (1f - t))
+        val fire = a.blast[min(4, (t * 5f).toInt())]
+        g.sprite(fire, b.x, b.y, size * (0.75f + t * 0.4f), size * (0.75f + t * 0.4f), b.angle, 1f - t * t)
+    }
+
     private fun drawCorpse(g: Gfx, c: Corpse) {
         val k = (c.life / c.maxLife).coerceIn(0f, 1f)
         val a = min(1f, k * 2.5f)
         val r = c.type.radius
+        val art = art(g)
+        if (c.type.boss && art != null) {
+            // The burnt-out wreck.
+            g.sprite(art.scorch, c.x, c.y, r * 3.4f, r * 3.4f, 30f, 0.8f * a)
+            val s = art.enemies[c.type.ordinal]
+            val deg = Math.toDegrees(c.angle.toDouble()).toFloat() + 12f
+            g.put(s, c.x, c.y, enemyScale(c.type), deg, 0.85f * a)
+            g.fillCircle(c.x, c.y, r * 1.05f, Colors.alpha(0xFF141414.toInt(), 0.55f * a))
+            return
+        }
         if (c.type.boss) {
             g.fillCircle(c.x, c.y, r * 1.3f, Colors.alpha(0xFF1A1A1A.toInt(), 0.55f * a))
             g.save()
@@ -390,6 +585,11 @@ class Renderer {
         spin: Float = 0f,
         armed: Boolean = true,
     ) {
+        val a = art(g)
+        if (a != null) {
+            drawTowerArt(g, a, type, level, branch, x, y, angle, flash, burning, time, armed)
+            return
+        }
         if (type.role == Role.ROAD) {
             drawMine(g, level, branch, x, y, armed, flash, time)
             return
@@ -542,6 +742,106 @@ class Renderer {
         g.restore()
     }
 
+    private fun drawTowerArt(
+        g: Gfx,
+        a: Art,
+        type: TowerType,
+        level: Int,
+        branch: Branch?,
+        x: Float,
+        y: Float,
+        angle: Float,
+        flash: Float,
+        burning: Float,
+        time: Float,
+        armed: Boolean,
+    ) {
+        if (type.role == Role.ROAD) {
+            drawMineArt(g, a, level, branch, x, y, armed, flash, time)
+            return
+        }
+        g.put(if (branch != null) a.plateElite else a.plate, x, y)
+        if (branch != null) {
+            star(g, x, y + 0.36f, 0.075f, PIP)
+        } else {
+            for (i in 0..level) g.fillCircle(x + (i - level / 2f) * 0.13f, y + 0.36f, 0.045f, PIP)
+        }
+        val tier = if (branch != null) 3 else level
+        val k = 0.9f + 0.055f * tier
+        when (type) {
+            TowerType.QUARRY -> when (branch) {
+                Branch.DRILL -> {
+                    g.put(a.drill, x, y, k * 0.95f)
+                    g.put(a.bit, x, y, k, (time * 220f) % 360f)
+                }
+                Branch.BANK -> {
+                    g.put(a.bank, x, y, k)
+                    g.put(a.dial, x, y, k * 0.9f, (time * 40f) % 360f)
+                }
+                else -> g.put(a.quarry, x, y, k * 0.9f)
+            }
+            TowerType.TESLA -> {
+                g.put(a.head(type, branch) ?: return, x, y, k)
+                val glow = if (branch == Branch.STUN) 0xFFFFE36B.toInt() else BOLT
+                g.glow(x, y, 0.22f + 0.05f * sin(time * 7f) + 0.04f * tier, Colors.alpha(glow, 0.6f))
+                val spin = time * 5f
+                val arcs = if (branch != null) 3 else 2
+                for (j in 0 until arcs) {
+                    val aa = spin + j * 6.283f / arcs
+                    g.line(x + cos(aa) * 0.1f, y + sin(aa) * 0.1f, x + cos(aa + 0.5f) * 0.3f * k, y + sin(aa + 0.5f) * 0.3f * k, Colors.alpha(glow, 0.85f), 0.025f)
+                }
+            }
+            TowerType.RADAR -> when (branch) {
+                Branch.COMMAND -> {
+                    g.put(a.head(type, branch) ?: return, x, y, k)
+                    drawFlag(g, x - 0.05f, y - 0.05f, time)
+                }
+                Branch.JAMMER -> {
+                    g.put(a.head(type, branch) ?: return, x, y, k)
+                    val r = (time * 0.8f) % 1f
+                    g.strokeCircle(x, y, 0.2f + r * 0.3f, Colors.alpha(type.color, 1f - r), 0.025f)
+                    if ((time * 2.5f).toInt() % 2 == 0) g.glow(x, y, 0.12f, Colors.alpha(0xFFFF3B3B.toInt(), 0.8f))
+                }
+                else -> g.put(a.head(type, branch) ?: return, x, y, k, (time * 90f) % 360f)
+            }
+            else -> {
+                val head = a.head(type, branch) ?: return
+                g.put(head, x, y, k, angle)
+                val rad = Math.toRadians(angle.toDouble())
+                val dx = cos(rad).toFloat()
+                val dy = sin(rad).toFloat()
+                // Heads face right, so the right edge of what shows is the muzzle.
+                val tip = (head.shownDx + head.shownW / 2f) * k
+                if (type == TowerType.FLAMER) {
+                    val cryo = branch == Branch.CRYO
+                    val jet = burning > 0f
+                    val flicker = 0.07f + 0.02f * sin(time * 30f)
+                    g.glow(x + dx * tip, y + dy * tip, if (jet) 0.32f else flicker * 1.6f, Colors.alpha(if (cryo) 0xFF8FDCFF.toInt() else FIRE, 0.9f))
+                    if (jet && !cryo) {
+                        val f = a.fire[((time * 14f).toInt()).mod(a.fire.size)]
+                        g.put(f, x + dx * (tip + 0.2f), y + dy * (tip + 0.2f), 0.4f / f.cellsH, angle + 90f, 0.9f)
+                    }
+                } else if (flash > 0f && type != TowerType.ROCKET && type != TowerType.SAM) {
+                    val big = type == TowerType.SNIPER || branch == Branch.SLUG || branch == Branch.PIERCER
+                    val s = if (big) a.flashBig else a.flash
+                    g.put(s, x + dx * (tip + 0.1f), y + dy * (tip + 0.1f), if (big) 0.9f else 0.75f, angle, min(1f, flash / 0.05f))
+                }
+            }
+        }
+    }
+
+    private fun drawMineArt(g: Gfx, a: Art, level: Int, branch: Branch?, x: Float, y: Float, armed: Boolean, flash: Float, time: Float) {
+        if (branch == Branch.SPIKES) {
+            g.put(a.spikes, x, y, 1.25f)
+            return
+        }
+        val big = branch == Branch.LANDMINE
+        g.put(if (big) a.mineBig else a.mine, x, y, if (big) 1.1f else 1f + 0.12f * level, 0f, if (armed) 1f else 0.6f)
+        val on = armed && (time * 2f).toInt() % 2 == 0
+        if (on) g.glow(x, y, 0.16f, Colors.alpha(0xFFFF3B3B.toInt(), 0.7f))
+        if (flash > 0f) g.strokeCircle(x, y, 0.3f, Colors.alpha(0xFFFF6B4A.toInt(), flash * 3f), 0.03f)
+    }
+
     private fun drawTurret(g: Gfx, c: Int, level: Int, branch: Branch?, flash: Float, spin: Float) {
         g.fillCircle(0f, 0f, 0.27f, Colors.darker(c, 0.45f))
         when (branch) {
@@ -689,7 +989,49 @@ class Renderer {
     // --- enemies --------------------------------------------------------------------------
 
     private fun drawShadow(g: Gfx, e: Enemy) {
+        val a = art(g)
+        if (a != null && e.type == EnemyType.DRONE) {
+            val deg = Math.toDegrees(atan2(e.dirY, e.dirX).toDouble()).toFloat()
+            g.put(a.droneShadow, e.x + 0.2f, e.y + 0.35f, enemyScale(e.type), deg)
+            return
+        }
         g.fillCircle(e.x + 0.2f, e.y + 0.35f, e.type.radius * 0.85f, SHADOW)
+    }
+
+    /** How much bigger than in the atlas each enemy is drawn. */
+    private fun enemyScale(type: EnemyType): Float = when (type) {
+        EnemyType.APC -> 1.05f
+        EnemyType.HELI -> 1.05f
+        EnemyType.DRONE -> 0.75f
+        // Drawn half again as big in the atlas.
+        EnemyType.MOTHER -> type.radius / 0.38f
+        // People: their shoulders are about 0.26 cells across in the atlas.
+        else -> type.radius / 0.26f
+    }
+
+    private fun drawEnemyArt(g: Gfx, a: Art, type: EnemyType, x: Float, y: Float, angle: Float, time: Float, alpha: Float) {
+        val sway = when (type) {
+            EnemyType.SWARM, EnemyType.MOTHER -> sin(time * 10f) * 7f
+            EnemyType.BRUTE -> sin(time * 6f) * 2.5f
+            EnemyType.APC, EnemyType.HELI, EnemyType.DRONE -> 0f
+            else -> sin(time * 12f) * 4f
+        }
+        g.put(a.enemies[type.ordinal], x, y, enemyScale(type), angle + sway, alpha)
+        if (type == EnemyType.HELI) {
+            g.save()
+            g.translate(x, y)
+            g.rotate((time * 900f) % 360f)
+            g.fillCircle(0f, 0f, 0.8f, Colors.alpha(0xFF0E1216.toInt(), 0.14f * alpha))
+            for (k in 0 until 2) {
+                val b = if (k == 0) 0f else 90f
+                g.save()
+                g.rotate(b)
+                g.fillRoundRect(-0.8f, -0.04f, 1.6f, 0.08f, 0.04f, Colors.alpha(0xFF2A3036.toInt(), 0.8f * alpha))
+                g.restore()
+            }
+            g.fillCircle(0f, 0f, 0.07f, Colors.alpha(0xFF3A4046.toInt(), alpha))
+            g.restore()
+        }
     }
 
     fun drawEnemy(g: Gfx, e: Enemy, time: Float) {
@@ -739,6 +1081,11 @@ class Renderer {
     }
 
     fun drawEnemyBody(g: Gfx, type: EnemyType, x: Float, y: Float, angle: Float, time: Float, alpha: Float = 1f) {
+        val a = art(g)
+        if (a != null) {
+            drawEnemyArt(g, a, type, x, y, angle, time, alpha)
+            return
+        }
         val r = type.radius
         g.save()
         g.translate(x, y)
@@ -902,6 +1249,14 @@ class Renderer {
                 g.line(p.x - cos(p.angle) * len, p.y - sin(p.angle) * len, p.x, p.y, if (p.big) 0xFFFFD27A.toInt() else TRACER, if (p.big) 0.09f else 0.06f)
             }
             Shot.ROCKET, Shot.MISSILE -> {
+                val a = art(g)
+                if (a != null) {
+                    val k = (if (p.kind == Shot.MISSILE) 0.55f else 0.68f) * (if (p.big) 1.2f else 1f)
+                    val back = 0.2f * k / 0.68f
+                    g.glow(p.x - cos(p.angle) * back, p.y - sin(p.angle) * back, 0.16f * k / 0.68f, Colors.alpha(FIRE, 0.9f))
+                    g.put(if (p.big) a.rocketBig else a.rocket, p.x, p.y, k, Math.toDegrees(p.angle.toDouble()).toFloat())
+                    return
+                }
                 g.save()
                 g.translate(p.x, p.y)
                 g.rotate(Math.toDegrees(p.angle.toDouble()).toFloat())
@@ -949,6 +1304,12 @@ class Renderer {
     }
 
     private fun drawPlane(g: Gfx, p: Plane) {
+        val a = art(g)
+        if (a != null) {
+            g.put(a.planeShadow, p.x + 0.6f, p.y + 0.9f, 2.1f, -90f)
+            g.put(a.plane, p.x, p.y, 2.1f, -90f)
+            return
+        }
         // Its shadow first, offset as if the sun is low.
         drawPlaneShape(g, p.x + 0.6f, p.y + 0.9f, Colors.alpha(0xFF000000.toInt(), 0.25f), Colors.alpha(0xFF000000.toInt(), 0.25f))
         drawPlaneShape(g, p.x, p.y, 0xFF5B6670.toInt(), 0xFF3A434B.toInt())
@@ -1010,12 +1371,26 @@ class Renderer {
         g.save()
         g.translate(cx, cy)
         g.scale(size)
+        // Mines are small and dark: show them on a patch of road.
+        if (type.role == Role.ROAD && art(g) != null) g.fillRoundRect(-0.4f, -0.4f, 0.8f, 0.8f, 0.14f, GREEN.road)
         drawTowerShape(g, type, level, branch, 0f, 0f, -45f, 0f, 0f, time, spin = time * 300f)
         g.restore()
     }
 
     /** Draws [type] so that it fits a circle [size] across, whatever its real size. */
     fun drawEnemyIcon(g: Gfx, type: EnemyType, cx: Float, cy: Float, size: Float, time: Float) {
+        val a = art(g)
+        if (a != null) {
+            // Facing up, with the part that shows in the middle of the icon.
+            val s = a.enemies[type.ordinal]
+            val k = enemyScale(type)
+            g.save()
+            g.translate(cx, cy)
+            g.scale(size / (max(s.shownW, s.shownH) * k))
+            drawEnemyArt(g, a, type, -s.shownDy * k, s.shownDx * k, -90f, time, 0.95f)
+            g.restore()
+            return
+        }
         val extent = when (type) {
             EnemyType.APC -> 0.62f
             EnemyType.HELI -> 0.85f
@@ -1062,6 +1437,17 @@ class Renderer {
 
     /** A rock, tree or cactus ([kind] as on the map) fitting [size]. */
     fun drawObstacle(g: Gfx, kind: Char, biome: Biome, cx: Float, cy: Float, size: Float) {
+        val a = art(g)
+        if (a != null) {
+            val s = when (kind) {
+                'T' -> a.trees[biome.ordinal][0]
+                'C' -> a.cactus
+                else -> a.rocks[biome.ordinal][0]
+            }
+            val k = size / max(s.shownW, s.shownH)
+            g.sprite(s, cx - s.shownDx * k, cy - s.shownDy * k, s.cellsW * k, s.cellsH * k)
+            return
+        }
         g.save()
         g.translate(cx, cy)
         g.scale(size)
@@ -1130,31 +1516,32 @@ class Renderer {
     }
 
     companion object {
+        // The colours of the atlas tiles, for maps painted without them.
         val GREEN = Palette(
-            grassA = 0xFF3F6B36.toInt(), grassB = 0xFF3B6533.toInt(), tuft = 0xFF538745.toInt(),
-            roadEdge = 0xFF6B5638.toInt(), road = 0xFFA58A62.toInt(), roadDot = 0xFF8D7451.toInt(),
-            water = 0xFF1F5C80.toInt(), waterLight = 0xFF4A8DB5.toInt(),
-            rock = 0xFF7A7F84.toInt(), rockLight = 0xFF999EA3.toInt(), snow = false,
+            grassA = 0xFF39C272.toInt(), grassB = 0xFF35B86B.toInt(), tuft = 0xFF2FA862.toInt(),
+            roadEdge = 0xFF7D9698.toInt(), road = 0xFF89A4A6.toInt(), roadDot = 0xFF7D9698.toInt(),
+            water = 0xFF3E9FDA.toInt(), waterLight = 0xFFA6DCF6.toInt(),
+            rock = 0xFF90ADAF.toInt(), rockLight = 0xFFAFC7C9.toInt(), snow = false,
         )
         val DESERT = Palette(
-            grassA = 0xFFD8B26C.toInt(), grassB = 0xFFD1AA63.toInt(), tuft = 0xFFB28C55.toInt(),
-            roadEdge = 0xFF7A5E3C.toInt(), road = 0xFF9C7E57.toInt(), roadDot = 0xFF84694A.toInt(),
-            water = 0xFF2A8A9E.toInt(), waterLight = 0xFF64C1CF.toInt(),
-            rock = 0xFFAD7647.toInt(), rockLight = 0xFFC99566.toInt(), snow = false,
+            grassA = 0xFFE7D4A9.toInt(), grassB = 0xFFE1CC9F.toInt(), tuft = 0xFFCDB68A.toInt(),
+            roadEdge = 0xFFB89668.toInt(), road = 0xFFD1AA76.toInt(), roadDot = 0xFFB89668.toInt(),
+            water = 0xFF2DB2C6.toInt(), waterLight = 0xFFB4EEF3.toInt(),
+            rock = 0xFFAA8265.toInt(), rockLight = 0xFFC49C7C.toInt(), snow = false,
         )
         val WINTER = Palette(
-            grassA = 0xFFE3EBF1.toInt(), grassB = 0xFFDAE4EC.toInt(), tuft = 0xFFC2D0DC.toInt(),
-            roadEdge = 0xFF56626B.toInt(), road = 0xFF8C98A1.toInt(), roadDot = 0xFF76828B.toInt(),
-            water = 0xFF86B7D2.toInt(), waterLight = 0xFFC2E2F2.toInt(),
-            rock = 0xFF6F757B.toInt(), rockLight = 0xFF8E959B.toInt(), snow = true,
+            grassA = 0xFFE5EBF1.toInt(), grassB = 0xFFDCE4EB.toInt(), tuft = 0xFFC6D0DA.toInt(),
+            roadEdge = 0xFF7D9698.toInt(), road = 0xFF89A4A6.toInt(), roadDot = 0xFF7D9698.toInt(),
+            water = 0xFFA4D3EC.toInt(), waterLight = 0xFFE3F4FC.toInt(),
+            rock = 0xFF838A95.toInt(), rockLight = 0xFF9EA5AF.toInt(), snow = true,
         )
 
-        val TREE = 0xFF285A2C.toInt()
-        val TREE_DARK = 0xFF1E4722.toInt()
-        val TREE_LIGHT = 0xFF3D7A3A.toInt()
-        val PINE = 0xFF24513F.toInt()
-        val CACTUS = 0xFF4F8A3A.toInt()
-        val CACTUS_LIGHT = 0xFF6FAA55.toInt()
+        val TREE = 0xFF1E9E55.toInt()
+        val TREE_DARK = 0xFF167A41.toInt()
+        val TREE_LIGHT = 0xFF33C06F.toInt()
+        val PINE = 0xFF2C6147.toInt()
+        val CACTUS = 0xFF4E9845.toInt()
+        val CACTUS_LIGHT = 0xFF6FB862.toInt()
         val ICE_ROAD = 0xFFBFE3F5.toInt()
         val BRIDGE = 0xFF8B5E34.toInt()
         val BRIDGE_GAP = 0xFF5A3B20.toInt()

@@ -167,6 +167,20 @@ class Tracer(val x1: Float, val y1: Float, val x2: Float, val y2: Float, var lif
 
 class Ring(val x: Float, val y: Float, val maxR: Float, var life: Float, val maxLife: Float, val color: Int)
 
+/** A fireball; one on the ground leaves a scorch mark that slowly fades. */
+class Blast(val x: Float, val y: Float, val radius: Float, val ground: Boolean) {
+    var age = 0f
+
+    /** Turns each one its own way without drawing on the fight's random numbers. */
+    val angle = ((x * 977f + y * 613f) % 360f + 360f) % 360f
+    val life: Float get() = if (ground) SCORCH_LIFE else FIRE_LIFE
+
+    companion object {
+        const val FIRE_LIFE = 0.5f
+        const val SCORCH_LIFE = 4f
+    }
+}
+
 /** A burning pool left by napalm. */
 class Patch(val x: Float, val y: Float, var life: Float, val dps: Float, val radius: Float, val source: Tower?) {
     val maxLife = life
@@ -254,6 +268,7 @@ class World(
     val bolts = ArrayList<Bolt>()
     val tracers = ArrayList<Tracer>()
     val rings = ArrayList<Ring>()
+    val blasts = ArrayList<Blast>()
     val patches = ArrayList<Patch>()
     val corpses = ArrayList<Corpse>()
     val bombs = ArrayList<Bomb>()
@@ -1408,7 +1423,7 @@ class World(
             }
             Shot.MISSILE -> {
                 p.target?.let { if (it.alive) damage(it, p.damage * (if (it.type.boss) p.bossMul else 1f), p.source) }
-                explosion(p.x, p.y, 0.5f)
+                explosion(p.x, p.y, 0.5f, ground = false)
                 sound(Sfx.BOOM, 0.3f)
             }
             Shot.BOMBLET -> {
@@ -1451,8 +1466,10 @@ class World(
 
     // --- effects --------------------------------------------------------------------------
 
-    private fun explosion(x: Float, y: Float, radius: Float) {
+    private fun explosion(x: Float, y: Float, radius: Float, ground: Boolean = true) {
         rings += Ring(x, y, radius, 0.35f, 0.35f, 0xFFFFC95A.toInt())
+        blasts += Blast(x, y, radius, ground)
+        if (blasts.size > MAX_BLASTS) blasts.removeAt(0)
         val n = ((10 + radius * 10) * (if (lite) 0.35f else 1f)).toInt()
         for (k in 0 until n) {
             val a = fx.nextFloat() * 6.283f
@@ -1512,6 +1529,8 @@ class World(
         rings.removeAll { it.life <= 0f }
         for (c in corpses) c.life -= dt
         corpses.removeAll { it.life <= 0f }
+        for (b in blasts) b.age += dt
+        blasts.removeAll { it.age >= it.life }
     }
 
     // --- for tests ------------------------------------------------------------------------
@@ -1680,6 +1699,7 @@ class World(
         const val TESLA_JUMP = 1.9f
         const val TESLA_DECAY = 0.8f
         const val MAX_PARTICLES = 700
+        const val MAX_BLASTS = 48
         const val MAX_PARTICLES_LITE = 150
         const val MAX_CORPSES = 40
         const val CORPSE_TIME = 4f

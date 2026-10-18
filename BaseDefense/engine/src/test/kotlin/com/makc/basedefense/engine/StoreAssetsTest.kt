@@ -34,7 +34,10 @@ class StoreAssetsTest {
     fun icon() {
         val size = 512
         val img = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
-        val g = AwtGfx(img)
+        // Drawn in shapes, which stay sharp this big, like the launcher icon.
+        val g = object : Gfx by AwtGfx(img) {
+            override val sprites: Boolean get() = false
+        }
         val r = Renderer()
         g.fillRect(0f, 0f, size.toFloat(), size.toFloat(), 0xFF1E3324.toInt())
         // A strip of road behind the tower.
@@ -75,7 +78,7 @@ class StoreAssetsTest {
         g.scale(cell)
         Renderer().drawWorld(g, world, 3f, cell)
         g.restore()
-        g.fillRect(0f, 0f, w.toFloat(), h.toFloat(), 0x66000000)
+        g.fillRect(0f, 0f, w.toFloat(), h.toFloat(), 0x40000000)
         g.glow(w * 0.3f, h * 0.5f, w * 0.45f, 0xCC0E1412.toInt())
         for ((lang, y) in listOf(Language.RU to 0f)) {
             I18n.lang = lang

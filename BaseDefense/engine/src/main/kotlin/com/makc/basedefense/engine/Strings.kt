@@ -158,6 +158,11 @@ object Tx {
         "The game collects no data and sends nothing anywhere. Progress is stored only on this phone.",
     )
     val VERSION = L("Версия %s", "Version %s")
+    val CREDITS = L("Графика", "Graphics")
+    val CREDITS_TEXT = L(
+        "Kenney (kenney.nl): паки Tower Defense, Top-down Shooter и Top-down Tanks, лицензия CC0. Спасибо!",
+        "Kenney (kenney.nl): the Tower Defense, Top-down Shooter and Top-down Tanks packs, CC0 license. Thank you!",
+    )
 
     // Perks
     val POINTS = L("Свободно очков: %d", "Points to spend: %d")

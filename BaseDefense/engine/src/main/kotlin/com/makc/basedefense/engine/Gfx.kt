@@ -40,6 +40,12 @@ interface Gfx {
      * per unit and reuses it every frame; the default just draws it.
      */
     fun cached(id: String, w: Float, h: Float, pxPerUnit: Float, content: (Gfx) -> Unit) = content(this)
+
+    /** True when [sprite] draws pictures from the atlas; otherwise the renderer paints shapes. */
+    val sprites: Boolean get() = false
+
+    /** Draws [s] centred on ([cx], [cy]), [w] by [h] units, turned [degrees] clockwise. */
+    fun sprite(s: Sprite, cx: Float, cy: Float, w: Float, h: Float, degrees: Float = 0f, alpha: Float = 1f) = Unit
 }
 
 object Colors {

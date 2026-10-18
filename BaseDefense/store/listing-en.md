@@ -35,8 +35,8 @@ Endless mode with a high score, a daily challenge with new twists every day, 25 
 ★ COMFORTABLE
 Pinch to zoom the map, undo a misplaced tower, play at ×2 and ×3 speed, and your battle is saved when you leave the game. English and Russian.
 
-All the graphics are drawn by code, and the sounds and music are synthesized inside the game: it takes less than 3 MB.
+The graphics come from the free Kenney packs (kenney.nl, CC0), and the sounds and music are synthesized inside the game. No internet needed.
 
 ## What's new (up to 500 characters)
 
-Base Defense 2.0: 16 new levels in the desert and the north, 4 new towers, specialisations for every tower, abilities, 4 new enemies, difficulty levels, challenges, a daily challenge, achievements, a codex, music and English.
+Base Defense 2.1: new graphics, with a picture for every tower and specialisation, every enemy, explosion, road and tree. In 2.0: 16 new levels in the desert and the north, 4 new towers, specialisations for every tower, abilities, 4 new enemies, difficulty levels, challenges, a daily challenge, achievements, a codex, music and English.

@@ -1,5 +1,6 @@
 package com.makc.basedefense.engine
 
+import java.awt.AlphaComposite
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Font
@@ -17,6 +18,7 @@ import java.awt.geom.Point2D
 import java.awt.geom.Rectangle2D
 import java.awt.geom.RoundRectangle2D
 import java.awt.image.BufferedImage
+import javax.imageio.ImageIO
 
 /** [Gfx] on Java2D, for screenshots in tests. */
 class AwtGfx(val image: BufferedImage) : Gfx {
@@ -120,4 +122,32 @@ class AwtGfx(val image: BufferedImage) : Gfx {
 
     override fun textWidth(s: String, size: Float): Float =
         baseFont.deriveFont(size).getStringBounds(s, g.fontRenderContext).width.toFloat()
+
+    override val sprites: Boolean get() = atlas != null
+
+    override fun sprite(s: Sprite, cx: Float, cy: Float, w: Float, h: Float, degrees: Float, alpha: Float) {
+        val img = atlas ?: return
+        if (alpha <= 0f) return
+        val t = g.transform
+        val comp = g.composite
+        g.translate(cx.toDouble(), cy.toDouble())
+        if (degrees != 0f) g.rotate(Math.toRadians(degrees.toDouble()))
+        g.scale((w / s.w).toDouble(), (h / s.h).toDouble())
+        g.translate(-s.w / 2.0, -s.h / 2.0)
+        if (alpha < 1f) g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha)
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+        g.drawImage(img, 0, 0, s.w, s.h, s.x, s.y, s.x + s.w, s.y + s.h, null)
+        g.composite = comp
+        g.transform = t
+    }
+
+    private companion object {
+        /** Premultiplied, so filtering never darkens the soft edges. */
+        val atlas: BufferedImage? by lazy {
+            val src = AwtGfx::class.java.getResourceAsStream(Sprites.IMAGE)?.use { ImageIO.read(it) } ?: return@lazy null
+            val out = BufferedImage(src.width, src.height, BufferedImage.TYPE_INT_ARGB_PRE)
+            out.createGraphics().apply { drawImage(src, 0, 0, null); dispose() }
+            out
+        }
+    }
 }

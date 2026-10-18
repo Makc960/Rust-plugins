@@ -1,17 +1,21 @@
 package com.makc.basedefense
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.os.Build
 import com.makc.basedefense.engine.Align
 import com.makc.basedefense.engine.Gfx
+import com.makc.basedefense.engine.Sprite
+import com.makc.basedefense.engine.Sprites
 import kotlin.math.ceil
 
 /** [Gfx] on an Android [Canvas]; set [canvas] before each frame. */
@@ -29,8 +33,10 @@ class AndroidGfx : Gfx {
     }
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val path = Path()
     private val rect = RectF()
+    private val src = Rect()
     private val shaderMatrix = Matrix()
     private val gradients = HashMap<Int, RadialGradient>()
 
@@ -173,6 +179,24 @@ class AndroidGfx : Gfx {
         canvas.drawBitmap(picture, null, rect, bitmapPaint)
     }
 
+    override val sprites: Boolean get() = atlas != null
+
+    override fun sprite(s: Sprite, cx: Float, cy: Float, w: Float, h: Float, degrees: Float, alpha: Float) {
+        val bitmap = atlas ?: return
+        if (alpha <= 0f) return
+        src.set(s.x, s.y, s.x + s.w, s.y + s.h)
+        rect.set(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
+        spritePaint.alpha = (alpha.coerceAtMost(1f) * 255f).toInt()
+        if (degrees == 0f) {
+            canvas.drawBitmap(bitmap, src, rect, spritePaint)
+            return
+        }
+        canvas.save()
+        canvas.rotate(degrees, cx, cy)
+        canvas.drawBitmap(bitmap, src, rect, spritePaint)
+        canvas.restore()
+    }
+
     private fun trim() {
         var total = pictures.values.sumOf { it.width.toLong() * it.height }
         val iter = pictures.entries.iterator()
@@ -184,7 +208,23 @@ class AndroidGfx : Gfx {
         }
     }
 
-    private companion object {
-        const val MAX_CACHE_PIXELS = 12_000_000L
+    companion object {
+        private const val MAX_CACHE_PIXELS = 12_000_000L
+
+        /** The sprite atlas, decoded once for every painter; without it the game paints shapes. */
+        private val atlas: Bitmap? by lazy {
+            try {
+                AndroidGfx::class.java.getResourceAsStream(Sprites.IMAGE)?.use {
+                    BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 })
+                }
+            } catch (e: OutOfMemoryError) {
+                null
+            }
+        }
+
+        /** Decodes the atlas now, before the first frame needs it. */
+        fun preload() {
+            atlas
+        }
     }
 }
