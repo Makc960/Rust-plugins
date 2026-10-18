@@ -48,7 +48,7 @@ android {
         resValues = true
     }
 
-    sourceSets.getByName("main").java.srcDir(if (store == "rustore") "src/rustore/java" else "src/nostore/java")
+    sourceSets.getByName("main").java.directories.add(if (store == "rustore") "src/rustore/java" else "src/nostore/java")
 
     signingConfigs {
         // One public key for builds installed by hand, so a new APK installs over the old one.
