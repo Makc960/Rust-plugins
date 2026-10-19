@@ -49,7 +49,28 @@ interface Platform {
 
     /** Asks the store what is paid for; [done] gets null when the store cannot tell. */
     fun checkPurchases(done: (Purchases?) -> Unit) = Unit
+
+    /** Opens the store's own window for rating the game, where the store has one. */
+    fun askReview() = Unit
+
+    /** Asks the store whether a newer version is out; [done] hears true when it is. */
+    fun checkUpdate(done: (Boolean) -> Unit) = Unit
+
+    /** Installs the newer version through the store. */
+    fun startUpdate() = Unit
+
+    /** Whether the phone lets the game post notifications. */
+    val remindersAllowed: Boolean get() = false
+
+    /** Asks the phone to let the game post notifications; [done] hears whether it may. */
+    fun allowReminders(done: (Boolean) -> Unit) = done(false)
+
+    /** Puts [reminders] in place of every reminder planned before. */
+    fun planReminders(reminders: List<Reminder>) = Unit
 }
+
+/** A notification for later: on [day] (days since 1970) at [minute] past midnight, phone time. */
+class Reminder(val day: Int, val minute: Int, val title: String, val text: String)
 
 /** No sound, memory-only saves: the tests run on this. */
 class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platform {
@@ -69,6 +90,15 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
 
     /** False makes the store unreachable. */
     var storeAnswers = true
+    var reviewsAsked = 0
+    var updateOut = false
+    var updatesStarted = 0
+    override var remindersAllowed = true
+
+    /** What the phone answers when asked for notifications. */
+    var allowsReminders = true
+    var reminders: List<Reminder> = emptyList()
+        private set
     var track: Track? = null
         private set
     var musicVolume = 0f
@@ -118,4 +148,23 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
     }
 
     override fun checkPurchases(done: (Purchases?) -> Unit) = done(if (storeAnswers) Purchases(vipPaidUntil, owned.toSet()) else null)
+
+    override fun askReview() {
+        reviewsAsked++
+    }
+
+    override fun checkUpdate(done: (Boolean) -> Unit) = done(updateOut)
+
+    override fun startUpdate() {
+        updatesStarted++
+    }
+
+    override fun allowReminders(done: (Boolean) -> Unit) {
+        remindersAllowed = allowsReminders
+        done(allowsReminders)
+    }
+
+    override fun planReminders(reminders: List<Reminder>) {
+        this.reminders = reminders
+    }
 }

@@ -1291,6 +1291,11 @@ S['icon.wrench'] = kicon('wrench')
 S['icon.bolt'] = glyph(bolt_icon)
 S['icon.blast'] = glyph(blast_icon)
 S['icon.cart'] = kicon('shoppingCart')
+S['icon.download'] = kicon('download', MORE_ICONS)
+S['icon.phone'] = kicon('phone')
+S['icon.video'] = kicon('video')
+S['icon.diamond'] = kicon('diamond', MORE_ICONS)
+S['icon.brush'] = kicon('toolBrush', MORE_ICONS)
 
 
 # --- packing -----------------------------------------------------------------------------

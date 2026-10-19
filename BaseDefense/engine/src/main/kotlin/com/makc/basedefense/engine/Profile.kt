@@ -39,6 +39,11 @@ class Profile(private val p: Platform) {
         get() = p.getInt("tips", 1) != 0
         set(v) = p.putInt("tips", if (v) 1 else 0)
 
+    /** Notifications about the daily challenge and the like, where the phone allows them. */
+    var reminders: Boolean
+        get() = p.getInt("reminders", 1) != 0
+        set(v) = p.putInt("reminders", if (v) 1 else 0)
+
     // --- campaign -------------------------------------------------------------------------
 
     fun stars(id: Int): Int = p.getInt("stars_$id", 0)
@@ -248,6 +253,16 @@ class Profile(private val p: Platform) {
     var tutorialOffered: Boolean
         get() = p.getInt("tutorial_offered", 0) != 0
         set(v) = p.putInt("tutorial_offered", if (v) 1 else 0)
+
+    /** The game asked once whether it may send reminders. */
+    var remindersAsked: Boolean
+        get() = p.getInt("reminders_asked", 0) != 0
+        set(v) = p.putInt("reminders_asked", if (v) 1 else 0)
+
+    /** The wins counted when the store's rating window was last opened; 0 is never. */
+    var reviewAskedAt: Int
+        get() = p.getInt("review_asked_at", 0)
+        set(v) = p.putInt("review_asked_at", v)
 
     var tutorialDone: Boolean
         get() = p.getInt("tutorial_done", 0) != 0

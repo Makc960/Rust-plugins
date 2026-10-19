@@ -21,4 +21,13 @@ interface Store {
 
     /** A payment app returning to the game, or the game opened by a link. */
     fun handleIntent(intent: Intent) = Unit
+
+    /** Opens the store's own window for rating the game, where it has one. */
+    fun askReview() = Unit
+
+    /** [done] hears whether the store has a newer version of the game. */
+    fun checkUpdate(done: (Boolean) -> Unit) = done(false)
+
+    /** Installs the newer version found by [checkUpdate]. */
+    fun startUpdate() = Unit
 }

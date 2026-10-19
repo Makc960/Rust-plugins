@@ -15,6 +15,7 @@ internal enum class Icon {
     BACK, GEAR, TROPHY, BOOK, RANKS, CALENDAR, INFINITY, PLAY, PAUSE, CROSS, UNDO, LOCK, STAR, MEDAL,
     SPEED, FLAG, TARGET, SOUND, MUSIC, WARNING, HOME, CHECK, INFO, HEART, SKULL, CROWN,
     COMMANDER, GRENADE, FIST, WRENCH, BOLT, BLAST, CART,
+    DOWNLOAD, PHONE, VIDEO, DIAMOND, BRUSH,
     ;
 
     val sprite = "icon." + name.lowercase()
@@ -952,6 +953,37 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
                 g.fillRoundRect(cx - s * 0.36f, cy - s * 0.26f, s * 0.68f, s * 0.36f, s * 0.06f, color)
                 g.fillCircle(cx - s * 0.2f, cy + s * 0.32f, s * 0.09f, color)
                 g.fillCircle(cx + s * 0.2f, cy + s * 0.32f, s * 0.09f, color)
+            }
+            Icon.DOWNLOAD -> {
+                g.line(cx, cy - s * 0.42f, cx, cy + s * 0.08f, color, s * 0.14f)
+                px[0] = cx - s * 0.26f; py[0] = cy - s * 0.04f
+                px[1] = cx + s * 0.26f; py[1] = cy - s * 0.04f
+                px[2] = cx; py[2] = cy + s * 0.24f
+                g.fillPolygon(px, py, 3, color)
+                g.fillRect(cx - s * 0.38f, cy + s * 0.32f, s * 0.76f, s * 0.1f, color)
+            }
+            Icon.PHONE -> {
+                g.fillRoundRect(cx - s * 0.24f, cy - s * 0.42f, s * 0.48f, s * 0.84f, s * 0.08f, color)
+                g.fillRect(cx - s * 0.17f, cy - s * 0.3f, s * 0.34f, s * 0.54f, Colors.alpha(BG, 0.85f))
+            }
+            Icon.VIDEO -> {
+                g.fillRoundRect(cx - s * 0.42f, cy - s * 0.28f, s * 0.84f, s * 0.56f, s * 0.08f, color)
+                px[0] = cx - s * 0.1f; py[0] = cy - s * 0.15f
+                px[1] = cx + s * 0.16f; py[1] = cy
+                px[2] = cx - s * 0.1f; py[2] = cy + s * 0.15f
+                g.fillPolygon(px, py, 3, Colors.alpha(BG, 0.85f))
+            }
+            Icon.DIAMOND -> {
+                px[0] = cx - s * 0.42f; py[0] = cy - s * 0.12f
+                px[1] = cx - s * 0.22f; py[1] = cy - s * 0.36f
+                px[2] = cx + s * 0.22f; py[2] = cy - s * 0.36f
+                px[3] = cx + s * 0.42f; py[3] = cy - s * 0.12f
+                px[4] = cx; py[4] = cy + s * 0.42f
+                g.fillPolygon(px, py, 5, color)
+            }
+            Icon.BRUSH -> {
+                g.line(cx + s * 0.34f, cy - s * 0.34f, cx - s * 0.04f, cy + s * 0.04f, color, s * 0.12f)
+                g.fillCircle(cx - s * 0.18f, cy + s * 0.2f, s * 0.2f, color)
             }
         }
     }

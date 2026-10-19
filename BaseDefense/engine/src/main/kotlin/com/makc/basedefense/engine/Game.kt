@@ -93,9 +93,18 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
 
     private val toasts = ArrayList<Toast>()
 
+    /** RuStore has a newer version of the game. */
+    internal var updateOut = false
+        private set
+
     init {
         I18n.lang = profile.language
         checkPurchases()
+        // Asked first, so a store that answers at once has its new version offered before anything else.
+        platform.checkUpdate { out ->
+            updateOut = out
+            if (out && screen == Screen.MENU) menus.enterMenu()
+        }
         if (screen == Screen.MENU) menus.enterMenu()
     }
 
@@ -135,6 +144,29 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
     }
 
     internal val supportUrl: String? get() = platform.supportUrl
+
+    internal fun startUpdate() = platform.startUpdate()
+
+    internal val remindersAllowed: Boolean get() = platform.remindersAllowed
+
+    /** Turns reminders on, asking the phone first where it must; [done] hears whether they are on. */
+    internal fun allowReminders(done: (Boolean) -> Unit) {
+        val ask = { ok: Boolean ->
+            profile.reminders = ok
+            if (!ok) toast(Tx.REMINDERS_BLOCKED.t, Icon.WARNING)
+            done(ok)
+        }
+        if (platform.remindersAllowed) ask(true) else platform.allowReminders(ask)
+    }
+
+    /** After the third campaign win, and once more after the fifteenth, the store asks for a rating. */
+    internal fun askReviewIfDue() {
+        val wins = profile.stat(Stat.WINS)
+        val due = REVIEW_AT.lastOrNull { wins >= it } ?: return
+        if (profile.reviewAskedAt >= due) return
+        profile.reviewAskedAt = wins
+        platform.askReview()
+    }
 
     internal fun openUrl(url: String) = platform.openUrl(url)
 
@@ -259,11 +291,12 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
         return true
     }
 
-    /** The app went to the background: pause the fight and keep it on disk. */
+    /** The app went to the background: pause the fight, keep it on disk and plan the reminders. */
     fun pause() {
         if (screen == Screen.PLAY) play.pauseFromSystem()
         track = null
         platform.music(null, 0f)
+        platform.planReminders(Reminders.plan(profile, today, vip))
     }
 
     internal fun go(s: Screen) {
@@ -379,6 +412,9 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
         const val VERSION = "2.5"
         const val FADE_TIME = 0.28f
         const val TOAST_TIME = 3.2f
+
+        /** Campaign wins after which the store asks for a rating. */
+        val REVIEW_AT = intArrayOf(3, 15)
 
         /** The tutorial has the squads and the airstrike of a player past the first level. */
         const val TUTORIAL_PROGRESS = 2

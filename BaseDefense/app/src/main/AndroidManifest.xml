@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Reminders about the daily challenge; Android 13 and later ask the player first. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -36,5 +38,10 @@
                 <data android:scheme="${payScheme}" />
             </intent-filter>
         </activity>
+
+        <!-- Posts a planned reminder while the game is closed. -->
+        <receiver
+            android:name=".NoticeReceiver"
+            android:exported="false" />
     </application>
 </manifest>

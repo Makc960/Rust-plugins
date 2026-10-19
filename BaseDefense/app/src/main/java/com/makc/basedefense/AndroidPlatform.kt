@@ -18,6 +18,7 @@ import com.makc.basedefense.engine.Payment
 import com.makc.basedefense.engine.Platform
 import com.makc.basedefense.engine.Product
 import com.makc.basedefense.engine.Purchases
+import com.makc.basedefense.engine.Reminder
 import com.makc.basedefense.engine.Sfx
 import com.makc.basedefense.engine.Shop
 import com.makc.basedefense.engine.Synth
@@ -29,9 +30,15 @@ import java.util.concurrent.atomic.AtomicIntegerArray
 
 /**
  * Sound through SoundPool and MediaPlayer (effects and music are synthesized once
- * into WAV files), vibration, saves, the date and the [Store].
+ * into WAV files), vibration, saves, the date, the [Store] and the [Notices].
+ * [askNotifications] asks the player to allow notifications and hears the answer.
  */
-class AndroidPlatform(context: Context, private val store: Store) : Platform {
+class AndroidPlatform(
+    context: Context,
+    private val store: Store,
+    private val notices: Notices,
+    private val askNotifications: ((Boolean) -> Unit) -> Unit,
+) : Platform {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("base_defense", Context.MODE_PRIVATE)
     private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -173,6 +180,18 @@ class AndroidPlatform(context: Context, private val store: Store) : Platform {
     override fun buy(product: Product, done: (Payment, Int) -> Unit) = store.buy(product, done)
 
     override fun checkPurchases(done: (Purchases?) -> Unit) = store.check(done)
+
+    override fun askReview() = store.askReview()
+
+    override fun checkUpdate(done: (Boolean) -> Unit) = store.checkUpdate(done)
+
+    override fun startUpdate() = store.startUpdate()
+
+    override val remindersAllowed: Boolean get() = notices.allowed
+
+    override fun allowReminders(done: (Boolean) -> Unit) = askNotifications(done)
+
+    override fun planReminders(reminders: List<Reminder>) = notices.plan(reminders)
 
     override fun openUrl(url: String) {
         try {

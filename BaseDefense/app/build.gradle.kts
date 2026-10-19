@@ -103,5 +103,7 @@ dependencies {
     if (store == "rustore") {
         implementation(platform("ru.rustore.sdk:bom:2026.10.01"))
         implementation("ru.rustore.sdk:pay")
+        implementation("ru.rustore.sdk:review")
+        implementation("ru.rustore.sdk:appupdate")
     }
 }

@@ -470,6 +470,37 @@ class ScreensTest {
     }
 
     @Test
+    fun newVersionsAndRemindersAreOfferedOnce() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.putInt("stat_WINS", 5)
+        platform.updateOut = true
+        platform.remindersAllowed = false
+        val g = game(tall, platform)
+        run(g, 2f)
+        shot(g, tall, "tall_a0_update")
+        press(g, tall, "popupGo")
+        assertEquals(1, platform.updatesStarted, "the store is asked to install it")
+
+        // The next visit to the menu asks about reminders.
+        press(g, tall, "settings")
+        assertTrue(has(g, tall, "remind"))
+        press(g, tall, "back")
+        run(g, 2f)
+        shot(g, tall, "tall_a1_reminders")
+        press(g, tall, "popupGo")
+        assertTrue(g.profile.reminders && platform.remindersAllowed)
+        g.pause()
+        assertTrue(platform.reminders.isNotEmpty(), "planned when the game goes to the background")
+
+        // Reminders are not asked about again; the update is offered on each start until it is in.
+        platform.updateOut = false
+        val g2 = game(tall, platform)
+        run(g2, 2f)
+        assertTrue(!has(g2, tall, "popupGo"))
+    }
+
+    @Test
     fun commandersInMenusAndBattle() {
         val platform = SilentPlatform()
         for (l in Levels.all) if (l.id <= 8) platform.putInt("stars_${l.id}", 3)

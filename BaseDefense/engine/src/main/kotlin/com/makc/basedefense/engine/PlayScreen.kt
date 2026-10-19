@@ -83,6 +83,9 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private var resultAchievements: List<Achievement> = emptyList()
     private var flushed = false
 
+    /** When the store's rating window may open over the results of a won battle. */
+    private var reviewAt = -1f
+
     private class Card(val kind: L, val title: String, val text: String, val stats: List<String> = emptyList(), val icon: (Gfx, Float, Float, Float) -> Unit)
 
     private val cards = ArrayList<Card>()
@@ -146,6 +149,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         resultMedal = false
         resultRecord = false
         resultAchievements = emptyList()
+        reviewAt = -1f
         flushed = false
         cards.clear()
         ui.resetScroll("shop")
@@ -223,6 +227,10 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         updateLesson(wd)
         if (obstacle >= 0 && !wd.map.obstacle(obstacle % COLS, obstacle / COLS)) obstacle = -1
         if (aiming && !wd.abilityReady(Ability.AIRSTRIKE)) aiming = false
+        if (reviewAt in 0f..clock && overlay == Overlay.RESULT) {
+            reviewAt = -1f
+            game.askReviewIfDue()
+        }
         if (wd.over && overlay != Overlay.RESULT) {
             placing = null
             selected = null
@@ -260,6 +268,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         val won = wd.phase == Phase.WON
         when (s.mode) {
             Mode.CAMPAIGN -> if (won) {
+                reviewAt = clock + REVIEW_DELAY
                 val share = wd.lives / wd.maxLives.toFloat()
                 resultStars = when {
                     share >= 0.9f -> 3
@@ -1603,6 +1612,8 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     }
 
     companion object {
+        /** Seconds the stars of a win get before the rating window may cover them. */
+        const val REVIEW_DELAY = 2.5f
         const val MAX_ZOOM = 2.5f
         const val MAX_TERRAIN_PX = 190f
         const val SELL_CONFIRM = 150

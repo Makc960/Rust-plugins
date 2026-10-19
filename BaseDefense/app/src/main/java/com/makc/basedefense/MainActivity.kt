@@ -1,11 +1,14 @@
 package com.makc.basedefense
 
+import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -17,7 +20,14 @@ class MainActivity : ComponentActivity() {
     private lateinit var platform: AndroidPlatform
     private lateinit var game: Game
     private lateinit var view: GameView
-    private val store = Stores.create()
+    private lateinit var store: Store
+
+    /** Who waits for the player's answer about notifications. */
+    private var notificationsAnswer: ((Boolean) -> Unit)? = null
+    private val notificationsQuestion = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        notificationsAnswer?.invoke(granted)
+        notificationsAnswer = null
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,9 +35,10 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         AndroidGfx.preload(cacheDir)
+        store = Stores.create(this)
         // A payment app may have opened the game to say how a payment went.
         if (savedInstanceState == null) store.handleIntent(intent)
-        platform = AndroidPlatform(this, store)
+        platform = AndroidPlatform(this, store, Notices(this), ::askNotifications)
         // The intro plays when the game opens, not when Android brings it back.
         game = Game(platform, showIntro = savedInstanceState == null)
         view = GameView(this, game)
@@ -60,6 +71,21 @@ class MainActivity : ComponentActivity() {
                 }
             },
         )
+    }
+
+    /** Android 13 and later ask the player; older ones keep the switch in the phone's settings, opened here. */
+    private fun askNotifications(done: (Boolean) -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationsAnswer = done
+            notificationsQuestion.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            try {
+                startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+            } catch (e: RuntimeException) {
+                // No such settings page on this phone.
+            }
+            done(false)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

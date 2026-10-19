@@ -29,8 +29,11 @@ internal class Menus(private val game: Game) {
     private var vipBottom = 0f
     private var commandersBottom = 0f
 
-    /** A window over the main menu: the tutorial on the first visit, VIP now and then. */
-    private enum class Popup { WELCOME, VIP, ENDED }
+    /** A window over the main menu: the tutorial on the first visit, a new version, reminders once, VIP now and then. */
+    private enum class Popup { WELCOME, UPDATE, REMINDERS, VIP, ENDED }
+
+    /** The new version is offered once a run of the game. */
+    private var updateOffered = false
 
     private var popup: Popup? = null
     private var popupAt = 0f
@@ -247,6 +250,14 @@ internal class Menus(private val game: Game) {
             profile.tutorialOffered = true
             return Popup.WELCOME
         }
+        if (game.updateOut && !updateOffered) {
+            updateOffered = true
+            return Popup.UPDATE
+        }
+        if (!profile.remindersAsked && profile.reminders && !game.remindersAllowed && profile.stat(Stat.WINS) >= 1) {
+            profile.remindersAsked = true
+            return Popup.REMINDERS
+        }
         if (game.shop == Shop.NONE || game.vip) return null
         val today = game.today
         val until = profile.vipUntil
@@ -276,6 +287,8 @@ internal class Menus(private val game: Game) {
         )
         val text = when (p) {
             Popup.WELCOME -> Tx.WELCOME_TEXT.t
+            Popup.UPDATE -> Tx.UPDATE_TEXT.t
+            Popup.REMINDERS -> Tx.REMINDERS_TEXT.t
             Popup.ENDED -> Tx.ENDED_TEXT.t
             Popup.VIP -> null
         }
@@ -286,18 +299,26 @@ internal class Menus(private val game: Game) {
         ui.area("popup", px, py, pw, ph, silent = true) {}
         val title = when (p) {
             Popup.WELCOME -> Tx.WELCOME_TITLE.t
+            Popup.UPDATE -> Tx.UPDATE_TITLE.t
+            Popup.REMINDERS -> Tx.REMINDERS_TITLE.t
             Popup.VIP -> Tx.VIP_TITLE.t
             Popup.ENDED -> Tx.ENDED_TITLE.t
         }
-        val top = ui.panel(g, px, py, pw, ph, if (p == Popup.WELCOME) Ui.EDGE else Ui.GOLD, title = title)
+        val vipLike = p == Popup.VIP || p == Popup.ENDED
+        val top = ui.panel(g, px, py, pw, ph, if (vipLike) Ui.GOLD else Ui.EDGE, title = title)
         val cx = ui.w / 2f
         var y = top + d(14f)
         if (p == Popup.WELCOME) {
             ui.well(g, cx - d(40f), y, d(80f), d(80f), d(8f))
             renderer.drawCommanderIcon(g, CommanderType.SERGEANT, cx, y + d(40f), d(66f))
         } else {
-            g.glow(cx, y + d(40f), d(62f), Colors.alpha(Ui.GOLD, 0.25f))
-            ui.icon(g, Icon.CROWN, cx, y + d(40f), d(56f), if (p == Popup.ENDED) Ui.DIM else Ui.GOLD)
+            val icon = when (p) {
+                Popup.UPDATE -> Icon.DOWNLOAD
+                Popup.REMINDERS -> Icon.PHONE
+                else -> Icon.CROWN
+            }
+            g.glow(cx, y + d(40f), d(62f), Colors.alpha(if (vipLike) Ui.GOLD else Ui.ACCENT, 0.25f))
+            ui.icon(g, icon, cx, y + d(40f), d(56f), if (p == Popup.ENDED) Ui.DIM else if (vipLike) Ui.GOLD else Ui.ACCENT)
         }
         y += d(96f)
         if (text != null) y += ui.paragraph(g, text, cx, y, tw, d(13.5f), Ui.TEXT, Align.CENTER, spacing = 1.3f)
@@ -317,6 +338,14 @@ internal class Menus(private val game: Game) {
                 popup = null
                 game.startTutorial()
             }
+            Popup.UPDATE -> ui.button(g, "popupGo", bx, by, bw, d(56f), Tx.UPDATE_GO.t, Style.PRIMARY, size = 17f, icon = Icon.DOWNLOAD) {
+                popup = null
+                game.startUpdate()
+            }
+            Popup.REMINDERS -> ui.button(g, "popupGo", bx, by, bw, d(56f), Tx.REMINDERS_ON.t, Style.PRIMARY, size = 17f, icon = Icon.PHONE) {
+                popup = null
+                game.allowReminders {}
+            }
             Popup.VIP, Popup.ENDED -> ui.button(
                 g, "popupGo", bx, by, bw, d(56f), if (p == Popup.VIP) Tx.PROMO_MORE.t else Tx.ENDED_RENEW.t, Style.PRIMARY, size = 17f, icon = Icon.CROWN, sub = price,
             ) {
@@ -325,7 +354,13 @@ internal class Menus(private val game: Game) {
                 open(Screen.VIP)
             }
         }
-        ui.button(g, "popupLater", bx, by + d(68f), bw, d(44f), if (p == Popup.WELCOME) Tx.WELCOME_SKIP.t else Tx.PROMO_LATER.t, Style.GHOST, size = 14f) {
+        val later = when (p) {
+            Popup.WELCOME -> Tx.WELCOME_SKIP.t
+            Popup.REMINDERS -> Tx.REMINDERS_NO.t
+            else -> Tx.PROMO_LATER.t
+        }
+        ui.button(g, "popupLater", bx, by + d(68f), bw, d(44f), later, Style.GHOST, size = 14f) {
+            if (p == Popup.REMINDERS) profile.reminders = false
             popup = null
         }
     }
@@ -518,7 +553,7 @@ internal class Menus(private val game: Game) {
         ui.endScroll(g, Screen.SETTINGS.name)
     }
 
-    private fun settingsHeight(): Float = d(70f) + d(64f) * 2 + d(52f) * 4
+    private fun settingsHeight(): Float = d(70f) + d(64f) * 2 + d(52f) * 5
 
     /** The settings rows from the top at [y0]. */
     private fun settingsRows(g: Gfx, x: Float, y0: Float, w: Float) {
@@ -545,6 +580,10 @@ internal class Menus(private val game: Game) {
         }
         y += d(52f)
         ui.toggle(g, "tips", x, y, w, d(46f), Tx.TIPS.t, profile.tips) { profile.tips = it }
+        y += d(52f)
+        ui.toggle(g, "remind", x, y, w, d(46f), Tx.REMINDERS.t, profile.reminders && game.remindersAllowed) { on ->
+            if (on) game.allowReminders {} else profile.reminders = false
+        }
     }
 
     /** Settings as a dialog over the paused battle. */

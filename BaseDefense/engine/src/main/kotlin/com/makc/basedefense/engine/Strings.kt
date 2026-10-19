@@ -310,6 +310,29 @@ object Tx {
     val SECONDS = L("%s с", "%s s")
     val STUN_FOR = L("оглушение %s с", "stun %s s")
 
+    // Reminders, rating and updates
+    val REMINDERS = L("Напоминания", "Reminders")
+    val REMINDERS_TITLE = L("НАПОМИНАНИЯ", "REMINDERS")
+    val REMINDERS_TEXT = L(
+        "Сообщу, когда выйдет новое задание дня, и не дам сгореть серии. Не чаще раза в день.",
+        "I'll tell you when a new daily challenge is out and before a streak burns. Once a day at most.",
+    )
+    val REMINDERS_ON = L("ВКЛЮЧИТЬ", "TURN ON")
+    val REMINDERS_NO = L("Не надо", "No, thanks")
+    val REMINDERS_BLOCKED = L("Разреши игре уведомления в настройках телефона", "Allow the game's notifications in the phone's settings")
+    val REMIND_STREAK = L("Серия заданий дня: %d", "Daily streak: %d")
+    val REMIND_STREAK_TEXT = L("Пройди задание дня до полуночи, иначе серия сгорит.", "Win the daily challenge before midnight or the streak burns.")
+    val REMIND_DAILY = L("Новое задание дня", "A new daily challenge")
+    val REMIND_DAILY_TEXT = L("Сегодня: %s. Удержишь базу?", "Today: %s. Can you hold the base?")
+    val REMIND_DAILY_VIP = L("Сегодня: %s. А в штабе ждёт подарок VIP.", "Today: %s. And a VIP gift waits at HQ.")
+    val REMIND_CAMPAIGN = L("Командир, база ждёт приказов", "Commander, the base awaits orders")
+    val REMIND_CAMPAIGN_TEXT = L("Уровень %d ещё не взят. Вперёд!", "Level %d is still to be won. Forward!")
+    val REMIND_BACK = L("Враги у ворот базы!", "Enemies at the gates!")
+    val REMIND_BACK_TEXT = L("Отряды ждут командира. Возвращайся в бой.", "Your squads await their commander. Back to battle.")
+    val UPDATE_TITLE = L("НОВАЯ ВЕРСИЯ", "NEW VERSION")
+    val UPDATE_TEXT = L("Вышло обновление игры. Поставь его, чтобы получить всё новое.", "An update of the game is out. Install it to get everything new.")
+    val UPDATE_GO = L("ОБНОВИТЬ", "UPDATE")
+
     /** Everything above, for the translation test. */
     val all: List<L>
         get() = Tx::class.java.declaredFields.filter { it.type == L::class.java }.map {
