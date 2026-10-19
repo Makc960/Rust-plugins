@@ -139,6 +139,11 @@ object Tx {
         "В метель отряды стреляют реже, а по льду враги бегут быстрее. Береги ледяные участки дороги.",
         "In a blizzard squads fire slower, and enemies run faster on ice. Guard the icy stretches.",
     )
+    val TIP_VOLCANO = L("Извержения", "Eruptions")
+    val TIP_VOLCANO_TEXT = L(
+        "Во время извержения падают лавовые бомбы: они жгут врагов, но иногда на минуту накрывают и отряд. Саламандр в огнеупорных костюмах огонь не берёт — против них нужны пули, ракеты и мороз.",
+        "In an eruption lava bombs fall: they burn enemies but now and then knock out a squad for a moment. Fire does not hurt salamanders in their fire suits; bring bullets, rockets and frost.",
+    )
     val TIP_COMMANDER = L("Командир", "Commander")
     val TIP_COMMANDER_TEXT = L(
         "Нажми на командира или на его карточку внизу, потом на карту — он пойдёт туда. Стреляет он сам и растёт в уровне прямо в бою, а навыки — в его панели.",
@@ -190,6 +195,9 @@ object Tx {
     val BOSS = L("Босс", "Boss")
     val SHIELDED = L("Щит %s", "Shield %s")
     val STEALTHY = L("Невидимка", "Stealthy")
+    val FIREPROOF = L("Не горит", "Fireproof")
+    val BURROWS = L("Роет под землёй", "Burrows")
+    val UNSTOPPABLE = L("Не остановить", "Unstoppable")
     val COST = L("Цена %d", "Cost %d")
     val BRANCHES = L("Специализации: %s и %s", "Specialisations: %s and %s")
     val COOLDOWN = L("Перезарядка %d с", "Cooldown %d s")

@@ -15,7 +15,7 @@ internal class Art private constructor() {
 
     /** Road pieces by biome and by the sides they join: north 1, east 2, south 4, west 8. */
     val road = Array(biomes.size) { b -> Array(16) { m -> if (m == 0) null else need("road.${biomes[b]}.$m") } }
-    val trees = arrayOf(list("tree.green", 3), list("tree.desert", 2), list("tree.winter", 2))
+    val trees = arrayOf(list("tree.green", 3), list("tree.desert", 2), list("tree.winter", 2), list("tree.volcano", 2))
     val rocks = Array(biomes.size) { list("rock.${biomes[it]}", 2) }
     val cactus = need("cactus")
     val base = need("base")

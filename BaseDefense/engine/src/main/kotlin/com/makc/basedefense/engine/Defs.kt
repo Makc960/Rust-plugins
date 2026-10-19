@@ -23,6 +23,12 @@ enum class EnemyType(
     val shield: Float = 0f,
     /** Towers only see it next to a radar. */
     val stealth: Boolean = false,
+    /** Fire and lava do not hurt it; frost still does. */
+    val fireproof: Boolean = false,
+    /** Goes underground now and then, where nothing can see or hurt it. */
+    val burrows: Boolean = false,
+    /** Nothing slows, stuns or knocks it back. */
+    val unstoppable: Boolean = false,
 ) {
     BANDIT(
         L("Бандит", "Bandit"), L("Обычный налётчик", "A plain raider"),
@@ -72,9 +78,27 @@ enum class EnemyType(
         L("Вертолёт", "Helicopter"), L("Босс в воздухе: нужны ПЗРК", "Flying boss: bring Stingers"),
         2200f, 0.55f, 3f, 150, 8, 0.6f, true, 0f, 0f, 0xFF3A4652.toInt(), 7,
     ),
+
+    // The volcano's machines and fire-suited troopers.
+    SALAMANDER(
+        L("Саламандра", "Salamander"), L("Огнеупорный костюм: огонь и лава не берут, мороз берёт", "A fire suit: flames and lava do not hurt it, frost does"),
+        125f, 1.25f, 1f, 9, 1, 0.27f, false, 2.4f, 0.9f, 0xFFB8C0C8.toInt(), 25, fireproof = true,
+    ),
+    DIGGER(
+        L("Бурильщик", "Digger"), L("Уходит под землю, где его не видно и не достать", "Burrows underground, out of sight and out of reach"),
+        210f, 1.05f, 2f, 13, 1, 0.3f, false, 3.6f, 1.5f, 0xFF7FD3B2.toInt(), 26, burrows = true,
+    ),
+    JUGGERNAUT(
+        L("Джаггернаут", "Juggernaut"), L("Броня 6. Его не замедлить, не оглушить и не отбросить", "Armor 6. Nothing slows, stuns or knocks it back"),
+        560f, 0.62f, 6f, 22, 3, 0.42f, false, 7.5f, 2.4f, 0xFFE07A50.toInt(), 28, unstoppable = true,
+    ),
+    TITAN(
+        L("Титан", "Titan"), L("Босс. Топот выводит из строя отряды рядом, внутри сидят саламандры", "Boss. Its stomp knocks out squads nearby; salamanders ride inside"),
+        3400f, 0.38f, 6f, 200, 10, 0.62f, false, 0f, 0f, 0xFFF2C200.toInt(), 30,
+    ),
     ;
 
-    val boss: Boolean get() = this == APC || this == HELI
+    val boss: Boolean get() = this == APC || this == HELI || this == TITAN
     val key: String get() = "e:$name"
 }
 

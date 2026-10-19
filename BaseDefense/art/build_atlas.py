@@ -248,6 +248,61 @@ def snow(im):
     return recolor(im, fn)
 
 
+def ash(im):
+    """Grass into volcanic ash: dark grey-brown with the same light and shade."""
+    def fn(h, s, v):
+        m = greens(h, s)
+        return np.where(m, 0.06, h), np.where(m, 0.2, s), np.where(m, np.clip(0.26 + (v - 0.7) * 0.7, 0.14, 0.42), v)
+    return recolor(im, fn)
+
+
+def cinder(im):
+    """The grey asphalt of a road into a warm cinder track; the grass around stays for [ash]."""
+    def fn(h, s, v):
+        m = s < 0.2
+        return np.where(m, 0.07, h), np.where(m, 0.16, s), np.where(m, v * 0.78, v)
+    return recolor(im, fn)
+
+
+def charred(im):
+    """A tree burnt black."""
+    def fn(h, s, v):
+        m = s > 0.12
+        return np.where(m, 0.05, h), np.where(m, 0.3, s * 0.5), np.where(m, v * 0.3, v * 0.45)
+    return recolor(im, fn)
+
+
+def basalt(im):
+    def fn(h, s, v):
+        return np.full_like(h, 0.62), s * 0.2 + 0.08, v * 0.45
+    return recolor(im, fn)
+
+
+def embers(im, seed, cracks=4, sparks=6):
+    """Glowing cracks and embers, only where [im] is drawn."""
+    rng = np.random.default_rng(seed)
+    layer = Image.new('RGBA', im.size)
+    d = ImageDraw.Draw(layer)
+    w, h = im.size
+    for _ in range(cracks):
+        x, y = rng.uniform(0.15, 0.85) * w, rng.uniform(0.15, 0.85) * h
+        pts = [(x, y)]
+        for _k in range(3):
+            x += rng.uniform(-0.08, 0.08) * w
+            y += rng.uniform(-0.08, 0.08) * h
+            pts.append((x, y))
+        d.line(pts, fill=(255, 110, 30, 210), width=max(2, w // 60))
+    for _ in range(sparks):
+        x, y = rng.uniform(0.08, 0.92) * w, rng.uniform(0.08, 0.92) * h
+        r = rng.uniform(0.008, 0.018) * w
+        d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 176, 64, 230))
+    keep = np.minimum(np.asarray(layer.getchannel('A')), np.asarray(im.getchannel('A')))
+    layer.putalpha(Image.fromarray(keep))
+    out = im.copy()
+    out.alpha_composite(layer)
+    return out
+
+
 def sandstone(im):
     def fn(h, s, v):
         m = s < 0.4
@@ -311,6 +366,30 @@ def ghostly(im):
         dark = v < 0.5
         return np.where(dark, 0.76, h), np.where(dark, 0.5, s), np.where(dark, v * 1.2 + 0.18, v)
     return recolor(im, fn)
+
+
+def fire_suit(im):
+    """An aluminised fire suit: the clothes silver, the face behind a gold visor."""
+    def fn(h, s, v):
+        skin = (h > 0.02) & (h < 0.12) & (s > 0.25) & (v > 0.55)
+        return (np.where(skin, 0.1, 0.58), np.where(skin, 0.9, s * 0.15 + 0.04),
+                np.where(skin, np.minimum(1.0, v * 1.05), np.clip(v * 0.55 + 0.45, 0, 0.95)))
+    return recolor(im, fn)
+
+
+def glow(im, colour=(255, 120, 30), radius=7):
+    """A hot orange glow around [im]."""
+    pad = radius * 3
+    out = Image.new('RGBA', (im.width + 2 * pad, im.height + 2 * pad))
+    g = Image.new('RGBA', im.size, colour + (255,))
+    g.putalpha(im.getchannel('A'))
+    layer = Image.new('RGBA', out.size)
+    layer.alpha_composite(g, (pad, pad))
+    a = np.asarray(layer.filter(ImageFilter.GaussianBlur(radius))).astype(np.float32)
+    a[..., 3] = np.minimum(255, a[..., 3] * 1.9)
+    out.alpha_composite(Image.fromarray(a.astype(np.uint8)))
+    out.alpha_composite(im, (pad, pad))
+    return out
 
 
 def white_coat(im):
@@ -937,7 +1016,7 @@ def sentry_gun():
 
 # --- the squads' pits and props ------------------------------------------------------------
 
-PIT_FLOOR = {'green': (126, 94, 60, 255), 'desert': (194, 158, 108, 255), 'winter': (170, 162, 156, 255)}
+PIT_FLOOR = {'green': (126, 94, 60, 255), 'desert': (194, 158, 108, 255), 'winter': (170, 162, 156, 255), 'volcano': (84, 66, 58, 255)}
 
 
 def pit(biome, elite):
@@ -1001,6 +1080,8 @@ S['ground.desert.0'] = tanks('tileSand1').resize((PX, PX), Image.LANCZOS)
 S['ground.desert.1'] = tanks('tileSand2').resize((PX, PX), Image.LANCZOS)
 S['ground.winter.0'] = snow(S['ground.green.0'])
 S['ground.winter.1'] = snow(S['ground.green.1'])
+S['ground.volcano.0'] = embers(ash(S['ground.green.0']), 1, cracks=2, sparks=3)
+S['ground.volcano.1'] = embers(ash(S['ground.green.1']), 2, cracks=1, sparks=4)
 
 N, E, SO, WE = 1, 2, 4, 8
 
@@ -1021,7 +1102,8 @@ def road_mask(im, ground):
 ROAD_TILES = ['roadEast', 'roadNorth', 'roadCornerLL', 'roadCornerLR', 'roadCornerUL', 'roadCornerUR',
               'roadSplitE', 'roadSplitN', 'roadSplitS', 'roadSplitW', 'roadCrossing']
 for biome, prefix, ground, change in (('green', 'tileGrass_', 'tileGrass1', None), ('desert', 'tileSand_', 'tileSand1', None),
-                                      ('winter', 'tileGrass_', 'tileGrass1', snow)):
+                                      ('winter', 'tileGrass_', 'tileGrass1', snow),
+                                      ('volcano', 'tileGrass_', 'tileGrass1', lambda im: ash(cinder(im)))):
     found = {}
     for t in ROAD_TILES:
         im = tanks(prefix + t).resize((PX, PX), Image.LANCZOS)
@@ -1052,6 +1134,10 @@ S['rock.desert.0'] = shadowed(trim(sandstone(td(136))))
 S['rock.desert.1'] = shadowed(trim(sandstone(td(137))))
 S['rock.winter.0'] = shadowed(trim(snowcap(td(136))))
 S['rock.winter.1'] = shadowed(trim(snowcap(td(135))))
+S['tree.volcano.0'] = shadowed(trim(embers(charred(td(133)), 3, cracks=1, sparks=5)))
+S['tree.volcano.1'] = shadowed(trim(embers(charred(tanks('treeBrown_large')), 4, cracks=1, sparks=6)))
+S['rock.volcano.0'] = shadowed(trim(embers(basalt(td(136)), 5, cracks=3, sparks=2)))
+S['rock.volcano.1'] = shadowed(trim(embers(basalt(td(135)), 6, cracks=3, sparks=2)))
 S['cactus'] = shadowed(cactus())
 S['base'] = shadowed(bunker(), alpha=0.35)
 S['scorch'] = trim(td(19))
@@ -1104,7 +1190,7 @@ S['trooper.jammer'] = trooper('soldier1_hold', SQUAD['radar'], handset, jam_pack
 S['trooper.quarry'] = trooper('soldier1_hold', SQUAD['quarry'], crate)
 S['trooper.drill'] = trooper('soldier1_hold', SQUAD['quarry'], jackhammer)
 S['trooper.bank'] = trooper('soldier1_hold', SQUAD['quarry'], money_bag)
-for biome in ('green', 'desert', 'winter'):
+for biome in ('green', 'desert', 'winter', 'volcano'):
     S['pit.%s' % biome] = pit(biome, False)
     S['pit.%s.elite' % biome] = pit(biome, True)
 
@@ -1211,6 +1297,61 @@ S['enemy.drone'] = trim(td(271))
 S['shadow.drone'] = trim(td(294))
 S['enemy.apc'] = square(face_right_from_down(tanks('tank_huge')))
 S['enemy.heli'] = heli_body()
+
+
+ROBOTS = K / 'robot-pack/PNG/Top view'
+
+
+def robot(name):
+    return Image.open(ROBOTS / (name + '.png')).convert('RGBA')
+
+
+def drill_robot():
+    """The digger: a small tracked robot with a drill in front, facing right."""
+    im = Image.new('RGBA', (260, 200))
+    d = ImageDraw.Draw(im)
+    tracks = robot('track_short')
+    im.alpha_composite(tracks, (30, 20))
+    im.alpha_composite(tracks, (30, 126))
+    im.alpha_composite(robot('body_3Dgreen'), (10, 59))
+    d.polygon([(158, 64), (244, 100), (158, 136)], fill=(118, 124, 132, 255), outline=(52, 56, 62, 255))
+    for k in range(4):
+        x = 170 + k * 18
+        d.line((x, 70 + k * 7, x + 10, 130 - k * 7), fill=(70, 74, 82, 255), width=4)
+    d.ellipse((60, 84, 92, 116), fill=(255, 210, 90, 255), outline=(120, 90, 30, 255), width=3)
+    return trim(im)
+
+
+def armoured(im, plates):
+    """Dark armour plates bolted over a robot."""
+    d = ImageDraw.Draw(im)
+    for (x0, y0, x1, y1) in plates:
+        d.rounded_rectangle((x0, y0, x1, y1), radius=6, fill=(62, 66, 74, 255), outline=(30, 32, 36, 255), width=4)
+        for (bx, by) in ((x0 + 9, y0 + 9), (x1 - 9, y0 + 9), (x0 + 9, y1 - 9), (x1 - 9, y1 - 9)):
+            d.ellipse((bx - 3, by - 3, bx + 3, by + 3), fill=(150, 156, 164, 255))
+    return im
+
+
+def titan():
+    """The boss: a big yellow walker with hazard stripes, armour and two cannons, facing right."""
+    base = robot('robot_3Dyellow')
+    im = Image.new('RGBA', (300, 260))
+    im.alpha_composite(base.resize((base.width * 3 // 2, base.height * 3 // 2), Image.LANCZOS), (10, 14))
+    d = ImageDraw.Draw(im)
+    for y in (40, 196):
+        d.rounded_rectangle((150, y, 292, y + 24), radius=6, fill=(52, 56, 62, 255), outline=(24, 26, 30, 255), width=4)
+        d.rectangle((272, y - 4, 292, y + 28), fill=(36, 38, 44, 255))
+    for k in range(5):
+        x = 40 + k * 30
+        d.polygon([(x, 92), (x + 16, 92), (x + 2, 168), (x - 14, 168)], fill=(40, 40, 44, 255))
+    d.rounded_rectangle((176, 100, 214, 160), radius=8, fill=(214, 46, 40, 255), outline=(90, 16, 14, 255), width=4)
+    return trim(im)
+
+
+S['enemy.salamander'] = glow(fire_suit(character('hitman1_hold')))
+S['enemy.digger'] = scale(drill_robot(), 0.55)
+S['enemy.juggernaut'] = scale(trim(armoured(robot('robot_3Dred'), [(14, 60, 70, 94), (84, 60, 120, 94)])), 0.62)
+S['enemy.titan'] = scale(titan(), 0.75)
 S['plane'] = trim(td(270))
 S['shadow.plane'] = trim(td(293))
 S['rocket'] = trim(face_right_from_up(td(251)))

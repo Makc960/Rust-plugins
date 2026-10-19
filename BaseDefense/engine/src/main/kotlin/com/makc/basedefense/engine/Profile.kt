@@ -447,7 +447,8 @@ object Tips {
     const val OBSTACLES = "tip:obstacles"
     const val WEATHER = "tip:weather"
     const val WINTER = "tip:winter"
+    const val VOLCANO = "tip:volcano"
     const val ZOOM = "tip:zoom"
     const val COMMANDER = "tip:commander"
-    val keys = listOf(ABILITIES, BRANCHES, OBSTACLES, WEATHER, WINTER, ZOOM, COMMANDER)
+    val keys = listOf(ABILITIES, BRANCHES, OBSTACLES, WEATHER, WINTER, VOLCANO, ZOOM, COMMANDER)
 }

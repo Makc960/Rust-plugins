@@ -67,12 +67,17 @@ class Enemy(
     var knock = 0f
     var age = 0f
 
+    /** Diggers: seconds until the next dive, and left underground. */
+    var burrow = 2.5f
+    var under = 0f
+
     /** For ghosts: a radar sees it right now. */
     var revealed = false
     var seen = false
 
     val remaining: Float get() = path.length - dist
-    val visible: Boolean get() = !type.stealth || revealed
+    val underground: Boolean get() = under > 0f
+    val visible: Boolean get() = (!type.stealth || revealed) && !underground
     val stunned: Boolean get() = stunTimer > 0f
 }
 
@@ -205,6 +210,9 @@ class Bomb(val x: Float, val y: Float, var timer: Float, val damage: Float) {
     }
 }
 
+/** A lava bomb of an eruption, landing on ([x], [y]) when [timer] runs out. */
+class Lava(val x: Float, val y: Float, var timer: Float, val fall: Float = timer)
+
 class Plane(val x: Float, var y: Float)
 
 /** A big line of text across the map for a few seconds. */
@@ -252,6 +260,8 @@ class World(
         private set
     var ghostKills = 0
         private set
+    var titanKills = 0
+        private set
     var built = 0
         private set
     var airstrikes = 0
@@ -283,6 +293,7 @@ class World(
     val patches = ArrayList<Patch>()
     val corpses = ArrayList<Corpse>()
     val bombs = ArrayList<Bomb>()
+    val lava = ArrayList<Lava>()
     var plane: Plane? = null
         private set
 
@@ -299,10 +310,11 @@ class World(
     var banner: Banner? = null
         private set
 
-    /** Seconds left of the current sandstorm or blizzard. */
+    /** Seconds left of the current sandstorm, blizzard or eruption. */
     var weather = 0f
         private set
     private var weatherWait = FIRST_WEATHER
+    private var lavaWait = 0f
     var freezeTimer = 0f
         private set
 
@@ -356,6 +368,7 @@ class World(
 
     val sandstorm: Boolean get() = weather > 0f && map.biome == Biome.DESERT
     val blizzard: Boolean get() = weather > 0f && map.biome == Biome.WINTER
+    val eruption: Boolean get() = weather > 0f && map.biome == Biome.VOLCANO
 
     /** 0 to 1: how thick the weather is, fading in and out. */
     val weatherLevel: Float get() = if (weather <= 0f) 0f else min(1f, min(weather, WEATHER_TIME - weather) / 1.2f)
@@ -421,6 +434,7 @@ class World(
             updateProjectiles(dt)
             updatePatches(dt)
             updateBombs(dt)
+            updateLava(dt)
             enemies.removeAll { !it.alive }
             enemies.addAll(incoming)
             incoming.clear()
@@ -507,7 +521,12 @@ class World(
         built++
         typeMask = typeMask or (1 shl type.ordinal)
         rings += Ring(t.x, t.y, 0.8f, 0.4f, 0.4f, Colors.alpha(WHITE, 0.8f))
-        puff(t.x, t.y, if (lite) 4 else 8, if (map.biome == Biome.WINTER) 0xFFE8F0F8.toInt() else 0xFFB9A98A.toInt())
+        val dust = when (map.biome) {
+            Biome.WINTER -> 0xFFE8F0F8.toInt()
+            Biome.VOLCANO -> ASH
+            else -> 0xFFB9A98A.toInt()
+        }
+        puff(t.x, t.y, if (lite) 4 else 8, dust)
         sound(Sfx.BUILD, 0.7f)
         return t
     }
@@ -585,7 +604,11 @@ class World(
         clearedCells += r * COLS + c
         cleared++
         val color = when (kind) {
-            'T' -> if (map.biome == Biome.WINTER) 0xFF2F5A4A.toInt() else 0xFF3E7A35.toInt()
+            'T' -> when (map.biome) {
+                Biome.WINTER -> 0xFF2F5A4A.toInt()
+                Biome.VOLCANO -> 0xFF3A2E28.toInt()
+                else -> 0xFF3E7A35.toInt()
+            }
             'C' -> 0xFF5E8F3A.toInt()
             else -> 0xFF8C8478.toInt()
         }
@@ -728,6 +751,7 @@ class World(
         if (map.biome == Biome.GREEN) return
         if (weather > 0f) {
             weather -= dt
+            if (eruption) erupt(dt)
             if (weather <= 0f) {
                 weather = 0f
                 weatherWait = WEATHER_GAP + rng.nextFloat() * WEATHER_GAP_RANDOM
@@ -737,11 +761,73 @@ class World(
         weatherWait -= dt
         if (weatherWait > 0f) return
         weather = WEATHER_TIME
-        banner = if (map.biome == Biome.DESERT) {
-            Banner({ L("ПЕСЧАНАЯ БУРЯ", "SANDSTORM").t }, { L("Дальность отрядов −30%", "Squad range −30%").t }, SAND, 2.6f)
-        } else {
-            Banner({ L("МЕТЕЛЬ", "BLIZZARD").t }, { L("Отряды стреляют на 25% реже", "Squads fire 25% slower").t }, ICE, 2.6f)
+        banner = when (map.biome) {
+            Biome.DESERT -> Banner({ L("ПЕСЧАНАЯ БУРЯ", "SANDSTORM").t }, { L("Дальность отрядов −30%", "Squad range −30%").t }, SAND, 2.6f)
+            Biome.VOLCANO -> Banner({ L("ИЗВЕРЖЕНИЕ", "ERUPTION").t }, { L("Лава жжёт врагов, но может задеть отряды", "Lava burns enemies but may hit squads").t }, LAVA, 2.6f)
+            else -> Banner({ L("МЕТЕЛЬ", "BLIZZARD").t }, { L("Отряды стреляют на 25% реже", "Squads fire 25% slower").t }, ICE, 2.6f)
         }
+        if (map.biome == Biome.VOLCANO) {
+            lavaWait = LAVA_EVERY
+            shake = max(shake, 0.4f)
+            sound(Sfx.BOOM, 0.8f)
+        }
+    }
+
+    /** Lava bombs rain down through an eruption: mostly where enemies walk, now and then on a squad. */
+    private fun erupt(dt: Float) {
+        lavaWait -= dt
+        if (lavaWait > 0f) return
+        lavaWait = LAVA_EVERY * (0.7f + rng.nextFloat() * 0.6f)
+        val walkers = enemies.filter { it.alive && !it.type.air && onMap(it) }
+        var x: Float
+        var y: Float
+        if (towers.isNotEmpty() && (walkers.isEmpty() || rng.nextFloat() < LAVA_ON_SQUADS)) {
+            val t = towers[rng.nextInt(towers.size)]
+            x = t.x
+            y = t.y
+        } else if (walkers.isNotEmpty()) {
+            // Where it will be when the bomb lands.
+            val e = walkers[rng.nextInt(walkers.size)]
+            x = e.x + e.dirX * speedOf(e) * LAVA_FALL
+            y = e.y + e.dirY * speedOf(e) * LAVA_FALL
+        } else {
+            return
+        }
+        x += (rng.nextFloat() - 0.5f) * 0.6f
+        y += (rng.nextFloat() - 0.5f) * 0.6f
+        lava += Lava(x.coerceIn(0.3f, COLS - 0.3f), y.coerceIn(0.3f, ROWS - 0.3f), LAVA_FALL)
+    }
+
+    val lavaDamage: Float get() = LAVA_DAMAGE * (1f + 0.1f * max(0, wavesStarted - 1))
+
+    private fun updateLava(dt: Float) {
+        if (lava.isEmpty()) return
+        val iter = lava.iterator()
+        while (iter.hasNext()) {
+            val b = iter.next()
+            b.timer -= dt
+            if (b.timer > 0f) continue
+            iter.remove()
+            val dmg = lavaDamage
+            for (e in enemies) {
+                if (!e.alive || e.type.air || e.type.fireproof || !near(e.x, e.y, b.x, b.y, LAVA_RADIUS + e.type.radius)) continue
+                damage(e, dmg, null, pierce = true)
+                ignite(e, LAVA_BURN, LAVA_BURN_TIME)
+            }
+            for (t in towers) if (near(t.x, t.y, b.x, b.y, LAVA_RADIUS)) t.jammed = max(t.jammed, LAVA_JAM)
+            commander?.let { if (near(it.x, it.y, b.x, b.y, LAVA_RADIUS)) it.jammed = max(it.jammed, LAVA_JAM) }
+            patches += Patch(b.x, b.y, LAVA_POOL, LAVA_POOL_DPS, LAVA_RADIUS * 0.8f, null)
+            explosion(b.x, b.y, LAVA_RADIUS)
+            shake = max(shake, 0.15f)
+            sound(Sfx.BOOM, 0.45f)
+        }
+    }
+
+    /** Sets [e] on fire, unless it wears a fire suit. */
+    private fun ignite(e: Enemy, dps: Float, time: Float) {
+        if (e.type.fireproof) return
+        e.burnDps = max(e.burnDps, dps)
+        e.burnTimer = max(e.burnTimer, time)
     }
 
     // --- support towers -------------------------------------------------------------------
@@ -799,7 +885,7 @@ class World(
     private fun bossK(e: Enemy): Float = if (e.type.boss) 0.5f else 1f
 
     private fun slow(e: Enemy, amount: Float, time: Float) {
-        if (amount <= 0f) return
+        if (amount <= 0f || e.type.unstoppable) return
         if (e.slowTimer <= 0f || amount > e.slowAmount + 0.001f) {
             e.slowAmount = amount
             e.slowTimer = time
@@ -850,6 +936,8 @@ class World(
             when (e.type) {
                 EnemyType.MEDIC -> heal(e, dt)
                 EnemyType.SAPPER -> jam(e, dt)
+                EnemyType.TITAN -> stomp(e, dt)
+                EnemyType.DIGGER -> burrow(e, dt)
                 else -> Unit
             }
             if (e.type.boss) {
@@ -919,6 +1007,39 @@ class World(
         sound(Sfx.JAM, 0.6f)
     }
 
+    /** The titan's stomp: every few seconds the ground shakes and the squads around it stop firing. */
+    private fun stomp(e: Enemy, dt: Float) {
+        e.jamTimer -= dt
+        if (e.jamTimer > 0f || !onMap(e)) return
+        e.jamTimer = STOMP_EVERY
+        e.jamPulse = 0.5f
+        for (t in towers) if (near(t.x, t.y, e.x, e.y, STOMP_RADIUS)) t.jammed = max(t.jammed, STOMP_TIME)
+        commander?.let { if (near(it.x, it.y, e.x, e.y, STOMP_RADIUS)) it.jammed = max(it.jammed, STOMP_TIME) }
+        rings += Ring(e.x, e.y, STOMP_RADIUS, 0.6f, 0.6f, Colors.alpha(DIRT, 0.95f))
+        puff(e.x, e.y, if (lite) 6 else 14, DIRT)
+        shake = max(shake, 0.3f)
+        sound(Sfx.MINE, 0.7f)
+    }
+
+    /** Diggers dive now and then; underground nothing sees or hurts them, and the fire on them goes out. */
+    private fun burrow(e: Enemy, dt: Float) {
+        if (e.under > 0f) {
+            e.under -= dt
+            if (e.under <= 0f) {
+                e.under = 0f
+                e.burrow = BURROW_EVERY
+                puff(e.x, e.y, if (lite) 3 else 7, DIRT)
+            }
+            return
+        }
+        if (!onMap(e)) return
+        e.burrow -= dt
+        if (e.burrow > 0f) return
+        e.under = BURROW_TIME
+        e.burnTimer = 0f
+        puff(e.x, e.y, if (lite) 3 else 7, DIRT)
+    }
+
     private fun reachBase(e: Enemy) {
         e.alive = false
         lives -= e.type.damage
@@ -938,7 +1059,7 @@ class World(
 
     /** Hits [e] for [raw] damage before armor; returns what actually came off. [hero] is the commander's. */
     fun damage(e: Enemy, raw: Float, source: Tower?, pierce: Boolean = false, armorPierce: Float = 0f, hero: Boolean = false): Float {
-        if (!e.alive || raw <= 0f) return 0f
+        if (!e.alive || raw <= 0f || e.underground) return 0f
         var amount = raw
         if (e.markTimer > 0f) amount *= MARK_BONUS
         if (e.frostTimer > 0f) amount *= FROST_BONUS
@@ -977,6 +1098,7 @@ class World(
         kills++
         if (e.type.boss) bossKills++
         if (e.type == EnemyType.GHOST) ghostKills++
+        if (e.type == EnemyType.TITAN) titanKills++
         if (source != null) source.kills++
         commander?.let {
             if (hero) {
@@ -1005,6 +1127,7 @@ class World(
         when (e.type) {
             EnemyType.APC -> brood(e, EnemyType.BANDIT, APC_CREW, 0.3f)
             EnemyType.MOTHER -> brood(e, EnemyType.SWARM, MOTHER_BROOD, 0.12f)
+            EnemyType.TITAN -> brood(e, EnemyType.SALAMANDER, TITAN_CREW, 0.25f)
             else -> Unit
         }
         finish(e)
@@ -1161,7 +1284,7 @@ class World(
             var hit: Enemy? = null
             var hitT = range
             for (e in enemies) {
-                if (!e.alive || e.type.air) continue
+                if (!e.alive || e.type.air || e.underground) continue
                 val ex = e.x - t.x
                 val ey = e.y - t.y
                 val proj = ex * dx + ey * dy
@@ -1180,7 +1303,7 @@ class World(
             }
         }
         if (t.branch == Branch.ASSAULT) {
-            for (e in hitList) if (e.alive && !e.type.boss) e.knock = max(e.knock, s.extra2)
+            for (e in hitList) if (e.alive && !e.type.boss && !e.type.unstoppable) e.knock = max(e.knock, s.extra2)
         }
     }
 
@@ -1191,7 +1314,7 @@ class World(
         hitList.clear()
         val along = HashMap<Enemy, Float>()
         for (e in enemies) {
-            if (!e.alive || e.type.air) continue
+            if (!e.alive || e.type.air || e.underground) continue
             val ex = e.x - t.x
             val ey = e.y - t.y
             val proj = ex * dx + ey * dy
@@ -1215,7 +1338,7 @@ class World(
         val r2 = range * range
         val cryo = t.branch == Branch.CRYO
         for (e in enemies) {
-            if (!e.alive || e.type.air) continue
+            if (!e.alive || e.type.air || e.underground) continue
             val dx = e.x - t.x
             val dy = e.y - t.y
             val d2 = dx * dx + dy * dy
@@ -1224,11 +1347,9 @@ class World(
             while (diff > 3.1416f) diff -= 6.2832f
             while (diff < -3.1416f) diff += 6.2832f
             if (abs(diff) > FLAME_CONE && d2 > 0.16f) continue
+            if (e.type.fireproof && !cryo) continue
             damage(e, dmg * FLAME_TICK, t, pierce = true)
-            if (s.extra > 0f) {
-                e.burnDps = max(e.burnDps, dmg * AFTERBURN)
-                e.burnTimer = max(e.burnTimer, s.extra)
-            }
+            if (s.extra > 0f) ignite(e, dmg * AFTERBURN, s.extra)
             if (cryo) {
                 slow(e, s.extra2 * bossK(e), 0.6f)
                 e.frostTimer = max(e.frostTimer, 1f)
@@ -1294,7 +1415,7 @@ class World(
             ys += cur.y
             damage(cur, dmg, t)
             if (stun) {
-                if (cur.type.boss) {
+                if (cur.type.boss || cur.type.unstoppable) {
                     slow(cur, 0.5f, SLOW_TIME)
                 } else if (cur.stunTimer <= 0f && cur.stunGuard <= 0f) {
                     cur.stunTimer = s.extra2
@@ -1306,7 +1427,7 @@ class World(
             var next: Enemy? = null
             var best = TESLA_JUMP * TESLA_JUMP
             for (e in enemies) {
-                if (!e.alive || e in chain || !onMap(e)) continue
+                if (!e.alive || e.underground || e in chain || !onMap(e)) continue
                 val dx = e.x - cur.x
                 val dy = e.y - cur.y
                 val d2 = dx * dx + dy * dy
@@ -1365,7 +1486,7 @@ class World(
         if (t.branch == Branch.SPIKES) {
             val dps = damageOf(t)
             for (e in enemies) {
-                if (!e.alive || e.type.air) continue
+                if (!e.alive || e.type.air || e.underground) continue
                 if (!near(e.x, e.y, t.x, t.y, s.range + e.type.radius * 0.5f)) continue
                 damage(e, dps * dt, t, pierce = true)
                 slow(e, s.extra * bossK(e), 0.3f)
@@ -1381,7 +1502,7 @@ class World(
         }
         var triggered = false
         for (e in enemies) {
-            if (e.alive && !e.type.air && near(e.x, e.y, t.x, t.y, MINE_TRIGGER + e.type.radius * 0.5f)) {
+            if (e.alive && !e.type.air && !e.underground && near(e.x, e.y, t.x, t.y, MINE_TRIGGER + e.type.radius * 0.5f)) {
                 triggered = true
                 break
             }
@@ -1701,7 +1822,7 @@ class World(
         for (e in enemies) {
             if (!e.alive || !onMap(e) || !near(e.x, e.y, c.x, c.y, EMP_RADIUS)) continue
             hit = true
-            if (e.type.boss) slow(e, 0.5f, stun) else e.stunTimer = max(e.stunTimer, stun)
+            if (e.type.boss || e.type.unstoppable) slow(e, 0.5f, stun) else e.stunTimer = max(e.stunTimer, stun)
             damage(e, EMP_DAMAGE * c.power * rules.damageMul, null, pierce = true, hero = true)
         }
         if (!hit) return false
@@ -1816,7 +1937,7 @@ class World(
                 continue
             }
             if (t.arming > 0f) continue
-            if (enemies.none { it.alive && !it.type.air && near(it.x, it.y, t.x, t.y, TRAP_TRIGGER + it.type.radius) }) continue
+            if (enemies.none { it.alive && !it.type.air && !it.underground && near(it.x, it.y, t.x, t.y, TRAP_TRIGGER + it.type.radius) }) continue
             iter.remove()
             explosion(t.x, t.y, TRAP_RADIUS)
             splash(t.x, t.y, TRAP_RADIUS, t.damage, null, TRAP_BOSS, hero = true)
@@ -1932,7 +2053,7 @@ class World(
         for (p in patches) {
             p.life -= dt
             for (e in enemies) {
-                if (!e.alive || e.type.air) continue
+                if (!e.alive || e.type.air || e.type.fireproof) continue
                 if (near(e.x, e.y, p.x, p.y, p.radius + e.type.radius * 0.5f)) damage(e, p.dps * dt, p.source, pierce = true)
             }
             if (!lite && fx.nextFloat() < dt * 8f) flame(p.x, p.y, 1, p.radius * 1.4f)
@@ -2064,9 +2185,9 @@ class World(
         put("waves", wavesStarted)
         put("countdown", countdown)
         put("time", time, battleTime)
-        put("stats", kills, leaked, bossKills, ghostKills, built, airstrikes, cleared, maxMoney, branchMask, typeMask, abilitiesUsed)
+        put("stats", kills, leaked, bossKills, ghostKills, built, airstrikes, cleared, maxMoney, branchMask, typeMask, abilitiesUsed, titanKills)
         put("cool", *cooldowns.toTypedArray())
-        put("weather", weather, weatherWait)
+        put("weather", weather, weatherWait, lavaWait)
         if (reserveUsed) put("reserve", 1)
         if (clearedCells.isNotEmpty()) put("cleared", *clearedCells.toTypedArray())
         for ((w, n) in remaining) put("remain", w, n)
@@ -2081,11 +2202,13 @@ class World(
             put(
                 "enemy", e.type.name, e.pathIndex, e.dist, e.hp, e.hpMul, e.wave, e.lane, e.reward, e.shield,
                 e.slowTimer, e.slowAmount, e.burnTimer, e.burnDps, e.stunTimer, e.markTimer, e.frostTimer, e.jamTimer,
+                e.burrow, e.under,
             )
         }
         for (a in active) put("group", a.wave, a.index, a.spawned, a.timer)
         for (p in patches) put("patch", p.x, p.y, p.life, p.dps, p.radius)
         for (b in bombs) put("bomb", b.x, b.y, b.timer, b.damage)
+        for (b in lava) put("lava", b.x, b.y, b.timer, b.fall)
         commander?.let {
             put(
                 "hero", it.type.name, it.x, it.y, it.tx, it.ty, it.level, it.xp, it.cooldown, it.kills, it.damageDealt,
@@ -2128,11 +2251,13 @@ class World(
                     branchMask = i(8)
                     typeMask = i(9)
                     abilitiesUsed = i(10)
+                    titanKills = f.getOrNull(11)?.toIntOrNull() ?: 0
                 }
                 "cool" -> for (k in cooldowns.indices) cooldowns[k] = f.getOrNull(k)?.toFloatOrNull() ?: 0f
                 "weather" -> {
                     weather = x(0)
                     weatherWait = x(1)
+                    lavaWait = f.getOrNull(2)?.toFloatOrNull() ?: 0f
                 }
                 "cleared" -> for (s in f) {
                     val cell = s.toInt()
@@ -2168,6 +2293,9 @@ class World(
                     e.markTimer = x(14)
                     e.frostTimer = x(15)
                     e.jamTimer = x(16)
+                    // Saved before the volcano: no diggers yet.
+                    e.burrow = f.getOrNull(17)?.toFloatOrNull() ?: e.burrow
+                    e.under = f.getOrNull(18)?.toFloatOrNull() ?: 0f
                     e.age = 10f
                     place(e)
                     e.seen = onMap(e)
@@ -2184,6 +2312,7 @@ class World(
                 }
                 "patch" -> patches += Patch(x(0), x(1), x(2), x(3), x(4), null)
                 "bomb" -> bombs += Bomb(x(0), x(1), x(2), x(3))
+                "lava" -> lava += Lava(x(0), x(1), x(2), x(3))
                 "hero" -> {
                     val c = Commander(CommanderType.valueOf(f[0]), x(1), x(2))
                     c.tx = x(3)
@@ -2216,6 +2345,7 @@ class World(
         const val WAVE_BONUS_STEP = 2
         const val APC_CREW = 4
         const val MOTHER_BROOD = 6
+        const val TITAN_CREW = 3
         const val MEDIC_RADIUS = 1.7f
         const val MEDIC_HEAL = 14f
         const val BULLET_SPEED = 15f
@@ -2238,6 +2368,11 @@ class World(
         const val SAPPER_RADIUS = 1.3f
         const val JAM_TIME = 4f
         const val JAM_COOLDOWN = 6f
+        const val STOMP_EVERY = 6.5f
+        const val STOMP_RADIUS = 1.8f
+        const val STOMP_TIME = 3f
+        const val BURROW_EVERY = 3f
+        const val BURROW_TIME = 1.6f
         const val ICE_SPEED = 1.4f
         const val KNOCK_SPEED = 3f
         const val STUN_GUARD = 1.2f
@@ -2259,6 +2394,18 @@ class World(
         const val WEATHER_TIME = 8f
         const val WEATHER_GAP = 40f
         const val WEATHER_GAP_RANDOM = 30f
+
+        // An eruption's lava bombs: how often, how long they fall, what they do where they land.
+        const val LAVA_EVERY = 0.9f
+        const val LAVA_FALL = 1.1f
+        const val LAVA_RADIUS = 0.6f
+        const val LAVA_DAMAGE = 70f
+        const val LAVA_BURN = 25f
+        const val LAVA_BURN_TIME = 2f
+        const val LAVA_JAM = 2.5f
+        const val LAVA_ON_SQUADS = 0.3f
+        const val LAVA_POOL = 2f
+        const val LAVA_POOL_DPS = 30f
         const val BOSS_ALERT = 2.4f
         const val AIRSTRIKE_DAMAGE = 220f
         const val AIRSTRIKE_RADIUS = 1.0f
@@ -2323,5 +2470,8 @@ class World(
         val BOLT = 0xFF6FE3FF.toInt()
         val SAND = 0xFFE8C27A.toInt()
         val ICE = 0xFFBFE6FF.toInt()
+        val LAVA = 0xFFFF7A2A.toInt()
+        val ASH = 0xFF8A7E76.toInt()
+        val DIRT = 0xFF9A7A52.toInt()
     }
 }

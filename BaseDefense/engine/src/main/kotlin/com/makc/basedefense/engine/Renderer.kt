@@ -45,12 +45,15 @@ class Renderer {
         val rock: Int,
         val rockLight: Int,
         val snow: Boolean,
+        /** Its water is lava. */
+        val lava: Boolean = false,
     )
 
     fun palette(b: Biome): Palette = when (b) {
         Biome.GREEN -> GREEN
         Biome.DESERT -> DESERT
         Biome.WINTER -> WINTER
+        Biome.VOLCANO -> VOLCANO
     }
 
     /** [pxPerCell] is how big a cell is on screen, for the cached terrain picture. */
@@ -74,6 +77,7 @@ class Renderer {
         for (s in w.sentries) drawSentry(g, s)
         w.commander?.let { drawCommander(g, it, time) }
         for (b in w.bombs) drawBomb(g, b)
+        for (b in w.lava) drawLavaBomb(g, b, time)
         for (p in w.projectiles) drawProjectile(g, p)
         for (t in w.tracers) drawTracer(g, t)
         if (a != null) for (b in w.blasts) drawFireball(g, a, b)
@@ -176,8 +180,8 @@ class Renderer {
     private fun drawWater(g: Gfx, map: GameMap, pal: Palette) {
         val rad = 0.32f
         val wide = 0.08f
-        // Opaque, so where two rims meet no brighter seam shows.
-        val rim = Colors.mix(pal.water, pal.waterLight, 0.85f)
+        // Opaque, so where two rims meet no brighter seam shows. Lava has a dark crust instead.
+        val rim = if (pal.lava) LAVA_CRUST else Colors.mix(pal.water, pal.waterLight, 0.85f)
         for (r in 0 until ROWS) for (c in 0 until COLS) {
             if (!isWater(map, c, r)) continue
             val x = c.toFloat()
@@ -237,6 +241,7 @@ class Renderer {
 
     private fun drawWaves(g: Gfx, map: GameMap, time: Float) {
         val pal = palette(map.biome)
+        if (pal.lava) return drawLavaFlow(g, map, pal, time)
         val speed = if (pal.snow) 0.02f else 0.12f
         for (r in 0 until ROWS) for (c in 0 until COLS) {
             if (map.terrain(c, r) != '~') continue
@@ -247,6 +252,25 @@ class Renderer {
                 val y = r + 0.3f + k * 0.42f
                 g.line(x, y, x + 0.22f, y, pal.waterLight, 0.04f)
             }
+        }
+    }
+
+    /** Lava glows, its bright streaks creep along and bubbles swell and pop. */
+    private fun drawLavaFlow(g: Gfx, map: GameMap, pal: Palette, time: Float) {
+        for (r in 0 until ROWS) for (c in 0 until COLS) {
+            if (map.terrain(c, r) != '~') continue
+            val h = hash(c, r)
+            g.glow(c + 0.5f, r + 0.5f, 0.75f, Colors.alpha(pal.waterLight, 0.16f + 0.08f * sin(time * 1.7f + (h and 15))))
+            for (k in 0 until 2) {
+                val off = ((h ushr (k * 5)) and 31) / 31f
+                val x = c + 0.1f + ((off + time * 0.05f) % 1f) * 0.65f
+                val y = r + 0.3f + k * 0.4f
+                g.line(x, y, x + 0.22f, y + 0.03f, Colors.alpha(pal.waterLight, 0.8f), 0.05f)
+            }
+            val pop = (time * 0.55f + ((h ushr 12) and 63) / 63f) % 1f
+            val bx = c + 0.25f + ((h ushr 18) and 15) / 15f * 0.5f
+            val by = r + 0.25f + ((h ushr 22) and 15) / 15f * 0.5f
+            g.fillCircle(bx, by, 0.03f + 0.07f * pop, Colors.alpha(pal.waterLight, 0.9f * (1f - pop)))
         }
     }
 
@@ -289,6 +313,11 @@ class Renderer {
                     val x = c + 0.15f + ((h ushr (k * 6)) and 63) / 63f * 0.6f
                     val y = r + 0.2f + ((h ushr (k * 6 + 3)) and 63) / 63f * 0.6f
                     g.line(x, y, x + 0.22f, y, pal.tuft, 0.035f)
+                }
+                Biome.VOLCANO -> for (k in 0 until 2) {
+                    val x = c + 0.15f + ((h ushr (k * 6)) and 63) / 63f * 0.7f
+                    val y = r + 0.15f + ((h ushr (k * 6 + 3)) and 63) / 63f * 0.7f
+                    g.fillCircle(x, y, 0.03f, pal.tuft)
                 }
             }
         }
@@ -352,6 +381,7 @@ class Renderer {
                 'T' -> when (map.biome) {
                     Biome.WINTER -> drawPine(g, cx, cy)
                     Biome.DESERT -> drawPalm(g, cx, cy, hash(c, r))
+                    Biome.VOLCANO -> drawCharred(g, cx, cy)
                     Biome.GREEN -> {
                         g.fillCircle(cx + 0.07f, cy + 0.1f, 0.42f, SHADOW)
                         g.fillCircle(cx, cy, 0.42f, TREE)
@@ -404,6 +434,15 @@ class Renderer {
             ys[2] = top + 0.06f
             g.fillPolygon(xs, ys, 3, 0xFFF2F6FA.toInt())
         }
+    }
+
+    /** A burnt tree with embers still glowing in it. */
+    private fun drawCharred(g: Gfx, cx: Float, cy: Float) {
+        g.fillCircle(cx + 0.07f, cy + 0.1f, 0.38f, SHADOW)
+        g.fillCircle(cx, cy, 0.38f, CHARRED)
+        g.fillCircle(cx - 0.12f, cy + 0.1f, 0.18f, CHARRED_DARK)
+        g.fillCircle(cx + 0.1f, cy - 0.12f, 0.05f, EMBER)
+        g.fillCircle(cx - 0.15f, cy - 0.06f, 0.035f, EMBER)
     }
 
     private fun drawPalm(g: Gfx, cx: Float, cy: Float, h: Int) {
@@ -1167,6 +1206,9 @@ class Renderer {
         EnemyType.APC -> 1.05f
         EnemyType.HELI -> 1.05f
         EnemyType.DRONE -> 0.75f
+        EnemyType.TITAN -> 0.9f
+        EnemyType.DIGGER -> 0.8f
+        EnemyType.JUGGERNAUT -> 1.25f
         // Drawn half again as big in the atlas.
         EnemyType.MOTHER -> type.radius / 0.38f
         // People: their shoulders are about 0.26 cells across in the atlas.
@@ -1177,7 +1219,8 @@ class Renderer {
         val sway = when (type) {
             EnemyType.SWARM, EnemyType.MOTHER -> sin(time * 10f) * 7f
             EnemyType.BRUTE -> sin(time * 6f) * 2.5f
-            EnemyType.APC, EnemyType.HELI, EnemyType.DRONE -> 0f
+            EnemyType.APC, EnemyType.HELI, EnemyType.DRONE, EnemyType.DIGGER, EnemyType.JUGGERNAUT -> 0f
+            EnemyType.TITAN -> sin(time * 3f) * 1.5f
             else -> sin(time * 12f) * 4f
         }
         g.put(a.enemies[type.ordinal], x, y, enemyScale(type), angle + sway, alpha)
@@ -1202,6 +1245,7 @@ class Renderer {
         val x = e.x
         val y = e.y
         val r = e.type.radius
+        if (e.underground) return drawMound(g, e, time)
         val hidden = e.type.stealth && !e.revealed
         val spawn = (e.age / 0.25f).coerceIn(0f, 1f)
         if (!e.type.air && !hidden) g.fillCircle(x + 0.04f, y + 0.07f, r, SHADOW)
@@ -1241,6 +1285,18 @@ class Renderer {
         if (e.jamPulse > 0f) {
             val k = e.jamPulse / 0.5f
             g.strokeCircle(x, y, r + 0.35f * (1f - k), Colors.alpha(JAM, k), 0.04f)
+        }
+    }
+
+    /** A digger underground: only the earth it pushes up shows, moving along the road. */
+    private fun drawMound(g: Gfx, e: Enemy, time: Float) {
+        val r = e.type.radius
+        g.fillCircle(e.x + 0.03f, e.y + 0.05f, r * 0.95f, SHADOW)
+        g.fillCircle(e.x, e.y, r * 0.9f, MOUND)
+        g.fillCircle(e.x - r * 0.25f, e.y - r * 0.2f, r * 0.45f, MOUND_LIGHT)
+        for (k in 0 until 3) {
+            val a = time * 5f + k * 2.1f + e.lane * 20f
+            g.fillCircle(e.x + cos(a) * r * 0.8f, e.y + sin(a) * r * 0.8f, 0.035f, MOUND_LIGHT)
         }
     }
 
@@ -1365,6 +1421,37 @@ class Renderer {
                 g.fillCircle(-0.05f, 0f, 0.22f, Colors.darker(type.color, 0.3f))
                 g.fillCircle(-0.1f, -0.06f, 0.08f, Colors.lighter(type.color, 0.2f))
             }
+            EnemyType.SALAMANDER -> {
+                g.fillRoundRect(-0.15f, -r, 0.28f, r * 2f, 0.12f, type.color)
+                g.fillCircle(0.03f, 0f, r * 0.56f, 0xFFDDE2E8.toInt())
+                g.fillArc(0.03f, 0f, r * 0.56f, -60f, 120f, 0xFFF2B33A.toInt())
+            }
+            EnemyType.DIGGER -> {
+                g.fillRoundRect(-0.3f, -0.26f, 0.5f, 0.12f, 0.04f, 0xFF3A3F45.toInt())
+                g.fillRoundRect(-0.3f, 0.14f, 0.5f, 0.12f, 0.04f, 0xFF3A3F45.toInt())
+                g.fillRoundRect(-0.28f, -0.17f, 0.42f, 0.34f, 0.06f, type.color)
+                xs[0] = 0.14f; ys[0] = -0.13f
+                xs[1] = 0.42f; ys[1] = 0f
+                xs[2] = 0.14f; ys[2] = 0.13f
+                g.fillPolygon(xs, ys, 3, 0xFF8A9098.toInt())
+                g.fillCircle(-0.08f, 0f, 0.06f, 0xFFFFD25A.toInt())
+            }
+            EnemyType.JUGGERNAUT -> {
+                g.fillRoundRect(-r, -r, r * 2f, r * 0.4f, 0.05f, 0xFF3A3F45.toInt())
+                g.fillRoundRect(-r, r * 0.6f, r * 2f, r * 0.4f, 0.05f, 0xFF3A3F45.toInt())
+                g.fillRoundRect(-r * 0.9f, -r * 0.7f, r * 1.8f, r * 1.4f, 0.08f, type.color)
+                g.fillRoundRect(-r * 0.7f, -r * 0.45f, r * 0.6f, r * 0.9f, 0.05f, 0xFF3E424A.toInt())
+                g.fillRoundRect(r * 0.05f, -r * 0.45f, r * 0.6f, r * 0.9f, 0.05f, 0xFF3E424A.toInt())
+            }
+            EnemyType.TITAN -> {
+                g.fillRoundRect(-0.62f, -0.62f, 1.1f, 0.2f, 0.05f, 0xFF3A3F45.toInt())
+                g.fillRoundRect(-0.62f, 0.42f, 1.1f, 0.2f, 0.05f, 0xFF3A3F45.toInt())
+                g.fillRoundRect(-0.55f, -0.48f, 1.0f, 0.96f, 0.12f, type.color)
+                for (k in 0 until 4) g.line(-0.4f + k * 0.18f, -0.25f, -0.48f + k * 0.18f, 0.25f, 0xFF2A2A2E.toInt(), 0.07f)
+                g.fillRoundRect(0.2f, -0.42f, 0.5f, 0.12f, 0.04f, GUN)
+                g.fillRoundRect(0.2f, 0.3f, 0.5f, 0.12f, 0.04f, GUN)
+                g.fillRoundRect(0.22f, -0.12f, 0.16f, 0.24f, 0.05f, 0xFFD62E28.toInt())
+            }
             EnemyType.HELI -> {
                 g.fillRoundRect(-0.85f, -0.05f, 0.6f, 0.1f, 0.04f, type.color)
                 g.line(-0.85f, -0.17f, -0.85f, 0.17f, Colors.alpha(GUN, 0.8f), 0.04f)
@@ -1385,7 +1472,7 @@ class Renderer {
     private fun drawHealth(g: Gfx, e: Enemy) {
         val total = e.maxHp + e.maxShield
         if (e.hp + e.shield >= total - 0.01f) return
-        if (e.type.stealth && !e.revealed) return
+        if ((e.type.stealth && !e.revealed) || e.underground) return
         val r = e.type.radius
         val w = if (e.type.boss) 1.3f else max(0.5f, r * 2.2f)
         val h = if (e.type.boss) 0.13f else 0.08f
@@ -1469,6 +1556,19 @@ class Renderer {
         g.fillRect(b.x - 0.08f, by - 0.16f, 0.16f, 0.05f, 0xFF4A5056.toInt())
     }
 
+    /** A lava bomb on its way down: the red mark where it lands and the glowing rock above it. */
+    private fun drawLavaBomb(g: Gfx, b: Lava, time: Float) {
+        val f = 1f - b.timer / b.fall
+        val pulse = 0.5f + 0.5f * sin(time * 18f)
+        g.fillCircle(b.x, b.y, World.LAVA_RADIUS * f, Colors.alpha(RED, 0.14f))
+        g.strokeCircle(b.x, b.y, World.LAVA_RADIUS, Colors.alpha(RED, 0.3f + 0.4f * f * pulse), 0.04f)
+        val bx = b.x + (1f - f) * 0.8f
+        val by = b.y - (1f - f) * 3f
+        g.glow(bx, by, 0.4f, Colors.alpha(FIRE, 0.65f))
+        g.fillCircle(bx, by, 0.12f, LAVA_ROCK)
+        g.fillCircle(bx - 0.03f, by - 0.03f, 0.07f, 0xFFFFB347.toInt())
+    }
+
     private fun drawPlane(g: Gfx, p: Plane) {
         val a = art(g)
         if (a != null) {
@@ -1527,6 +1627,17 @@ class Renderer {
                     g.fillCircle(x, y, 0.035f + ((h ushr 24) and 3) * 0.012f, Colors.alpha(WHITE, 0.9f * level))
                 }
             }
+            Biome.VOLCANO -> {
+                g.fillRect(0f, 0f, COLS.toFloat(), ROWS.toFloat(), Colors.alpha(0xFF5A1E0A.toInt(), 0.24f * level))
+                for (i in 0 until 55) {
+                    val h = hash(i, 43)
+                    val fall = 0.5f + ((h ushr 10) and 7) * 0.12f
+                    val y = (((h and 1023) / 1023f) * (ROWS + 2) + time * fall) % (ROWS + 2) - 1f
+                    val x = (((h ushr 14) and 1023) / 1023f * (COLS + 2) + sin(time * 0.8f + i) * 0.3f) % (COLS + 2) - 1f
+                    val ember = (h ushr 24) and 7 == 0
+                    g.fillCircle(x, y, if (ember) 0.035f else 0.045f, Colors.alpha(if (ember) 0xFFFFA040.toInt() else 0xFF9A928C.toInt(), 0.85f * level))
+                }
+            }
             Biome.GREEN -> Unit
         }
     }
@@ -1564,6 +1675,8 @@ class Renderer {
             EnemyType.MOTHER -> type.radius * 1.15f
             EnemyType.GHOST -> type.radius * 1.3f
             EnemyType.SAPPER -> 0.34f
+            EnemyType.TITAN -> 0.7f
+            EnemyType.DIGGER -> 0.42f
             else -> type.radius
         }
         g.save()
@@ -1622,6 +1735,7 @@ class Renderer {
             'T' -> when (biome) {
                 Biome.WINTER -> drawPine(g, 0f, 0f)
                 Biome.DESERT -> drawPalm(g, 0f, 0f, 3)
+                Biome.VOLCANO -> drawCharred(g, 0f, 0f)
                 Biome.GREEN -> {
                     g.fillCircle(0f, 0f, 0.42f, TREE)
                     g.fillCircle(-0.16f, 0.12f, 0.2f, TREE_DARK)
@@ -1720,12 +1834,26 @@ class Renderer {
             rock = 0xFF838A95.toInt(), rockLight = 0xFF9EA5AF.toInt(), snow = true,
         )
 
+        val VOLCANO = Palette(
+            grassA = 0xFF4D433E.toInt(), grassB = 0xFF493F3A.toInt(), tuft = 0xFFE2702A.toInt(),
+            roadEdge = 0xFF776C64.toInt(), road = 0xFF8A7D74.toInt(), roadDot = 0xFF776C64.toInt(),
+            water = 0xFFE2571E.toInt(), waterLight = 0xFFFFC14D.toInt(),
+            rock = 0xFF46484F.toInt(), rockLight = 0xFF5E616A.toInt(), snow = false, lava = true,
+        )
+
         val TREE = 0xFF1E9E55.toInt()
         val TREE_DARK = 0xFF167A41.toInt()
         val TREE_LIGHT = 0xFF33C06F.toInt()
         val PINE = 0xFF2C6147.toInt()
         val CACTUS = 0xFF4E9845.toInt()
         val CACTUS_LIGHT = 0xFF6FB862.toInt()
+        val CHARRED = 0xFF392D28.toInt()
+        val CHARRED_DARK = 0xFF231B18.toInt()
+        val EMBER = 0xFFFF8A2A.toInt()
+        val LAVA_CRUST = 0xFF2E2420.toInt()
+        val LAVA_ROCK = 0xFF3A1E14.toInt()
+        val MOUND = 0xFF5E4A3A.toInt()
+        val MOUND_LIGHT = 0xFF8A7058.toInt()
         val ICE_ROAD = 0xFFBFE3F5.toInt()
         val BRIDGE = 0xFF8B5E34.toInt()
         val BRIDGE_GAP = 0xFF5A3B20.toInt()

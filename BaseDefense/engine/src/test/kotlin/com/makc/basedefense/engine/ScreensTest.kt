@@ -83,7 +83,7 @@ class ScreensTest {
     }
 
     private fun unlockAll(p: Platform) {
-        for (l in Levels.all) if (l.id <= 23) p.putInt("stars_${l.id}", 3)
+        for (l in Levels.all) if (l.id < Levels.all.size) p.putInt("stars_${l.id}", 3)
         for (key in Codex.keys) p.putInt("seen_$key", 1)
         p.putInt("seen_${Tips.COMMANDER}", 1)
     }
@@ -201,12 +201,12 @@ class ScreensTest {
         val g = game(tall, platform)
         run(g, 1f)
         press(g, tall, "play")
-        for (w in 0 until 3) {
+        for (w in Biome.entries.indices) {
             press(g, tall, "world$w", 0f)
             shot(g, tall, "tall_20_world${w + 1}")
         }
-        // Dunes in a sandstorm, the north in a blizzard, a boss and branches everywhere.
-        for ((id, name) in listOf(14 to "desert", 23 to "winter")) {
+        // Dunes in a sandstorm, the north in a blizzard, the volcano erupting, a boss and branches everywhere.
+        for ((id, name) in listOf(14 to "desert", 23 to "winter", 30 to "volcano")) {
             g.startCampaign(Levels.all.first { it.id == id }, Difficulty.NORMAL, false)
             run(g, 0.5f)
             g.profile.tips = false

@@ -12,12 +12,15 @@
 
 - **Tower Defense (top-down)** — ракеты, деревья, камни, огонь, самолёты;
 - **Top-down Shooter** — солдаты для отрядов, люди и роботы для врагов;
-- **Top-down Tanks Redux** — земля и дороги трёх миров, мешки с песком для окопов, броневик, взрывы, дым, мины;
+- **Top-down Tanks Redux** — земля и дороги всех миров, мешки с песком для окопов, броневик, взрывы, дым, мины;
+- **Robot Pack** — гусеничные роботы вулкана: бурильщик, джаггернаут и титан;
 - **Game Icons** и **Game Icons Expansion** — белые иконки интерфейса (`icon.*`), игра красит их сама.
 
 Векторные листы паков рендерятся в 4 раза крупнее (поэтому картинки чёткие), каждая
 картинка поворачивается лицом вправо и центрируется. Для пустыни и севера скрипт
-перекрашивает траву в снег, камни в песчаник, деревья в заснеженные. Солдат из пака
+перекрашивает траву в снег, камни в песчаник, деревья в заснеженные; для вулкана — траву
+в пепел, асфальт в шлак, камни в базальт с лавовыми трещинами, деревья в обугленные, а
+саламандру одевает в серебристый огнеупорный костюм с оранжевым жаром вокруг. Солдат из пака
 переодевается в цвет своего отряда, а оружие (гранатомёты, огнемёты, ПЗРК, тесла-винтовки,
 снайперские винтовки и прочее) дорисовано в том же стиле прямо в скрипте, как и радар,
 вертолёт, кактус, вагонетка снабжения и шахта. Иконки сердца, черепа, книги, календаря, бесконечности, короны
@@ -29,7 +32,7 @@
 
 ```sh
 git clone --filter=blob:none --sparse https://github.com/ETdoFresh/kenney.nl kenney
-git -C kenney sparse-checkout set tower-defense-top-down topdown-shooter kenney_topdowntanksredux gameicons gameicons-expansion
+git -C kenney sparse-checkout set tower-defense-top-down topdown-shooter kenney_topdowntanksredux robot-pack gameicons gameicons-expansion
 npm install playwright && npx playwright install chromium
 python3 build_atlas.py kenney work ../engine/src/main/resources/sprites --preview preview.png
 ```

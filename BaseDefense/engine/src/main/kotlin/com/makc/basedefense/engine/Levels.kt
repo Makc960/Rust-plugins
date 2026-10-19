@@ -39,16 +39,18 @@ class Path(corners: IntArray) {
     }
 }
 
-enum class Biome(val title: L) {
-    GREEN(L("Зелёная долина", "Green Valley")),
-    DESERT(L("Пустыня", "Desert")),
-    WINTER(L("Север", "The North")),
+/** The campaign's worlds; [short] fits a tab. */
+enum class Biome(val title: L, val short: L) {
+    GREEN(L("Зелёная долина", "Green Valley"), L("Долина", "Valley")),
+    DESERT(L("Пустыня", "Desert"), L("Пустыня", "Desert")),
+    WINTER(L("Север", "The North"), L("Север", "North")),
+    VOLCANO(L("Вулкан", "Volcano"), L("Вулкан", "Volcano")),
 }
 
 /**
  * The grid of a level. Terrain comes from the ASCII picture: '.' grass you can
- * build on, '#' road, 'i' icy road, 'B' base, '~' water, '=' bridge, and
- * obstacles that can be cleared for coins: 'T' tree, 'R' rock, 'C' cactus.
+ * build on, '#' road, 'i' icy road, 'B' base, '~' water (lava by the volcano), '=' bridge,
+ * and obstacles that can be cleared for coins: 'T' tree, 'R' rock, 'C' cactus.
  */
 class GameMap(val level: LevelDef) {
     val paths = level.paths.map { Path(it) }
@@ -247,7 +249,7 @@ class LevelDef(
     val daily: Boolean get() = id == Levels.DAILY_ID
     val campaign: Boolean get() = id in 1..Levels.all.size
 
-    /** 0, 1 or 2 for campaign levels, -1 for the others. */
+    /** 0 to 3 for campaign levels, -1 for the others. */
     val world: Int get() = if (campaign) (id - 1) / Levels.PER_WORLD else -1
 }
 
@@ -270,13 +272,25 @@ object Levels {
     private val MO = EnemyType.MOTHER
     private val APC = EnemyType.APC
     private val HELI = EnemyType.HELI
+    private val SAL = EnemyType.SALAMANDER
+    private val DIG = EnemyType.DIGGER
+    private val JUG = EnemyType.JUGGERNAUT
+    private val TITAN = EnemyType.TITAN
 
     private val G = Biome.GREEN
     private val D = Biome.DESERT
     private val W = Biome.WINTER
+    private val V = Biome.VOLCANO
 
     /** Every enemy of the later worlds, joining one by one. */
     private val ALL = listOf(B to 0, RU to 0, SW to 0, BR to 0, DR to 1, ME to 2, SH to 3, GH to 4, SA to 5, MO to 6)
+
+    /** The volcano's own enemies, each first alone a wave in on its level, then from the start. */
+    private val V25 = listOf(B to 0, RU to 0, BR to 0, SAL to 1, SW to 2, DR to 2, ME to 3, SH to 4, GH to 5, SA to 6, MO to 7)
+    private val V26 = listOf(B to 0, RU to 0, BR to 0, SAL to 0, DIG to 1, DR to 2, SW to 3, ME to 3, SH to 4, GH to 5, SA to 6, MO to 7)
+    private val V27 = listOf(B to 0, RU to 0, SAL to 0, DIG to 0, BR to 1, DR to 2, SW to 3, ME to 3, SH to 4, GH to 5, SA to 6, MO to 7)
+    private val V28 = listOf(B to 0, RU to 0, SAL to 0, DIG to 0, JUG to 1, BR to 2, DR to 2, SW to 3, ME to 4, SH to 5, GH to 6, SA to 7, MO to 8)
+    private val VOLC = listOf(B to 0, RU to 0, SAL to 0, DIG to 0, BR to 0, JUG to 1, DR to 2, SW to 3, ME to 3, SH to 4, GH to 5, SA to 6, MO to 7)
 
     val all: List<LevelDef> = listOf(
         // --- Green Valley -------------------------------------------------------------------
@@ -950,6 +964,235 @@ object Levels {
             ),
             challenge = Challenge.maxTowers(14),
         ),
+
+        // --- The Volcano ---------------------------------------------------------------------
+        LevelDef(
+            25, L("Пепельные поля", "Ash Fields"), V,
+            listOf(
+                "T..#....R",
+                "...#..~~.",
+                "R..#..~~.",
+                "...#####.",
+                ".T.....#.",
+                "~~.....#R",
+                "~~..R..#.",
+                ".#######.",
+                ".#.....T.",
+                ".#..~~~..",
+                ".#..~~~.R",
+                ".#####...",
+                "T....#...",
+                "..R..B.T.",
+                "~~~...~~~",
+            ),
+            listOf(intArrayOf(3, -1, 3, 3, 7, 3, 7, 7, 1, 7, 1, 11, 5, 11, 5, 13)),
+            startMoney = 440,
+            plan = WavePlan(
+                17, V25, budget = 15.5f, growth = 0.4f, hp = 2f, hpGrowth = 1.085f, seed = 25, favor = listOf(SAL),
+            ),
+            challenge = Challenge.maxTowers(12),
+        ),
+        LevelDef(
+            26, L("Буровая", "Drill Site"), V,
+            listOf(
+                "T...R..T.",
+                "..~~~....",
+                "#######..",
+                "......#.R",
+                ".R....#..",
+                "..#####..",
+                "..#...~~.",
+                "T.#...~~.",
+                "..#####..",
+                "......#.T",
+                ".~~...#..",
+                ".~~.###..",
+                "R...#...R",
+                "....B....",
+                "T.R...T..",
+            ),
+            listOf(intArrayOf(-1, 2, 6, 2, 6, 5, 2, 5, 2, 8, 6, 8, 6, 11, 4, 11, 4, 13)),
+            startMoney = 440,
+            plan = WavePlan(
+                18, V26, budget = 15.5f, growth = 0.4f, hp = 2.05f, hpGrowth = 1.085f,
+                bosses = mapOf(9 to listOf(APC)), seed = 26, favor = listOf(DIG),
+            ),
+            challenge = Challenge.NO_SELL,
+        ),
+        LevelDef(
+            27, L("Лавовые мосты", "Lava Bridges"), V,
+            listOf(
+                "T.#....#.",
+                "..#....#.",
+                "..####.#.",
+                ".R...#.#T",
+                ".....#.#.",
+                "~~~~~=~=~",
+                "~~~~~=~=~",
+                "R....#.#.",
+                ".....###.",
+                ".T...#...",
+                ".....#.R.",
+                "..####...",
+                "..#...T..",
+                "..B......",
+                ".R...T..R",
+            ),
+            listOf(
+                intArrayOf(2, -1, 2, 2, 5, 2, 5, 11, 2, 11, 2, 13),
+                intArrayOf(7, -1, 7, 8, 5, 8, 5, 11, 2, 11, 2, 13),
+            ),
+            startMoney = 460,
+            plan = WavePlan(
+                18, V27, budget = 16f, growth = 0.4f, hp = 2f, hpGrowth = 1.085f,
+                bosses = mapOf(17 to listOf(HELI)), seed = 27, favor = listOf(SAL),
+            ),
+            challenge = Challenge.only(TowerType.TURRET, TowerType.ROCKET, TowerType.TESLA),
+        ),
+        LevelDef(
+            28, L("Кальдера", "Caldera"), V,
+            listOf(
+                ".#....R..",
+                ".#......T",
+                ".#######.",
+                "T......#.",
+                "..~~~..#.",
+                ".~~~~~.#R",
+                ".~~~~~.#.",
+                "R.~~~..#.",
+                ".......#.",
+                ".#######.",
+                ".#.....T.",
+                ".#..R....",
+                ".####....",
+                "T...B..R.",
+                "..R....T.",
+            ),
+            listOf(intArrayOf(1, -1, 1, 2, 7, 2, 7, 9, 1, 9, 1, 12, 4, 12, 4, 13)),
+            startMoney = 460,
+            plan = WavePlan(
+                18, V28, budget = 16f, growth = 0.4f, hp = 2f, hpGrowth = 1.085f,
+                bosses = mapOf(9 to listOf(APC)), seed = 28,
+            ),
+            challenge = Challenge.LOW_BUDGET,
+        ),
+        LevelDef(
+            29, L("Огненная река", "River of Fire"), V,
+            listOf(
+                "..#.~.R#.",
+                "T.#.~..#.",
+                "..#.~..#.",
+                "..##=###.",
+                "R...~..#.",
+                "....~..#.",
+                ".T..~..#R",
+                ".###=###.",
+                ".#..~....",
+                ".#..~..R.",
+                ".#..~~~~~",
+                ".####....",
+                "R...#..T.",
+                "....B....",
+                "T.R....R.",
+            ),
+            listOf(
+                intArrayOf(2, -1, 2, 3, 7, 3, 7, 7, 1, 7, 1, 11, 4, 11, 4, 13),
+                intArrayOf(7, -1, 7, 7, 1, 7, 1, 11, 4, 11, 4, 13),
+            ),
+            startMoney = 470,
+            plan = WavePlan(
+                19, VOLC, budget = 16f, growth = 0.4f, hp = 2f, hpGrowth = 1.085f,
+                bosses = mapOf(18 to listOf(APC, HELI)), seed = 29, favor = listOf(SAL),
+            ),
+            challenge = Challenge.NO_ABILITIES,
+        ),
+        LevelDef(
+            30, L("Жерло", "The Vent"), V,
+            listOf(
+                "R.T...#..",
+                ".######..",
+                ".#....~~T",
+                ".#.R..~~.",
+                ".#######.",
+                "T.~~...#.",
+                "..~~.R.#.",
+                ".#######.",
+                ".#....T..",
+                ".#.~~~..R",
+                ".#######.",
+                "R....~~#.",
+                "..T..~~#.",
+                "....B###.",
+                ".R..T...R",
+            ),
+            listOf(intArrayOf(6, -1, 6, 1, 1, 1, 1, 4, 7, 4, 7, 7, 1, 7, 1, 10, 7, 10, 7, 13, 4, 13)),
+            startMoney = 480,
+            plan = WavePlan(
+                19, VOLC, budget = 16.5f, growth = 0.4f, hp = 2.2f, hpGrowth = 1.085f,
+                bosses = mapOf(18 to listOf(TITAN)), seed = 30,
+            ),
+            challenge = Challenge.maxTowers(14),
+        ),
+        LevelDef(
+            31, L("Обсидиановый перевал", "Obsidian Pass"), V,
+            listOf(
+                "T..R...T.",
+                "...~~....",
+                "R..~~..R.",
+                "#######..",
+                "......#.T",
+                ".T....#..",
+                "..#######",
+                "..#...#..",
+                "R.#.~.#.R",
+                "..#.###..",
+                "..#.#....",
+                "..###..~~",
+                "....#..~~",
+                "T...B...T",
+                "..R...R..",
+            ),
+            listOf(
+                intArrayOf(-1, 3, 6, 3, 6, 9, 4, 9, 4, 13),
+                intArrayOf(9, 6, 2, 6, 2, 11, 4, 11, 4, 13),
+            ),
+            startMoney = 500,
+            plan = WavePlan(
+                20, VOLC, budget = 16.5f, growth = 0.4f, hp = 2.1f, hpGrowth = 1.08f,
+                bosses = mapOf(9 to listOf(HELI), 19 to listOf(TITAN)), seed = 31, favor = listOf(DIG),
+            ),
+            challenge = Challenge.NO_LEAKS,
+        ),
+        LevelDef(
+            32, L("Сердце вулкана", "Heart of the Volcano"), V,
+            listOf(
+                "#..T.T..#",
+                "#...R...#",
+                "####.####",
+                "...#~#...",
+                ".R.#~#.R.",
+                "####~####",
+                "#..~~~..#",
+                "#.T~~~T.#",
+                "#...~...#",
+                "####.####",
+                "...#.#...",
+                "R..###..R",
+                ".T..#..T.",
+                "....B....",
+                "R..~~~..R",
+            ),
+            listOf(
+                intArrayOf(0, -1, 0, 2, 3, 2, 3, 5, 0, 5, 0, 9, 3, 9, 3, 11, 4, 11, 4, 13),
+                intArrayOf(8, -1, 8, 2, 5, 2, 5, 5, 8, 5, 8, 9, 5, 9, 5, 11, 4, 11, 4, 13),
+            ),
+            startMoney = 560,
+            plan = WavePlan(
+                22, VOLC, budget = 17f, growth = 0.4f, hp = 1.95f, hpGrowth = 1.08f,
+                bosses = mapOf(7 to listOf(APC), 14 to listOf(HELI), 21 to listOf(TITAN)), seed = 32,
+            ),
+            challenge = Challenge.only(TowerType.ROCKET, TowerType.SNIPER, TowerType.SAM, TowerType.MINES),
+        ),
     )
 
     private val SPIRAL = listOf(
@@ -972,7 +1215,9 @@ object Levels {
 
     /** Endless defence on a spiral around the base; enemies the player has met join over time. */
     fun endless(progress: Int): LevelDef {
-        val joins = listOf(B to 0, RU to 1, SW to 3, DR to 5, BR to 7, ME to 9, SH to 11, GH to 13, SA to 15, MO to 17)
+        val joins = listOf(
+            B to 0, RU to 1, SW to 3, DR to 5, BR to 7, ME to 9, SH to 11, GH to 13, SA to 15, MO to 17, SAL to 19, DIG to 21, JUG to 23,
+        )
         return LevelDef(
             ENDLESS_ID, L("Бесконечная оборона", "Endless defence"), G, SPIRAL,
             listOf(intArrayOf(0, -1, 0, 13, 8, 13, 8, 1, 2, 1, 2, 11, 6, 11, 6, 3, 4, 3, 4, 8)),

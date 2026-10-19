@@ -76,7 +76,7 @@ internal class Intro(private val game: Game) : WorldListener {
 
     /** The first map of the world the player has reached, with a few squads dug in by the road. */
     private fun stage(): World {
-        val reached = ((game.profile.progress - 1) / Levels.PER_WORLD).coerceIn(0, 2)
+        val reached = ((game.profile.progress - 1) / Levels.PER_WORLD).coerceIn(0, Biome.entries.size - 1)
         val w = World(Levels.all[reached * Levels.PER_WORLD], Rules(), this)
         w.money = 100_000
         for (type in SQUADS) {

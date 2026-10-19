@@ -176,7 +176,7 @@ internal class Menus(private val game: Game) {
             y += bh + gap
         }
         ui.button(g, "play", bx, y, bw, bh, Tx.CAMPAIGN.t, if (saved == null) Style.PRIMARY else Style.NORMAL, size = 18f, icon = Icon.FLAG) {
-            world = ((profile.progress - 1) / Levels.PER_WORLD).coerceIn(0, 2)
+            world = ((profile.progress - 1) / Levels.PER_WORLD).coerceIn(0, Biome.entries.size - 1)
             sheet = null
             open(Screen.LEVELS)
         }
@@ -378,7 +378,7 @@ internal class Menus(private val game: Game) {
         val headerBottom = ui.header(g, Tx.CAMPAIGN.t) { game.go(Screen.MENU) }
         starTotal(g, ui.w - d(12f), ui.top + d(30f))
 
-        val tabs = Biome.entries.map { it.title.t }
+        val tabs = Biome.entries.map { it.short.t }
         ui.segmented(g, "world", d(12f), headerBottom, ui.w - d(24f), d(40f), tabs, world, { worldOpen(it) }, size = 13f) {
             world = it
         }
@@ -717,6 +717,9 @@ internal class Menus(private val game: Game) {
                         if (e.air) add(Tx.FLYING.t)
                         if (e.shield > 0f) add(Tx.SHIELDED.f(Num.percent(e.shield)))
                         if (e.stealth) add(Tx.STEALTHY.t)
+                        if (e.fireproof) add(Tx.FIREPROOF.t)
+                        if (e.burrows) add(Tx.BURROWS.t)
+                        if (e.unstoppable) add(Tx.UNSTOPPABLE.t)
                     }
                 })
             }

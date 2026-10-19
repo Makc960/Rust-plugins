@@ -215,6 +215,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             4 -> tip(Tips.ZOOM, Tx.TIP_ZOOM, Tx.TIP_ZOOM_TEXT)
             9 -> tip(Tips.WEATHER, Tx.TIP_DESERT, Tx.TIP_DESERT_TEXT)
             17 -> tip(Tips.WINTER, Tx.TIP_WINTER, Tx.TIP_WINTER_TEXT)
+            25 -> tip(Tips.VOLCANO, Tx.TIP_VOLCANO, Tx.TIP_VOLCANO_TEXT)
         }
     }
 
@@ -268,6 +269,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         profile.addStat(Stat.KILLS, wd.kills)
         profile.addStat(Stat.BOSS_KILLS, wd.bossKills)
         profile.addStat(Stat.GHOST_KILLS, wd.ghostKills)
+        profile.addStat(Stat.TITAN_KILLS, wd.titanKills)
         profile.addStat(Stat.BUILT, wd.built)
         profile.addStat(Stat.AIRSTRIKES, wd.airstrikes)
         profile.addStat(Stat.OBSTACLES, wd.cleared)
