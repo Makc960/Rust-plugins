@@ -52,9 +52,9 @@ private class YandexAdverts(private val activity: Activity, private val unit: St
         loader.loadAd(
             AdRequest.Builder(unit).build(),
             object : RewardedAdLoadListener {
-                override fun onAdLoaded(rewardedAd: RewardedAd) {
+                override fun onAdLoaded(rewarded: RewardedAd) {
                     loading = false
-                    ad = rewardedAd
+                    ad = rewarded
                     wait = FIRST_RETRY_MS
                 }
 
