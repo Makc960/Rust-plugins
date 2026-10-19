@@ -1188,8 +1188,8 @@ object Levels {
             ),
             startMoney = 560,
             plan = WavePlan(
-                22, VOLC, budget = 17f, growth = 0.4f, hp = 1.95f, hpGrowth = 1.08f,
-                bosses = mapOf(7 to listOf(APC), 14 to listOf(HELI), 21 to listOf(TITAN)), seed = 32,
+                22, VOLC, budget = 17f, growth = 0.4f, hp = 1.8f, hpGrowth = 1.08f,
+                bosses = mapOf(9 to listOf(APC), 15 to listOf(HELI), 21 to listOf(TITAN)), seed = 32,
             ),
             challenge = Challenge.only(TowerType.ROCKET, TowerType.SNIPER, TowerType.SAM, TowerType.MINES),
         ),
