@@ -116,7 +116,7 @@ keytool -genkeypair -v -keystore upload.jks -keyalg RSA -keysize 2048 -validity 
       с текстом «Что нового» из `listing-rustore.md`; черновик проверяешь в консоли и сам отправляешь на модерацию;
     - `rustore-submit-…` — то же и сразу отправка на модерацию.
 
-    Например: `git tag rustore-draft-3.0-1 && git push origin rustore-draft-3.0-1`. Метку можно поставить и на сайте
+    Например: `git tag rustore-draft-3.1-1 && git push origin rustore-draft-3.1-1`. Метку можно поставить и на сайте
     GitHub: Releases → Draft a new release → новый тег с таким именем на нужной ветке. Черновик у RuStore может быть
     только один: если он уже есть, APK загружается в него. Код версии растёт с каждой сборкой в Actions, а RuStore
     принимает только версию с кодом выше опубликованной. Скрипт — `store/rustore.py`, ключ он никуда не выводит.

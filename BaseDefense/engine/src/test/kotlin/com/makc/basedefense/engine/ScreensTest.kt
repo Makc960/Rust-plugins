@@ -967,6 +967,35 @@ class ScreensTest {
     }
 
     @Test
+    fun theBossRush() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.putInt("promo_day", platform.today())
+        val g = game(tall, platform)
+        run(g, 2f)
+        press(g, tall, "daily")
+        press(g, tall, "missions3")
+        shot(g, tall, "tall_a7_bosses")
+        press(g, tall, "bstart", 0.5f)
+        val s = g.session!!
+        assertEquals(Mode.BOSSES, s.mode)
+        g.profile.tips = false
+        botPlay(g, 600f) { it.enemies.any { e -> e.type.boss && e.dist > 4f } }
+        run(g, 0.3f)
+        shot(g, tall, "tall_a8_bosses_battle")
+        val w = g.play.world!!
+        w.battleTime = 140f
+        w.winForTest()
+        run(g, 4f)
+        shot(g, tall, "tall_a9_bosses_won")
+        assertEquals(Weekly.GOLD, g.profile.bossMedal(platform.today()))
+        assertEquals(140, g.profile.bossBest(platform.today()))
+        press(g, tall, "levels", 0.3f)
+        assertEquals(Screen.DAILY, g.screen, "back to the missions")
+        shot(g, tall, "tall_a10_bosses_best")
+    }
+
+    @Test
     fun theSeasonPass() {
         val platform = SilentPlatform()
         unlockAll(platform)

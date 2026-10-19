@@ -253,7 +253,7 @@ class World(
 
     /** Seconds of actual fighting: cooldowns and weather only run then. */
     var battleTime = 0f
-        private set
+        internal set
     var kills = 0
         private set
     var leaked = 0

@@ -175,6 +175,25 @@ class Profile(private val p: Platform) {
 
     val weeklyUnlocked: Boolean get() = admin || stars(Weekly.UNLOCK) > 0
 
+    val bossRushUnlocked: Boolean get() = admin || stars(BossRush.UNLOCK) > 0
+
+    /** The best time in seconds of [day]'s boss rush, or 0 before it is won. */
+    fun bossBest(day: Int): Int = if (p.getInt("boss_day", -1) == day) p.getInt("boss_best", 0) else 0
+
+    /** The best medal of [day]'s boss rush: 0 none, 1 bronze, 2 silver, 3 gold. */
+    fun bossMedal(day: Int): Int = if (p.getInt("boss_day", -1) == day) p.getInt("boss_medal", 0) else 0
+
+    /** Records a boss rush won in [seconds] for [medal]; true when it is the day's best time so far. */
+    fun recordBossRush(day: Int, seconds: Int, medal: Int): Boolean {
+        val before = bossBest(day)
+        if (before in 1..seconds) return false
+        if (medal == Weekly.GOLD && bossMedal(day) < Weekly.GOLD) addStat(Stat.BOSS_RUSH_GOLD, 1)
+        p.putInt("boss_medal", max(medal, bossMedal(day)))
+        p.putInt("boss_day", day)
+        p.putInt("boss_best", max(1, seconds))
+        return true
+    }
+
     /** The best medal of [week]'s operation: 0 none, 1 bronze, 2 silver, 3 gold. */
     fun weeklyMedal(week: Int): Int = if (p.getInt("weekly_week", -1) == week) p.getInt("weekly_medal", 0) else 0
 
@@ -589,6 +608,9 @@ class Profile(private val p: Platform) {
         p.putInt("daily_streak", 0)
         p.putInt("weekly_week", -1)
         p.putInt("weekly_medal", 0)
+        p.putInt("boss_day", -1)
+        p.putInt("boss_best", 0)
+        p.putInt("boss_medal", 0)
         for (c in CommanderType.entries) p.putInt("service_${c.name}", 0)
         p.putString("save", null)
     }

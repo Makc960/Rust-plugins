@@ -338,7 +338,7 @@ internal class Menus(private val game: Game) {
             renderer.drawCommanderIcon(g, CommanderType.SERGEANT, cx, y + d(40f), d(66f))
         } else if (p == Popup.NEWS) {
             ui.well(g, cx - d(40f), y, d(80f), d(80f), d(8f))
-            renderer.drawEnemyIcon(g, EnemyType.TITAN, cx, y + d(40f), d(64f), clock)
+            renderer.drawEnemyIcon(g, EnemyType.AIRSHIP, cx, y + d(40f), d(70f), clock)
         } else if (p == Popup.SUPPLY) {
             supplyRow(g, px + d(18f), y + d(6f), pw - d(36f), d(70f))
         } else {
@@ -875,13 +875,13 @@ internal class Menus(private val game: Game) {
 
     fun daily(g: Gfx) {
         val header = ui.header(g, Tx.MISSIONS.t) { game.go(Screen.MENU) }
-        val tabs = listOf(Tx.TAB_DAY.t, Tx.TAB_WEEK.t, Tx.TAB_ORDERS.t)
+        val tabs = listOf(Tx.TAB_DAY.t, Tx.TAB_WEEK.t, Tx.TAB_ORDERS.t, Tx.TAB_BOSSES.t)
         ui.segmented(g, "missions", d(14f), header, ui.w - d(28f), d(40f), tabs, missionsTab, size = 13f) {
             missionsTab = it
         }
         val due = profile.ordersToTake(game.today) > 0 || profile.supplyReady(game.today)
         if (due) {
-            val tx = d(14f) + (ui.w - d(28f)) * 5f / 6f + g.textWidth(Tx.TAB_ORDERS.t, d(13f), Font.DISPLAY) / 2f + d(8f)
+            val tx = d(14f) + (ui.w - d(28f)) * 5f / 8f + g.textWidth(Tx.TAB_ORDERS.t, d(13f), Font.DISPLAY) / 2f + d(8f)
             g.fillCircle(tx, header + d(10f), d(6f), Ui.EDGE)
             g.fillCircle(tx, header + d(10f), d(4.5f), Ui.RED)
         }
@@ -889,6 +889,7 @@ internal class Menus(private val game: Game) {
         when (missionsTab) {
             1 -> weekly(g, top)
             2 -> ordersTab(g, top)
+            3 -> bossesTab(g, top)
             else -> dailyTab(g, top)
         }
     }
@@ -1086,6 +1087,56 @@ internal class Menus(private val game: Game) {
         }
         val by = max(y + d(14f), ui.h - ui.bottom - d(72f))
         ui.button(g, "wstart", x, by, w, d(56f), Tx.START.t, Style.PRIMARY, size = 20f, icon = Icon.PLAY) { game.startWeekly() }
+    }
+
+    /** The boss rush of the day: its map, the bosses that lead it, the medals for time and today's best. */
+    private fun bossesTab(g: Gfx, top: Float) {
+        val x = d(14f)
+        val w = ui.w - d(28f)
+        if (!profile.bossRushUnlocked) {
+            ui.lock(g, ui.w / 2f, top + d(60f), d(40f), Ui.DIM)
+            ui.paragraph(g, Tx.BOSS_RUSH_LOCKED.f(BossRush.UNLOCK), ui.w / 2f, top + d(96f), w - d(40f), d(14f), Ui.DIM, Align.CENTER)
+            return
+        }
+        val day = game.today
+        val level = Levels.bossRush(day, profile.progress)
+        ui.tag(g, date(day), ui.w - d(12f), ui.top + d(30f), d(12f), Ui.PANEL_HI, Ui.TEXT, right = true)
+        ui.textMid(g, Tx.BOSS_RUSH.t.uppercase(), ui.w / 2f, top + d(12f), d(19f), Ui.GOLD, maxW = w, font = Font.DISPLAY)
+        var y = top + d(28f)
+        y += ui.paragraph(g, Tx.BOSS_RUSH_ABOUT.f(BossRush.WAVES), ui.w / 2f, y, w - d(20f), d(11.5f), Ui.DIM, Align.CENTER) + d(8f)
+        val thumbH = min(d(150f), (ui.h - ui.bottom - top) * 0.2f)
+        val thumbW = thumbH * COLS / ROWS
+        framedThumb(g, thumb(level), x + d(4f), y, thumbW, thumbH)
+        // The bosses of the day, from the last wave, where every kind comes.
+        val lx = x + thumbW + d(18f)
+        ui.caption(g, Tx.BOSS_LINEUP.t, lx, y + d(10f), Ui.ACCENT)
+        val lineup = level.plan.bosses[BossRush.WAVES - 1].orEmpty()
+        val cell = min(d(56f), (x + w - lx) / max(1, lineup.size) - d(6f))
+        for ((k, type) in lineup.withIndex()) {
+            val cx = lx + cell / 2f + k * (cell + d(6f))
+            ui.well(g, cx - cell / 2f, y + d(22f), cell, cell, d(6f))
+            renderer.drawEnemyIcon(g, type, cx, y + d(22f) + cell / 2f, cell * 0.8f, clock)
+        }
+        val source = Levels.all.firstOrNull { it.ascii == level.ascii }
+        if (source != null) ui.text(g, Tx.DAILY_MAP.f(source.name.t), lx, y + d(36f) + cell, d(11.5f), Ui.DIM, maxW = x + w - lx)
+        y += thumbH + d(16f)
+        ui.caption(g, Tx.BOSS_MEDALS.t, x + d(4f), y + d(10f), Ui.ACCENT)
+        y += d(16f)
+        val best = profile.bossBest(day)
+        val have = profile.bossMedal(day)
+        val p = profile.progress
+        val rules = listOf(Tx.MEDAL_RULES[0].t, Tx.BOSS_UNDER.f(BossRush.clock(BossRush.silverTime(p))), Tx.BOSS_UNDER.f(BossRush.clock(BossRush.goldTime(p))))
+        for (k in 0 until 3) {
+            val earned = k < have
+            ui.icon(g, Icon.MEDAL, x + d(16f), y + d(14f), d(22f), if (earned) Ui.MEDAL_COLORS[k] else Ui.PANEL_HI)
+            ui.textMid(g, rules[k], x + d(34f), y + d(14f), d(13f), if (earned) Ui.TEXT else Ui.DIM, Align.LEFT, maxW = w - d(40f))
+            y += d(28f)
+        }
+        y += d(6f)
+        val status = if (best > 0) Tx.BOSS_BEST.f(BossRush.clock(best)) else Tx.BOSS_NOT_YET.t
+        ui.textMid(g, status, ui.w / 2f, y + d(8f), d(14f), if (best > 0) Ui.GREEN else Ui.TEXT, maxW = w)
+        val by = max(y + d(30f), ui.h - ui.bottom - d(72f))
+        ui.button(g, "bstart", x, by, w, d(56f), Tx.START.t, Style.PRIMARY, size = 20f, icon = Icon.PLAY) { game.startBossRush() }
     }
 
     // --- VIP ------------------------------------------------------------------------------

@@ -358,6 +358,22 @@ object Tx {
     val TAB_DAY = L("ДЕНЬ", "DAY")
     val TAB_WEEK = L("НЕДЕЛЯ", "WEEK")
     val TAB_ORDERS = L("ПРИКАЗЫ", "ORDERS")
+    val TAB_BOSSES = L("БОССЫ", "BOSSES")
+    val BOSS_RUSH = L("Штурм боссов", "Boss rush")
+    val BOSS_RUSH_ABOUT = L(
+        "%d волн одних боссов с охраной. Чем быстрее последний упадёт, тем лучше медаль — вызывай волны досрочно!",
+        "%d waves of bosses and their escorts. The sooner the last one falls, the better the medal: call the waves early!",
+    )
+    val BOSS_RUSH_LOCKED = L("Штурм боссов откроется после %d уровня кампании", "The boss rush opens after campaign level %d")
+    val BOSS_LINEUP = L("Боссы сегодня", "Today's bosses")
+    val BOSS_MEDALS = L("Медали за время", "Medals for time")
+    val BOSS_UNDER = L("Быстрее %s", "Under %s")
+    val BOSS_BEST = L("Лучшее время сегодня: %s", "Today's best time: %s")
+    val BOSS_NOT_YET = L("Сегодня ещё не пройден", "Not won today yet")
+    val BOSS_TIME = L("Время: %s", "Time: %s")
+    val BOSS_DONE = L("Боссы разбиты", "The bosses are beaten")
+    val BOSS_RECORD = L("Лучшее время дня!", "The day's best time!")
+    val BOSS_DAY_BEST = L("Лучшее за день: %s", "Best today: %s")
     val ORDERS_TITLE = L("ПРИКАЗЫ ДНЯ", "TODAY'S ORDERS")
     val ORDERS_SUB = L("Новые приказы каждый день. Считаются все бои, кроме учебного.", "New orders every day. Every battle counts but the training one.")
     val ORDERS_BONUS = L("Все три приказа", "All three orders")
@@ -456,10 +472,10 @@ object Tx {
     val ADMIN_OFF = L("Режим администратора выключен", "Admin mode is off")
     val NEWS_TITLE = L("ЧТО НОВОГО В %s", "WHAT'S NEW IN %s")
     val NEWS = listOf(
-        L("Новый мир «Вулкан»: 8 уровней, извержения, четыре новых врага и босс-титан", "A new world, the Volcano: 8 levels, eruptions, four new enemies and the titan boss"),
-        L("Командиры растут в ранге до 10 и с 5 ранга получают третий навык", "Commanders rise to rank 10 and learn a third skill at rank 5"),
-        L("Камуфляж для отрядов и форма для командиров", "Camouflage for the squads and uniforms for the commanders"),
-        L("Операция недели с медалями и сезоны с наградами каждый месяц", "A weekly operation with medals and monthly seasons full of rewards"),
+        L("Новый мир «Руины города»: 8 уровней на двух дорогах, засады, байкеры, огнемётные танки и босс-дирижабль", "A new world, the City Ruins: 8 levels on two roads, ambushes, bikers, flame tanks and an airship boss"),
+        L("Штурм боссов на время: вкладка «Боссы» в заданиях", "A boss rush against the clock: the Bosses tab of the missions"),
+        L("Четвёртый командир — лейтенант Соколова, снайпер и медик", "A fourth commander: lieutenant Sokolova, a sniper and a medic"),
+        L("Сюжет в картинках, приказы штаба каждый день и снабжение", "A story in pictures, daily orders from headquarters and supplies"),
     )
     val NEWS_GO = L("В КАМПАНИЮ", "TO THE CAMPAIGN")
     val UPDATE_TITLE = L("НОВАЯ ВЕРСИЯ", "NEW VERSION")

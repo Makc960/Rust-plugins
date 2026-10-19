@@ -5,7 +5,7 @@ import kotlin.math.min
 
 internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS, INTRO, WARDROBE, PASS, STORY }
 
-enum class Mode { CAMPAIGN, ENDLESS, DAILY, TUTORIAL, WEEKLY }
+enum class Mode { CAMPAIGN, ENDLESS, DAILY, TUTORIAL, WEEKLY, BOSSES }
 
 /** One battle and everything chosen for it. */
 internal class Session(
@@ -55,6 +55,7 @@ internal class Session(
                     Mode.DAILY -> Levels.daily(day, progress)
                     Mode.TUTORIAL -> Levels.tutorial()
                     Mode.WEEKLY -> Levels.weekly(Weekly.week(day), progress)
+                    Mode.BOSSES -> Levels.bossRush(day, progress)
                 }
                 // Battles saved before commanders came along go on without one.
                 val commander = CommanderType.entries.firstOrNull { it.name == head["commander"] }
@@ -466,6 +467,11 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
         begin(Session(Mode.WEEKLY, Levels.weekly(Weekly.week(day), profile.progress), Difficulty.NORMAL, false, day, profile.progress, profile.perks, vip, commander, rank, play))
     }
 
+    internal fun startBossRush() {
+        val day = today
+        begin(Session(Mode.BOSSES, Levels.bossRush(day, profile.progress), Difficulty.NORMAL, false, day, profile.progress, profile.perks, vip, commander, rank, play))
+    }
+
     /** The training battle, the same for everyone: the sergeant, no VIP, the first squads. */
     internal fun startTutorial() {
         begin(Session(Mode.TUTORIAL, Levels.tutorial(), Difficulty.EASY, false, today, TUTORIAL_PROGRESS, Perks.NONE, false, CommanderType.SERGEANT, 1, play))
@@ -518,7 +524,7 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
 
     companion object {
         const val STEP = 1f / 60f
-        const val VERSION = "3.0"
+        const val VERSION = "3.1"
         const val FADE_TIME = 0.28f
         const val TOAST_TIME = 3.2f
 

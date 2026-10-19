@@ -346,6 +346,12 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 resultPoints = profile.recordWeekly(Weekly.week(s.day), resultStars)
                 if (wd.leaked == 0) profile.addStat(Stat.FLAWLESS, 1)
             }
+            Mode.BOSSES -> if (won) {
+                val seconds = wd.battleTime.toInt()
+                resultStars = BossRush.medal(seconds, s.progress)
+                resultRecord = profile.recordBossRush(s.day, seconds, resultStars)
+                if (wd.leaked == 0) profile.addStat(Stat.FLAWLESS, 1)
+            }
         }
         val hero = wd.commander
         if (hero != null && s.mode != Mode.TUTORIAL) {
@@ -353,7 +359,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             resultRankUp = profile.addService(hero.type, resultService)
         }
         val score = when (s.mode) {
-            Mode.CAMPAIGN, Mode.WEEKLY -> resultStars
+            Mode.CAMPAIGN, Mode.WEEKLY, Mode.BOSSES -> resultStars
             Mode.ENDLESS -> max(0, wd.wavesStarted - 1)
             else -> 0
         }
@@ -422,7 +428,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         }
         val s = session
         val to = if (s?.mode == Mode.CAMPAIGN) Screen.LEVELS else Screen.MENU
-        val missions = (s?.mode == Mode.DAILY || s?.mode == Mode.WEEKLY) && overlay == Overlay.RESULT
+        val missions = (s?.mode == Mode.DAILY || s?.mode == Mode.WEEKLY || s?.mode == Mode.BOSSES) && overlay == Overlay.RESULT
         if (missions) game.leaveBattle(Screen.DAILY) else game.leaveBattle(to)
     }
 
@@ -1026,7 +1032,12 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             ui.icon(g, Icon.CROWN, badges + d(13f), cy, d(21f), Ui.GOLD)
         }
         val wave = max(1, wd.wavesStarted)
-        val waveText = if (wd.endless) "$wave" else "$wave/${wd.totalWaves}"
+        val waveText = when {
+            wd.endless -> "$wave"
+            // The boss rush is against the clock.
+            s.mode == Mode.BOSSES -> "$wave/${wd.totalWaves}  ${BossRush.clock(wd.battleTime.toInt())}"
+            else -> "$wave/${wd.totalWaves}"
+        }
         val room = badges - d(6f) - x
         if (room > d(56f)) {
             val ww = min(room, d(30f) + g.textWidth(waveText, d(17f), Font.DISPLAY) + d(12f))
@@ -1677,6 +1688,17 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 lines += Tx.LIVES.f(wd.lives, wd.maxLives) to Ui.TEXT
                 lines += Tx.KILLED.f(wd.kills) to Ui.TEXT
             }
+            Mode.BOSSES -> {
+                if (won) {
+                    lines += Tx.BOSS_DONE.t to Ui.GOLD
+                    lines += Tx.BOSS_TIME.f(BossRush.clock(wd.battleTime.toInt())) to Ui.TEXT
+                    lines += Tx.WEEKLY_MEDAL.f(Tx.MEDALS[resultStars - 1].t) to Ui.GOLD
+                    lines += (if (resultRecord) Tx.BOSS_RECORD.t to Ui.GOLD else Tx.BOSS_DAY_BEST.f(BossRush.clock(profile.bossBest(s.day))) to Ui.TEXT)
+                } else {
+                    lines += Tx.WAVE_OF.f(wd.wavesStarted, wd.totalWaves) to Ui.TEXT
+                }
+                lines += Tx.KILLED.f(wd.kills) to Ui.TEXT
+            }
         }
         val hero = wd.commander
         if (hero != null && resultService > 0) lines += Tx.SERVICE.f(resultService) to Ui.TEXT
@@ -1694,7 +1716,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         val rowH = d(26f)
         val tutorialWon = s.mode == Mode.TUTORIAL && won
         val buttonsH = (if (next != null || tutorialWon) d(172f) else d(118f)) + (if (offerVip) d(64f) else 0f) + (if (offerAd) d(64f) else 0f)
-        val headH = if (s.mode == Mode.ENDLESS || ((s.mode == Mode.CAMPAIGN || s.mode == Mode.WEEKLY) && won)) d(92f) else d(12f)
+        val headH = if (s.mode == Mode.ENDLESS || ((s.mode == Mode.CAMPAIGN || s.mode == Mode.WEEKLY || s.mode == Mode.BOSSES) && won)) d(92f) else d(12f)
         val achH = if (achievements.isEmpty()) 0f else d(30f) + achievements.size * d(24f)
         val ph = d(56f) + headH + lines.size * rowH + achH + buttonsH + d(34f)
         val band = if (won) 0xFF3B5A24.toInt() else 0xFF6B2219.toInt()
@@ -1712,7 +1734,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 if (k < resultStars && appear > 0f) ui.star(g, sx, sy, d(24f) * max(0.4f, pop), true)
             }
             y += headH
-        } else if (s.mode == Mode.WEEKLY && won) {
+        } else if ((s.mode == Mode.WEEKLY || s.mode == Mode.BOSSES) && won) {
             for (k in 0 until 3) {
                 val appear = ((since - 0.25f - k * 0.3f) * 5f).coerceIn(0f, 1f)
                 val sx = ui.w / 2f + (k - 1) * d(60f)

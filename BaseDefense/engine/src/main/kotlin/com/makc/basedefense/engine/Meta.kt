@@ -126,6 +126,9 @@ enum class Stat {
     ORDERS_DONE,
 
     AIRSHIP_KILLS,
+
+    /** Days a boss rush was won with gold. */
+    BOSS_RUSH_GOLD,
 }
 
 /** Rewarded adverts, offered only to players without VIP: what they give and how many a day. */
@@ -199,6 +202,7 @@ enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (
     WEEKLY_GOLD_5(L("Генштаб", "General staff"), L("Получи золото пяти операций недели", "Win gold in five weekly operations"), 5, { it.stat(Stat.WEEKLY_GOLD) }),
     TITANS(L("Укротитель титанов", "Titan tamer"), L("Победи трёх титанов", "Defeat three titans"), 3, { it.stat(Stat.TITAN_KILLS) }),
     AIRSHIPS(L("Гроза небес", "Sky breaker"), L("Сбей три дирижабля", "Shoot down three airships"), 3, { it.stat(Stat.AIRSHIP_KILLS) }),
+    BOSS_RUSH(L("Золотой штурм", "Golden rush"), L("Пройди штурм боссов на золото", "Win gold in a boss rush"), 1, { it.stat(Stat.BOSS_RUSH_GOLD) }),
     ;
 
     val key: String get() = "ach_$name"

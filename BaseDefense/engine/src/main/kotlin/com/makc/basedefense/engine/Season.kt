@@ -48,6 +48,7 @@ object Season {
         Mode.DAILY -> if (won) 150 else 30
         Mode.WEEKLY -> if (won) 50 + 100 * score else 40
         Mode.ENDLESS -> min(300, 10 * score)
+        Mode.BOSSES -> if (won) 60 + 50 * score else 30
         Mode.TUTORIAL -> 0
     }
 

@@ -261,6 +261,7 @@ object Levels {
     const val DAILY_ID = 200
     const val TUTORIAL_ID = 300
     const val WEEKLY_ID = 400
+    const val BOSS_RUSH_ID = 500
 
     private val B = EnemyType.BANDIT
     private val RU = EnemyType.RUNNER
@@ -1537,6 +1538,33 @@ object Levels {
             plan = WavePlan(
                 Weekly.WAVES, intro, budget = 10.5f + 0.4f * p, growth = 0.42f, hp = 1.15f + 0.045f * p, hpGrowth = 1.09f,
                 bosses = bosses, seed = 5000 + week % 100_000,
+            ),
+        )
+    }
+
+    /**
+     * The boss rush of [day]: a reached map and [BossRush.WAVES] waves, each led by bosses the
+     * player has met, more of them as it goes and every kind at the end, with a small escort.
+     */
+    fun bossRush(day: Int, progress: Int): LevelDef {
+        val p = progress.coerceIn(1, all.size)
+        val reached = all.take(p)
+        val rng = Random(day * 52_711 + 3)
+        val source = reached[rng.nextInt(reached.size)]
+        val known = EnemyType.entries.filter { !it.boss && it.campaign <= p }.sortedBy { it.campaign }
+        val intro = known.mapIndexed { i, type -> type to if (i < 2) 0 else min(BossRush.WAVES - 2, 1 + (i - 2) * 5 / max(1, known.size - 2)) }
+        val pool = BossRush.bosses(p).ifEmpty { listOf(APC) }
+        // The heavier kinds join later: the titan from the fourth wave, the airship from the sixth.
+        val bosses = (0 until BossRush.WAVES).associateWith { i ->
+            val open = pool.take(2 + max(0, (i - 1) / 2))
+            if (i == BossRush.WAVES - 1) pool else List(1 + i / 3) { open[rng.nextInt(open.size)] }
+        }
+        return LevelDef(
+            BOSS_RUSH_ID, L("Штурм боссов", "Boss rush"), source.biome, source.ascii, source.paths,
+            startMoney = 420 + 10 * p,
+            plan = WavePlan(
+                BossRush.WAVES, intro, budget = 3f + 0.12f * p, growth = 0.3f, hp = 1.4f + 0.012f * p, hpGrowth = 1.08f,
+                bosses = bosses, seed = 7000 + day % 100_000,
             ),
         )
     }
