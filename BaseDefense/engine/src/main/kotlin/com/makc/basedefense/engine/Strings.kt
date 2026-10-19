@@ -460,7 +460,7 @@ object Tx {
     val UPDATE_GO = L("ОБНОВИТЬ", "UPDATE")
 
     // The backstory
-    val STORY_TITLE = L("ПРЕДЫСТОРИЯ", "BACKSTORY")
+    val STORY_TITLE = L("СЮЖЕТ", "STORY")
     val STORY_SKIP = L("ПРОПУСТИТЬ", "SKIP")
     val STORY_NEXT = L("ДАЛЕЕ", "NEXT")
     val STORY_GO = L("К БОЮ!", "TO BATTLE!")
@@ -470,6 +470,50 @@ object Tx {
         L("БРОНЯ", "ARMOUR"),
         L("ПОСЛЕДНИЙ РУБЕЖ", "THE LAST LINE"),
         L("ТВОЙ ПРИКАЗ", "YOUR ORDERS"),
+    )
+    val STORY_VALLEY_TITLES = listOf(L("ДОЛИНА УДЕРЖАНА", "THE VALLEY HOLDS"), L("СЛЕД В ПЕСКАХ", "TRACKS IN THE SAND"))
+    val STORY_VALLEY_TEXTS = listOf(
+        L(
+            "Долина удержана. Орда откатилась на юг, бросив разбитые машины и раненых.",
+            "The valley holds. The Horde fell back south, leaving its wrecks and its wounded behind.",
+        ),
+        L(
+            "Разведчики нашли её след: в пустыне Орда собирает новое войско. Сержант ведёт отряды на юг.",
+            "Scouts found its tracks: in the desert the Horde is gathering a new army. The sergeant leads the squads south.",
+        ),
+    )
+    val STORY_DESERT_TITLES = listOf(L("ПЕСКИ ПОЗАДИ", "THE SANDS BEHIND"), L("ЗИМНИЙ ПОХОД", "THE WINTER MARCH"))
+    val STORY_DESERT_TEXTS = listOf(
+        L(
+            "Пустыня наша. Пленные твердят одно: главные силы Орды ушли на север, к перевалам.",
+            "The desert is ours. The prisoners all say the same: the Horde's main force went north, to the passes.",
+        ),
+        L(
+            "Там, во льдах, её прикрывают щитоносцы и медики. Зима будет долгой.",
+            "Up there in the ice, shieldbearers and medics cover it. It will be a long winter.",
+        ),
+    )
+    val STORY_NORTH_TITLES = listOf(L("ПЕРЕВАЛЫ ВЗЯТЫ", "THE PASSES ARE TAKEN"), L("ОГНЕННАЯ ЗЕМЛЯ", "THE LAND OF FIRE"))
+    val STORY_NORTH_TEXTS = listOf(
+        L(
+            "Перевалы взяты. Но земля дрожит: за горами проснулся вулкан.",
+            "The passes are taken. But the ground is shaking: beyond the mountains a volcano has woken.",
+        ),
+        L(
+            "Из огня выходят титаны и саламандры. Там, у жерла, последнее логово Орды.",
+            "Titans and salamanders walk out of the fire. There, by the crater, is the Horde's last lair.",
+        ),
+    )
+    val STORY_VOLCANO_TITLES = listOf(L("ТИТАНЫ ПАЛИ", "THE TITANS FALL"), L("ДОМОЙ", "HOME"))
+    val STORY_VOLCANO_TEXTS = listOf(
+        L(
+            "Последний титан рухнул в лаву. Орда разбита, её вожаки бегут.",
+            "The last titan fell into the lava. The Horde is broken, its leaders on the run.",
+        ),
+        L(
+            "Над базой у Побережья снова тихо. Но сержант не снимает часовых: мир тоже надо уметь удержать.",
+            "It is quiet again over the base on the Coast. But the sergeant keeps the sentries posted: peace has to be held too.",
+        ),
     )
     val STORY_TEXTS = listOf(
         L(

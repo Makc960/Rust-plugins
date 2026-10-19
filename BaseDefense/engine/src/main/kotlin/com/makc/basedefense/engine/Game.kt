@@ -385,11 +385,19 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
     }
 
     /** A new player hears the backstory once, after the intro. */
-    internal val storyDue: Boolean get() = !profile.storySeen && profile.totalStars == 0
+    internal val storyDue: Boolean get() = !profile.chapterSeen(Chapter.PROLOGUE) && profile.totalStars == 0
 
     /** Tells the backstory, then goes to [then]. */
-    internal fun tellStory(then: Screen) {
-        story.start(then)
+    internal fun tellPrologue(then: Screen) = tell(listOf(Chapter.PROLOGUE), then)
+
+    /** Tells the story so far: the backstory and every chapter heard already. */
+    internal fun tellStory(then: Screen) = tell(Chapter.entries.filter { it == Chapter.PROLOGUE || profile.chapterSeen(it) }, then)
+
+    /** Tells chapter [c], then goes to [then], or does [after] instead when there is one. */
+    internal fun tellChapter(c: Chapter, then: Screen, after: (() -> Unit)? = null) = tell(listOf(c), then, after)
+
+    private fun tell(chapters: List<Chapter>, then: Screen, after: (() -> Unit)? = null) {
+        story.start(chapters, then, after)
         go(Screen.STORY)
     }
 

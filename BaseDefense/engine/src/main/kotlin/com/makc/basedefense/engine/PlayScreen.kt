@@ -80,6 +80,9 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private var resultHard = false
     private var resultMedal = false
     private var resultRecord = false
+
+    /** A chapter of the story this win has earned, told when the player leaves the result. */
+    private var chapterDue: Chapter? = null
     private var resultAchievements: List<Achievement> = emptyList()
     private var flushed = false
 
@@ -162,6 +165,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         resultHard = false
         resultMedal = false
         resultRecord = false
+        chapterDue = null
         resultAchievements = emptyList()
         resultService = 0
         resultRankUp = 0
@@ -315,6 +319,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 resultHard = s.difficulty == Difficulty.HARD
                 resultMedal = s.challenge && !wd.challengeFailed
                 profile.recordWin(s.level.id, resultStars, s.difficulty, resultMedal)
+                if (s.level.id % Levels.PER_WORLD == 0) chapterDue = Chapter.after(s.level.world)?.takeIf { !profile.chapterSeen(it) }
                 profile.addStat(Stat.WINS, 1)
                 if (wd.leaked == 0) profile.addStat(Stat.FLAWLESS, 1)
             }
@@ -407,6 +412,12 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     }
 
     private fun leave() {
+        val chapter = chapterDue
+        if (chapter != null && overlay == Overlay.RESULT) {
+            chapterDue = null
+            game.tellChapter(chapter, Screen.LEVELS)
+            return
+        }
         val s = session
         val to = if (s?.mode == Mode.CAMPAIGN) Screen.LEVELS else Screen.MENU
         val missions = (s?.mode == Mode.DAILY || s?.mode == Mode.WEEKLY) && overlay == Overlay.RESULT
@@ -1765,7 +1776,15 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             y += d(54f)
         } else if (next != null) {
             ui.button(g, "next", bx, y, bw, d(52f), Tx.NEXT_LEVEL_BTN.f(next.name.t.uppercase()), Style.PRIMARY, size = 16f, icon = Icon.PLAY) {
-                game.startCampaign(next, s.difficulty.takeIf { profile.hardOpen(next.id) || it != Difficulty.HARD } ?: Difficulty.NORMAL, false)
+                val go = { game.startCampaign(next, s.difficulty.takeIf { profile.hardOpen(next.id) || it != Difficulty.HARD } ?: Difficulty.NORMAL, false) }
+                // A new world begins with its chapter of the story.
+                val chapter = chapterDue
+                if (chapter != null) {
+                    chapterDue = null
+                    game.tellChapter(chapter, Screen.LEVELS, go)
+                } else {
+                    go()
+                }
             }
             y += d(64f)
             ui.button(g, "again", bx, y, bw, d(44f), Tx.AGAIN.t, icon = Icon.UNDO) { game.restart() }

@@ -482,6 +482,12 @@ class Profile(private val p: Platform) {
         get() = p.getInt("story_seen", 0) != 0
         set(v) = p.putInt("story_seen", if (v) 1 else 0)
 
+    fun chapterSeen(c: Chapter): Boolean = if (c == Chapter.PROLOGUE) storySeen else p.getInt("story_${c.name}", 0) != 0
+
+    fun markSeen(c: Chapter) {
+        if (c == Chapter.PROLOGUE) storySeen = true else p.putInt("story_${c.name}", 1)
+    }
+
     /** The last version whose news the player has been shown. */
     var newsSeen: String?
         get() = p.getString("news_seen")

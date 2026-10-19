@@ -7,24 +7,55 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
+/** A part of the story: the prologue before the first battle, then a chapter after each world. */
+enum class Chapter(val heading: L, val world: Int) {
+    PROLOGUE(L("ПРЕДЫСТОРИЯ", "BACKSTORY"), -1),
+    VALLEY(L("ГЛАВА 1", "CHAPTER 1"), 0),
+    DESERT(L("ГЛАВА 2", "CHAPTER 2"), 1),
+    NORTH(L("ГЛАВА 3", "CHAPTER 3"), 2),
+    VOLCANO(L("ГЛАВА 4", "CHAPTER 4"), 3),
+    ;
+
+    companion object {
+        /** The chapter told when the last level of [world] is won, if there is one. */
+        fun after(world: Int): Chapter? = entries.firstOrNull { it.world == world && world >= 0 }
+    }
+}
+
 /**
- * The backstory, told once to a new player after the intro and again from the settings.
- * Five pictures, each a scene played live with the game's own art while the camera drifts
- * over it, with a few lines typed under it on a field report. A tap finishes the lines or
- * turns the page; the last page, or the skip button, leads on.
+ * The story, told in pictures: the prologue once to a new player after the intro, a chapter
+ * after each world's last level, and all of it so far again from the settings. Each page is
+ * a scene played live with the game's own art while the camera drifts over it, with a few
+ * lines typed under it on a field report. A tap finishes the lines or turns the page; the
+ * last page, or the skip button, leads on.
  */
 internal class Story(private val game: Game) : WorldListener {
     private val ui get() = game.ui
     private val renderer get() = game.renderer
 
-    /** One picture: a live scene, where the camera starts and where it drifts to, its colour and how loud it is. */
-    private class Scene(val world: World, val from: FloatArray, val to: FloatArray, val tint: Int, val loud: Float) {
-        /** When the scene next sends someone in, in its world's seconds. */
+    /** One picture: a live scene, where the camera starts and drifts to, its colour, how loud it is and what goes on in it. */
+    private class Scene(
+        val world: World,
+        val from: FloatArray,
+        val to: FloatArray,
+        val tint: Int,
+        val loud: Float,
+        val direct: (Scene) -> Unit = {},
+    ) {
+        /** When the scene next does something, in its world's seconds. */
         var due = 0f
         var big = 0f
         var count = 0
         val cells = ArrayList<Int>()
     }
+
+    private class Page(val chapter: Chapter, val title: L, val text: L, val stage: () -> Scene)
+
+    private var pages: List<Page> = emptyList()
+    private var told: List<Chapter> = emptyList()
+
+    /** How many pages this telling has. */
+    val pageCount: Int get() = pages.size
 
     /** The page open now, from 0. */
     var page = 0
@@ -42,7 +73,7 @@ internal class Story(private val game: Game) : WorldListener {
     /** All of this page's lines are typed out. */
     val typed: Boolean get() = shown >= text.length
 
-    private val text: String get() = Tx.STORY_TEXTS[page].t
+    private val text: String get() = pages[page].text.t
 
     private fun d(v: Float) = ui.d(v)
 
@@ -54,8 +85,13 @@ internal class Story(private val game: Game) : WorldListener {
         game.sound(sfx, volume * s.loud)
     }
 
-    /** Opens the story at its first page; [then] is the screen it leads to. */
-    fun start(then: Screen) {
+    private var after: (() -> Unit)? = null
+
+    /** Tells [chapters] from their first page; [then] is the screen it leads to, unless there is [next] to do instead. */
+    fun start(chapters: List<Chapter>, then: Screen, next: (() -> Unit)? = null) {
+        told = chapters
+        after = next
+        pages = chapters.flatMap { pagesOf(it) }
         back = then
         leaving = false
         rnd = Random(SEED)
@@ -69,7 +105,7 @@ internal class Story(private val game: Game) : WorldListener {
         acc = 0f
         sirens = 0
         scene = null
-        scene = stage(p)
+        scene = pages[p].stage()
     }
 
     /** A tap: the lines are typed out at once, or the page turns. */
@@ -79,7 +115,7 @@ internal class Story(private val game: Game) : WorldListener {
             shown = text.length.toFloat()
             return
         }
-        if (page < PAGES - 1) {
+        if (page < pages.size - 1) {
             game.sound(Sfx.CLICK, 0.5f)
             open(page + 1)
         } else {
@@ -92,8 +128,9 @@ internal class Story(private val game: Game) : WorldListener {
     private fun finish() {
         if (leaving) return
         leaving = true
-        game.profile.storySeen = true
-        game.go(back)
+        for (c in told) game.profile.markSeen(c)
+        val next = after
+        if (next != null) next() else game.go(back)
     }
 
     fun update(dt: Float) {
@@ -103,7 +140,7 @@ internal class Story(private val game: Game) : WorldListener {
         val s = scene ?: return
         acc += dt
         while (acc >= Game.STEP) {
-            direct(s)
+            if (s.world.time >= s.due) s.direct(s)
             s.world.step(Game.STEP)
             acc -= Game.STEP
         }
@@ -118,105 +155,196 @@ internal class Story(private val game: Game) : WorldListener {
         return w
     }
 
-    private fun stage(p: Int): Scene = when (p) {
-        // The base by the sea on a quiet evening: two squads on guard, the sergeant walking his rounds.
-        0 -> {
-            val w = world(COAST, commander = true)
-            val posts = posts(w)
-            for (cell in posts.take(2)) w.build(TowerType.TURRET, cell % COLS, cell / COLS)?.age = 10f
-            Scene(w, floatArrayOf(4.9f, 11.2f, 6.6f), floatArrayOf(4.6f, 10.6f, 8f), Colors.alpha(DUSK, 0.12f), 0f).also {
-                it.cells += posts.drop(2)
-                it.due = 1.5f
-            }
-        }
-        // The Horde on the march through the dunes.
-        1 -> {
-            val w = world(DUNES)
-            w.beginShow()
-            for (k in 0 until 18) w.send(horde(), 3f + k * 0.75f)
-            Scene(w, floatArrayOf(3.6f, 4.2f, 6.4f), floatArrayOf(3.2f, 5.4f, 7.6f), Colors.alpha(EMBER, 0.24f), 0.3f)
-        }
-        // Armour and helicopters over the frozen river.
-        2 -> {
-            val w = world(RIVER)
-            w.beginShow()
-            w.send(EnemyType.APC, 16.5f)
-            w.send(EnemyType.HELI, 13f)
-            for (dist in floatArrayOf(11.5f, 12.4f, 14.2f, 18f, 18.8f, 19.6f, 20.4f)) w.send(machines(), dist)
-            Scene(w, floatArrayOf(4f, 8.8f, 6.8f), floatArrayOf(3.6f, 9.8f, 7.8f), Colors.alpha(NIGHT, 0.3f), 0.35f).also { it.big = 7f }
-        }
-        // The sergeant has his volunteers dig in by the base, one squad after another.
-        3 -> {
-            val w = world(COAST, commander = true)
-            Scene(w, floatArrayOf(5f, 11.4f, 5.6f), floatArrayOf(4.6f, 10.8f, 6.8f), 0, 0.6f).also {
-                it.cells += posts(w)
-                it.due = 0.6f
-            }
-        }
-        // And the fight is on.
-        else -> {
-            val w = world(COAST, commander = true)
-            w.beginShow()
-            val types = listOf(TowerType.TURRET, TowerType.ROCKET, TowerType.SHOTGUN, TowerType.SNIPER, TowerType.TESLA, TowerType.FLAMER)
-            for ((i, cell) in posts(w).withIndex()) {
-                val t = w.build(types[i % types.size], cell % COLS, cell / COLS) ?: continue
-                t.age = 10f
-                repeat(i % 3) { w.upgrade(t) }
-                t.age = 10f
-            }
-            for (k in 0 until 10) w.send(raiders(), 13f + k * 1.6f)
-            Scene(w, floatArrayOf(4.5f, 10.2f, 6.8f), floatArrayOf(4.4f, 9.4f, 8.6f), 0, 0.4f).also { it.big = 2.5f }
+    private fun pagesOf(c: Chapter): List<Page> {
+        fun page(i: Int, titles: List<L>, texts: List<L>, stage: () -> Scene) = Page(c, titles[i], texts[i], stage)
+        return when (c) {
+            Chapter.PROLOGUE -> listOf(
+                page(0, Tx.STORY_CHAPTERS, Tx.STORY_TEXTS) { peace() },
+                page(1, Tx.STORY_CHAPTERS, Tx.STORY_TEXTS) { horde() },
+                page(2, Tx.STORY_CHAPTERS, Tx.STORY_TEXTS) { armour() },
+                page(3, Tx.STORY_CHAPTERS, Tx.STORY_TEXTS) { digIn() },
+                page(4, Tx.STORY_CHAPTERS, Tx.STORY_TEXTS) { fight(COAST, RAIDERS, 0, plane = true) },
+            )
+            Chapter.VALLEY -> listOf(
+                page(0, Tx.STORY_VALLEY_TITLES, Tx.STORY_VALLEY_TEXTS) { fight(8, RAIDERS, Colors.alpha(DUSK, 0.1f), plane = true) },
+                page(1, Tx.STORY_VALLEY_TITLES, Tx.STORY_VALLEY_TEXTS) { march(9, HORDE, Colors.alpha(EMBER, 0.22f)) },
+            )
+            Chapter.DESERT -> listOf(
+                page(0, Tx.STORY_DESERT_TITLES, Tx.STORY_DESERT_TEXTS) {
+                    quiet(16, listOf(TowerType.SNIPER, TowerType.ROCKET, TowerType.TURRET), Colors.alpha(DUSK, 0.14f))
+                },
+                page(1, Tx.STORY_DESERT_TITLES, Tx.STORY_DESERT_TEXTS) { march(17, NORTHERNERS, Colors.alpha(NIGHT, 0.25f)) },
+            )
+            Chapter.NORTH -> listOf(
+                page(0, Tx.STORY_NORTH_TITLES, Tx.STORY_NORTH_TEXTS) {
+                    quiet(24, listOf(TowerType.TESLA, TowerType.SAM, TowerType.SNIPER), Colors.alpha(NIGHT, 0.2f))
+                },
+                page(1, Tx.STORY_NORTH_TITLES, Tx.STORY_NORTH_TEXTS) {
+                    bosses(25, listOf(EnemyType.TITAN), FIRE_WALKERS, Colors.alpha(EMBER, 0.16f))
+                },
+            )
+            Chapter.VOLCANO -> listOf(
+                page(0, Tx.STORY_VOLCANO_TITLES, Tx.STORY_VOLCANO_TEXTS) { fight(32, FIRE_WALKERS, Colors.alpha(EMBER, 0.12f), plane = true) },
+                page(1, Tx.STORY_VOLCANO_TITLES, Tx.STORY_VOLCANO_TEXTS) {
+                    quiet(COAST, listOf(TowerType.TURRET, TowerType.ROCKET, TowerType.SNIPER, TowerType.TESLA, TowerType.SHOTGUN), Colors.alpha(DUSK, 0.12f))
+                },
+            )
         }
     }
 
-    /** What each scene does as it plays: who walks in, what gets built, when the plane comes. */
-    private fun direct(s: Scene) {
-        val w = s.world
-        if (w.time < s.due) return
-        when (page) {
-            0 -> {
-                val cell = s.cells.getOrNull(s.count++ % max(1, s.cells.size)) ?: return
-                w.moveCommander(cell % COLS + 0.5f, cell / COLS + 0.5f)
-                s.due = w.time + 3.4f
+    // --- the prologue's own scenes, framed by hand -----------------------------------------
+
+    /** The base by the sea on a quiet evening: two squads on guard, the sergeant walking his rounds. */
+    private fun peace(): Scene {
+        val w = world(COAST, commander = true)
+        val posts = posts(w)
+        for (cell in posts.take(2)) w.build(TowerType.TURRET, cell % COLS, cell / COLS)?.age = 10f
+        return Scene(w, floatArrayOf(4.9f, 11.2f, 6.6f), floatArrayOf(4.6f, 10.6f, 8f), Colors.alpha(DUSK, 0.12f), 0f) { rounds(it) }.also {
+            it.cells += posts.drop(2)
+            it.due = 1.5f
+        }
+    }
+
+    /** The Horde on the march through the dunes. */
+    private fun horde(): Scene {
+        val w = world(DUNES)
+        w.beginShow()
+        for (k in 0 until 18) w.send(pick(HORDE), 3f + k * 0.75f)
+        return Scene(w, floatArrayOf(3.6f, 4.2f, 6.4f), floatArrayOf(3.2f, 5.4f, 7.6f), Colors.alpha(EMBER, 0.24f), 0.3f) { s ->
+            w.send(pick(HORDE), 0f)
+            if (rnd.nextFloat() < 0.3f) w.send(EnemyType.SWARM, 0f).also { w.send(EnemyType.SWARM, 0f) }
+            s.due = w.time + 0.55f
+        }
+    }
+
+    /** Armour and helicopters over the frozen river. */
+    private fun armour(): Scene {
+        val w = world(RIVER)
+        w.beginShow()
+        w.send(EnemyType.APC, 16.5f)
+        w.send(EnemyType.HELI, 13f)
+        for (dist in floatArrayOf(11.5f, 12.4f, 14.2f, 18f, 18.8f, 19.6f, 20.4f)) w.send(pick(MACHINES), dist)
+        return Scene(w, floatArrayOf(4f, 8.8f, 6.8f), floatArrayOf(3.6f, 9.8f, 7.8f), Colors.alpha(NIGHT, 0.3f), 0.35f) { s ->
+            if (w.time >= s.big) {
+                w.send(if (s.count++ % 2 == 0) EnemyType.HELI else EnemyType.APC, 9f)
+                s.big = w.time + 8f
             }
-            1 -> {
-                w.send(horde(), 0f)
-                if (rnd.nextFloat() < 0.3f) w.send(EnemyType.SWARM, 0f).also { w.send(EnemyType.SWARM, 0f) }
-                s.due = w.time + 0.55f
-            }
-            2 -> {
-                if (w.time >= s.big) {
-                    w.send(if (s.count++ % 2 == 0) EnemyType.HELI else EnemyType.APC, 9f)
-                    s.big = w.time + 8f
-                }
-                w.send(machines(), 9f)
-                s.due = w.time + 1.1f
-            }
-            3 -> {
-                val cell = s.cells.getOrNull(s.count) ?: return
+            w.send(pick(MACHINES), 9f)
+            s.due = w.time + 1.1f
+        }.also { it.big = 7f }
+    }
+
+    /** The sergeant has his volunteers dig in by the base, one squad after another. */
+    private fun digIn(): Scene {
+        val w = world(COAST, commander = true)
+        return Scene(w, floatArrayOf(5f, 11.4f, 5.6f), floatArrayOf(4.6f, 10.8f, 6.8f), 0, 0.6f) { s ->
+            val cell = s.cells.getOrNull(s.count)
+            if (cell != null) {
                 w.build(DIG_IN[s.count % DIG_IN.size], cell % COLS, cell / COLS)
                 s.count++
                 s.due = w.time + 0.85f
+            } else {
+                s.due = Float.MAX_VALUE
             }
-            4 -> {
-                if (w.time >= s.big) {
-                    // The plane goes for the thick of it.
-                    val target = w.enemies.filter { it.alive && it.y > 7.5f }.maxByOrNull { it.dist }
-                    if (target != null) w.flyover(target.x, target.y, World.AIRSTRIKE_DAMAGE)
-                    s.big = w.time + 6.5f
-                }
-                w.send(raiders(), 12f)
-                s.due = w.time + 0.7f
-            }
-            else -> s.due = Float.MAX_VALUE
+        }.also {
+            it.cells += posts(w)
+            it.due = 0.6f
         }
     }
 
-    private fun horde(): EnemyType = HORDE[rnd.nextInt(HORDE.size)]
+    // --- scenes for any map ---------------------------------------------------------------
 
-    private fun machines(): EnemyType = MACHINES[rnd.nextInt(MACHINES.size)]
+    /** Squads at their posts by the base and the sergeant on his rounds: a quiet day after a fight. */
+    private fun quiet(level: Int, garrison: List<TowerType>, tint: Int): Scene {
+        val w = world(level, commander = true)
+        val posts = posts(w)
+        for ((i, cell) in posts.take(garrison.size).withIndex()) {
+            val t = w.build(garrison[i], cell % COLS, cell / COLS) ?: continue
+            repeat(i % 3) { w.upgrade(t) }
+            t.age = 10f
+        }
+        val (bx, by) = base(w)
+        return Scene(w, floatArrayOf(bx, by - 2f, 6.4f), floatArrayOf(bx, by - 3f, 8f), tint, 0f) { rounds(it) }.also {
+            it.cells += posts.drop(garrison.size)
+            it.due = 1.2f
+        }
+    }
 
-    private fun raiders(): EnemyType = RAIDERS[rnd.nextInt(RAIDERS.size)]
+    /** An army on the march along the road into the map. */
+    private fun march(level: Int, pool: List<EnemyType>, tint: Int): Scene {
+        val w = world(level)
+        w.beginShow()
+        for (k in 0 until 18) w.send(pick(pool), 3f + k * 0.75f)
+        val a = along(w, 5f)
+        val b = along(w, 9f)
+        return Scene(w, floatArrayOf(a[0], a[1], 6.4f), floatArrayOf(b[0], b[1], 7.6f), tint, 0.3f) { s ->
+            w.send(pick(pool), 0f)
+            s.due = w.time + 0.6f
+        }
+    }
+
+    /** Bosses rolling in with their escort. */
+    private fun bosses(level: Int, big: List<EnemyType>, pool: List<EnemyType>, tint: Int): Scene {
+        val w = world(level)
+        w.beginShow()
+        w.send(big[0], 10f)
+        for (dist in floatArrayOf(6f, 7.2f, 8.4f, 11.5f, 12.6f, 13.8f)) w.send(pick(pool), dist)
+        val a = along(w, 9f)
+        val b = along(w, 12f)
+        return Scene(w, floatArrayOf(a[0], a[1], 6.8f), floatArrayOf(b[0], b[1], 7.8f), tint, 0.35f) { s ->
+            if (w.time >= s.big) {
+                w.send(big[s.count++ % big.size], 3f)
+                s.big = w.time + 9f
+            }
+            w.send(pick(pool), 3f)
+            s.due = w.time + 1.1f
+        }.also { it.big = 6f }
+    }
+
+    /** Squads by the base fighting off an attack, and the plane coming over now and then. */
+    private fun fight(level: Int, pool: List<EnemyType>, tint: Int, plane: Boolean): Scene {
+        val w = world(level, commander = true)
+        w.beginShow()
+        for ((i, cell) in posts(w).withIndex()) {
+            val t = w.build(SQUADS[i % SQUADS.size], cell % COLS, cell / COLS) ?: continue
+            repeat(i % 3) { w.upgrade(t) }
+            t.age = 10f
+        }
+        val path = w.map.paths[0]
+        val entry = max(0f, path.length - 18f)
+        for (k in 0 until 10) w.send(pick(pool), entry + 1f + k * 1.6f)
+        val (bx, by) = base(w)
+        return Scene(w, floatArrayOf(bx - 0.5f, by - 3f, 6.8f), floatArrayOf(bx - 0.6f, by - 3.8f, 8.6f), tint, 0.4f) { s ->
+            if (plane && w.time >= s.big) {
+                // The plane goes for the one nearest the base.
+                val target = w.enemies.filter { it.alive && it.onScreen() }.maxByOrNull { it.dist }
+                if (target != null) w.flyover(target.x, target.y, World.AIRSTRIKE_DAMAGE)
+                s.big = w.time + 6.5f
+            }
+            w.send(pick(pool), entry)
+            s.due = w.time + 0.7f
+        }.also { it.big = 2.5f }
+    }
+
+    private fun Enemy.onScreen(): Boolean = x in 0f..COLS.toFloat() && y in 0f..ROWS.toFloat()
+
+    /** The sergeant walks from post to post. */
+    private fun rounds(s: Scene) {
+        val cell = s.cells.getOrNull(s.count++ % max(1, s.cells.size)) ?: return
+        s.world.moveCommander(cell % COLS + 0.5f, cell / COLS + 0.5f)
+        s.due = s.world.time + 3.4f
+    }
+
+    private fun base(w: World): Pair<Float, Float> = (w.map.baseCol + 0.5f) to (w.map.baseRow + 0.5f)
+
+    /** The point [dist] cells along the main road. */
+    private fun along(w: World, dist: Float): FloatArray {
+        val p = FloatArray(4)
+        w.map.paths[0].pointAt(dist, p)
+        return p
+    }
+
+    private fun pick(pool: List<EnemyType>): EnemyType = pool[rnd.nextInt(pool.size)]
 
     /** Grass by the road near the base, the cells that cover the most road first. */
     private fun posts(w: World): List<Int> {
@@ -245,16 +373,16 @@ internal class Story(private val game: Game) : WorldListener {
         val top = ui.top + d(62f)
         val navY = ui.h - ui.bottom - d(64f)
         val size = d(14.5f)
-        val most = Tx.STORY_TEXTS.maxOf { ui.lines(g, it.t, size, w - d(8f) - TEXT_LEFT * d(1f) - d(20f)).size }
+        val most = pages.maxOf { ui.lines(g, it.text.t, size, w - d(8f) - TEXT_LEFT * d(1f) - d(20f)).size }
         val paperH = d(34f) + LINE_STEP * d(1f) * most
         val room = navY - d(18f) - paperH - d(26f) - top
         val ph = min(room, w * 1.3f)
         val py = top + (room - ph) / 2f
         val paperY = py + ph + d(26f)
 
-        ui.text(g, Tx.STORY_TITLE.t, x, ui.top + d(36f), d(20f), Ui.GOLD, font = Font.DISPLAY, maxW = ui.w - d(170f))
+        ui.text(g, pages[page].chapter.heading.t, x, ui.top + d(36f), d(20f), Ui.GOLD, font = Font.DISPLAY, maxW = ui.w - d(170f))
         drawPicture(g, s, x, py, w, ph)
-        val chapter = Tx.STORY_CHAPTERS[page].t
+        val chapter = pages[page].title.t
         val tapeSize = d(15f)
         ui.tape(g, chapter, x + d(14f) + (g.textWidth(chapter, tapeSize, Font.DISPLAY) + tapeSize * 1.1f) / 2f, py + d(2f), tapeSize, -3f)
         drawReport(g, x + d(4f), paperY, w - d(8f), paperH, size)
@@ -334,13 +462,17 @@ internal class Story(private val game: Game) : WorldListener {
         val bw = d(158f)
         val bh = d(50f)
         val bx = ui.w - d(16f) - bw
-        for (i in 0 until PAGES) {
-            val dx = d(28f) + i * d(18f)
-            val r = if (i == page) d(5.5f) else d(3.5f)
-            g.fillCircle(dx, y + bh / 2f, r + d(1.5f), Ui.EDGE)
-            g.fillCircle(dx, y + bh / 2f, r, if (i == page) Ui.ACCENT else if (i < page) Ui.DIM else Ui.FADED)
+        if (pages.size <= MAX_DOTS) {
+            for (i in pages.indices) {
+                val dx = d(28f) + i * d(18f)
+                val r = if (i == page) d(5.5f) else d(3.5f)
+                g.fillCircle(dx, y + bh / 2f, r + d(1.5f), Ui.EDGE)
+                g.fillCircle(dx, y + bh / 2f, r, if (i == page) Ui.ACCENT else if (i < page) Ui.DIM else Ui.FADED)
+            }
+        } else {
+            ui.textMid(g, "${page + 1} / ${pages.size}", d(24f), y + bh / 2f, d(15f), Ui.DIM, Align.LEFT, font = Font.DISPLAY)
         }
-        val last = page == PAGES - 1
+        val last = page == pages.size - 1
         ui.button(
             g, "storyNext", bx, y, bw, bh, if (last) Tx.STORY_GO.t else Tx.STORY_NEXT.t, if (typed) Style.PRIMARY else Style.NORMAL,
             size = 16f, icon = if (last) Icon.FLAG else Icon.PLAY,
@@ -353,8 +485,8 @@ internal class Story(private val game: Game) : WorldListener {
     }
 
     companion object {
-        const val PAGES = 5
         private const val SEED = 1945
+        private const val MAX_DOTS = 7
 
         private const val COAST = 1
         private const val DUNES = 9
@@ -377,6 +509,9 @@ internal class Story(private val game: Game) : WorldListener {
         private val MACHINES = listOf(EnemyType.BANDIT, EnemyType.BANDIT, EnemyType.DRONE, EnemyType.BRUTE)
         private val RAIDERS = listOf(EnemyType.BANDIT, EnemyType.RUNNER, EnemyType.BRUTE, EnemyType.SWARM, EnemyType.DRONE)
         private val DIG_IN = listOf(TowerType.TURRET, TowerType.ROCKET, TowerType.SHOTGUN, TowerType.SNIPER, TowerType.TURRET, TowerType.TESLA)
+        private val SQUADS = listOf(TowerType.TURRET, TowerType.ROCKET, TowerType.SHOTGUN, TowerType.SNIPER, TowerType.TESLA, TowerType.FLAMER)
+        private val NORTHERNERS = listOf(EnemyType.BRUTE, EnemyType.MEDIC, EnemyType.SHIELD, EnemyType.BANDIT, EnemyType.RUNNER)
+        private val FIRE_WALKERS = listOf(EnemyType.SALAMANDER, EnemyType.SALAMANDER, EnemyType.JUGGERNAUT, EnemyType.DIGGER)
 
         private val SHADE = 0xFF0E1009.toInt()
         private val DUSK = 0xFFFFB45A.toInt()

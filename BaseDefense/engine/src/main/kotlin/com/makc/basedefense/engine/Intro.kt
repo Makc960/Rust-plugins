@@ -71,7 +71,7 @@ internal class Intro(private val game: Game) : WorldListener {
     fun skip() {
         if (leaving) return
         leaving = true
-        if (game.storyDue) game.tellStory(Screen.MENU) else game.go(Screen.MENU)
+        if (game.storyDue) game.tellPrologue(Screen.MENU) else game.go(Screen.MENU)
     }
 
     /** The first map of the world the player has reached, with a few squads dug in by the road. */

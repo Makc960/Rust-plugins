@@ -483,7 +483,8 @@ class ScreensTest {
         run(g, 2.4f)
         press(g, tall, "intro", 0.5f)
         assertEquals(Screen.STORY, g.screen)
-        for (page in 0 until Story.PAGES) {
+        assertEquals(5, g.story.pageCount)
+        for (page in 0 until g.story.pageCount) {
             assertEquals(page, g.story.page)
             run(g, 1.2f)
             assertTrue(!g.story.typed, "the lines are typed out bit by bit")
@@ -840,6 +841,54 @@ class ScreensTest {
         press(g2, tall, "ctab1", 0f)
         press(g2, tall, "entry${TowerType.RAIL.ordinal}", 0f)
         shot(g2, tall, "tall_b4_rail_codex")
+    }
+
+    @Test
+    fun aChapterAfterEachWorld() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.putInt("stars_8", 0)
+        platform.putInt("story_seen", 1)
+        val g = game(tall, platform)
+        g.profile.tips = false
+        g.startCampaign(Levels.all.first { it.id == 8 }, Difficulty.NORMAL, false)
+        run(g, 0.5f)
+        g.play.world!!.winForTest()
+        run(g, 3f)
+        // Going on to the next world, the chapter is told first, and then the battle begins.
+        press(g, tall, "next", 0.5f)
+        assertEquals(Screen.STORY, g.screen)
+        assertEquals(2, g.story.pageCount)
+        run(g, 5f)
+        shot(g, tall, "tall_c3_chapter_1")
+        press(g, tall, "storyNext", 0f)
+        run(g, 5f)
+        shot(g, tall, "tall_c4_chapter_1b")
+        press(g, tall, "storyNext", 0.5f)
+        assertEquals(Screen.PLAY, g.screen)
+        assertEquals(9, g.session!!.level.id)
+        assertTrue(g.profile.chapterSeen(Chapter.VALLEY))
+
+        // Every chapter's pages, for a look.
+        for (c in Chapter.entries.drop(2)) {
+            g.tellChapter(c, Screen.MENU)
+            run(g, 0.5f)
+            for (k in 0 until g.story.pageCount) {
+                run(g, 5f)
+                shot(g, tall, "tall_c5_${c.name.lowercase()}_${k + 1}")
+                press(g, tall, "storyNext", 0f)
+            }
+            run(g, 0.5f)
+            assertEquals(Screen.MENU, g.screen)
+        }
+
+        // The settings tell the whole story so far.
+        g.go(Screen.SETTINGS)
+        run(g, 0.5f)
+        g.ui.scrollTo(Screen.SETTINGS.name, 10_000f)
+        press(g, tall, "story")
+        assertEquals(5 + 2 * (Chapter.entries.size - 1), g.story.pageCount)
+        shot(g, tall, "tall_c6_whole_story")
     }
 
     @Test
