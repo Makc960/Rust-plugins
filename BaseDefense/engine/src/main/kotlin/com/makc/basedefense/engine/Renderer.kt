@@ -648,8 +648,9 @@ class Renderer {
             return
         }
         g.fillRoundRect(x - 0.42f + 0.04f, y - 0.42f + 0.07f, 0.84f, 0.84f, 0.16f, SHADOW)
-        g.fillRoundRect(x - 0.42f, y - 0.42f, 0.84f, 0.84f, 0.16f, if (branch != null) PLATE_ELITE else PLATE)
-        g.strokeRoundRect(x - 0.42f, y - 0.42f, 0.84f, 0.84f, 0.16f, if (branch != null) GOLD_EDGE else PLATE_EDGE, 0.04f)
+        val elite = branch != null || type.vip
+        g.fillRoundRect(x - 0.42f, y - 0.42f, 0.84f, 0.84f, 0.16f, if (elite) PLATE_ELITE else PLATE)
+        g.strokeRoundRect(x - 0.42f, y - 0.42f, 0.84f, 0.84f, 0.16f, if (elite) GOLD_EDGE else PLATE_EDGE, 0.04f)
         for (k in 0 until 4) {
             val rx = if (k % 2 == 0) -0.3f else 0.3f
             val ry = if (k < 2) -0.3f else 0.3f
@@ -788,6 +789,17 @@ class Renderer {
                 g.fillCircle(0.18f, -0.115f, 0.03f, if (branch == Branch.MARKER) 0xFFFF3B3B.toInt() else 0xFF7FD3FF.toInt())
                 if (flash > 0f) g.glow(long + 0.05f, 0f, 0.3f, Colors.alpha(MUZZLE, 0.9f))
             }
+            TowerType.RAIL -> {
+                // Two rails with gold coils round a charged core, and a dark armoured body.
+                g.fillCircle(0f, 0f, 0.26f, Colors.darker(RAIL_BODY, 0.4f))
+                g.fillRoundRect(-0.02f, -0.12f, 0.58f, 0.07f, 0.02f, GUN)
+                g.fillRoundRect(-0.02f, 0.05f, 0.58f, 0.07f, 0.02f, GUN)
+                g.fillRoundRect(0.02f, -0.025f, 0.5f, 0.05f, 0.02f, Colors.alpha(c, 0.9f))
+                for (k in 0 until 3) g.fillRect(0.1f + k * 0.13f, -0.15f, 0.04f, 0.3f, COIL)
+                g.fillRoundRect(-0.2f, -0.17f, 0.3f, 0.34f, 0.08f, RAIL_BODY)
+                g.glow(-0.05f, 0f, 0.14f + 0.03f * sin(time * 6f), Colors.alpha(c, 0.6f))
+                if (flash > 0f) g.glow(0.58f, 0f, 0.42f, Colors.alpha(c, 0.95f))
+            }
             TowerType.RADAR -> drawRadar(g, c, branch, tier, time)
             TowerType.QUARRY -> drawQuarry(g, c, branch, tier, flash, time)
             TowerType.MINES -> Unit
@@ -819,8 +831,10 @@ class Renderer {
             drawMineArt(g, a, level, branch, x, y, armed, flash, time)
             return
         }
-        g.put(if (branch != null) a.pitElite[biome.ordinal] else a.pit[biome.ordinal], x, y)
-        a.camo(camo, branch != null)?.let { g.put(it, x, y) }
+        // A specialised squad, or one only VIP brings, digs in behind sandbags with a gold edge.
+        val elite = branch != null || type.vip
+        g.put(if (elite) a.pitElite[biome.ordinal] else a.pit[biome.ordinal], x, y)
+        a.camo(camo, elite)?.let { g.put(it, x, y) }
         val props = type == TowerType.RADAR || type == TowerType.QUARRY
         if (props) drawProps(g, a, type, branch, x, y, time)
         val n = if (branch != null) 3 else level + 1
@@ -864,6 +878,11 @@ class Renderer {
                 TowerType.TURRET, TowerType.SHOTGUN, TowerType.SNIPER -> if (flash > 0f && i == shots % n) {
                     val big = type == TowerType.SNIPER || branch == Branch.SLUG || branch == Branch.PIERCER
                     g.put(if (big) a.flashBig else a.flash, mx + dx * 0.08f, my + dy * 0.08f, if (big) 0.7f else 0.55f, face, min(1f, flash / 0.05f))
+                }
+                TowerType.RAIL -> {
+                    // The charge hums at the muzzle and flares when the slug leaves.
+                    g.glow(mx - dx * 0.05f, my - dy * 0.05f, 0.08f + 0.02f * sin(time * 8f + i), Colors.alpha(BOLT, 0.75f))
+                    if (flash > 0f && i == shots % n) g.glow(mx + dx * 0.1f, my + dy * 0.1f, 0.4f, Colors.alpha(BOLT, min(1f, flash / 0.08f)))
                 }
                 else -> Unit
             }
@@ -1543,6 +1562,12 @@ class Renderer {
                 g.line(t.x1, t.y1, t.x2, t.y2, Colors.alpha(MARK, k), 0.04f)
                 g.line(t.x1, t.y1, t.x2, t.y2, Colors.alpha(MARK, k * 0.3f), 0.12f)
             }
+            4 -> {
+                // The railgun's slug: a wide halo that narrows as it fades, round a white-hot core.
+                g.line(t.x1, t.y1, t.x2, t.y2, Colors.alpha(BOLT, k * 0.35f), 0.08f + 0.22f * k)
+                g.line(t.x1, t.y1, t.x2, t.y2, Colors.alpha(BOLT, k * 0.9f), 0.02f + 0.07f * k)
+                g.line(t.x1, t.y1, t.x2, t.y2, Colors.alpha(0xFFFFFFFF.toInt(), k), 0.01f + 0.035f * k)
+            }
             else -> g.line(t.x1, t.y1, t.x2, t.y2, Colors.alpha(TRACER, k), 0.035f)
         }
     }
@@ -1861,6 +1886,8 @@ class Renderer {
         val SHADOW = 0x55000000
         val PLATE = 0xFF3B4148.toInt()
         val PLATE_ELITE = 0xFF464035.toInt()
+        val RAIL_BODY = 0xFF2A2D33.toInt()
+        val COIL = 0xFFD9A93A.toInt()
         val PLATE_EDGE = 0xFF262B30.toInt()
         val GOLD_EDGE = 0xFFC9A23A.toInt()
         val RIVET = 0xFF5A626B.toInt()

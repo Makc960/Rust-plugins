@@ -128,6 +128,8 @@ enum class TowerType(
     val color: Int,
     val unlock: Int,
     val levels: List<TowerLevel>,
+    /** Only players with VIP get it; it has no specialisations, and every level is strong. */
+    val vip: Boolean = false,
 ) {
     TURRET(
         L("Стрелки", "Riflemen"), L("Стрелки", "Riflemen"), L("Автоматы: быстрые пули по земле и воздуху", "Rifles: fast bullets at ground and air"),
@@ -185,6 +187,13 @@ enum class TowerType(
         Role.ECONOMY, false, false, 0xFFB08A50.toInt(), 17,
         // damage = coins per wave
         listOf(TowerLevel(100, 15f, 0f, 0f), TowerLevel(90, 28f, 0f, 0f), TowerLevel(140, 45f, 0f, 0f)),
+    ),
+    RAIL(
+        L("Рельсотрон", "Railgun"), L("Рельсотрон", "Railgun"),
+        L("Только VIP. Снаряд прошивает всех на линии до края карты, сквозь броню, ×2 по боссам", "VIP only. The slug goes through everyone on its line to the edge of the map, through armor, ×2 against bosses"),
+        Role.ATTACK, true, true, 0xFF6FE3FF.toInt(), 1,
+        listOf(TowerLevel(300, 380f, 0.5f, 6.5f), TowerLevel(250, 600f, 0.5f, 7f), TowerLevel(350, 950f, 0.55f, 7.5f)),
+        vip = true,
     ),
     ;
 

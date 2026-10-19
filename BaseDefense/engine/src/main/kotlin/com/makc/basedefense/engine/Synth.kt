@@ -41,6 +41,7 @@ object Synth {
             Sfx.JAM -> static(0.45f, rng)
             Sfx.CLEAR -> boom(0.35f, 11f, 0.4f, 90f, 0.6f, rng)
             Sfx.ACHIEVEMENT -> tones(floatArrayOf(784f, 988f, 1175f, 1568f, 1568f), 0.09f, 0.9f)
+            Sfx.RAIL -> rail(0.55f, rng)
         }
         return toPcm(out)
     }
@@ -149,6 +150,30 @@ object Synth {
             phase += 2 * PI * freq / RATE
             val f = i / o.size.toFloat()
             o[i] = (if (sin(phase) > 0) 1f else -1f) * (1f - f) * (0.6f + rng.nextFloat() * 0.4f)
+        }
+        return o
+    }
+
+    /** A railgun: a short rising whine as it charges, then a hard crack with a ringing tail. */
+    private fun rail(len: Float, rng: Random): FloatArray {
+        val o = buf(len)
+        val charge = 0.09f
+        var phase = 0.0
+        var lp = 0f
+        for (i in o.indices) {
+            val t = i / RATE.toFloat()
+            if (t < charge) {
+                val f = t / charge
+                phase += 2 * PI * (700f + 2600f * f * f) / RATE
+                o[i] = sin(phase).toFloat() * 0.35f * f
+            } else {
+                val s = t - charge
+                lp += (rng.nextFloat() * 2f - 1f - lp) * 0.7f
+                phase += 2 * PI * 3300f * exp(-s * 6f) / RATE
+                val ring = sin(phase).toFloat() * 0.3f * exp(-s * 9f)
+                val thump = sin(2 * PI * 85f * s).toFloat() * exp(-s * 12f) * 0.6f
+                o[i] = lp * exp(-s * 30f) * 1.4f + ring + thump
+            }
         }
         return o
     }

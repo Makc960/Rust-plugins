@@ -66,7 +66,7 @@ class PromoTest {
         assertTrue(Codex.keys.all { p.known(it) })
         assertTrue(p.freePoints >= Promo.ADMIN_POINTS)
         for (perk in Perk.entries) repeat(perk.maxRank) { assertTrue(p.buyPerk(perk)) }
-        assertEquals(TowerType.entries.toList(), Rules(progress = p.progress).towers, "every squad in battle")
+        assertEquals(TowerType.entries.toList(), Rules(progress = p.progress, vip = p.vip(platform.day)).towers, "every squad in battle, the railgun too")
 
         // Switched off, the game is the player's own again, and the upgrades the admin's points paid for go.
         game.setAdmin(false)

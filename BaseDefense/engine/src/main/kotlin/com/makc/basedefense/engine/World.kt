@@ -120,7 +120,7 @@ class Tower(val type: TowerType, val col: Int, val row: Int) {
 
     val stats: TowerLevel get() = branch?.stats ?: type.levels[level]
     val canUpgrade: Boolean get() = branch == null && level < type.levels.size - 1
-    val atFork: Boolean get() = branch == null && level == type.levels.size - 1
+    val atFork: Boolean get() = branch == null && level == type.levels.size - 1 && type.branches.isNotEmpty()
 
     /** 1 to 4. */
     val tier: Int get() = if (branch != null) 4 else level + 1
@@ -172,7 +172,7 @@ class FloatText(var x: Float, var y: Float, val text: String, val color: Int, va
 
 class Bolt(val xs: FloatArray, val ys: FloatArray, var life: Float, val color: Int)
 
-/** 0 pellet, 1 slug, 2 sniper, 3 marking shot. */
+/** 0 pellet, 1 slug, 2 sniper, 3 marking shot, 4 railgun. */
 class Tracer(val x1: Float, val y1: Float, val x2: Float, val y2: Float, var life: Float, val kind: Int = 0) {
     val maxLife = life
 }
@@ -515,9 +515,15 @@ class World(
 
     val towerLimitReached: Boolean get() = towers.size >= rules.maxTowers
 
-    /** Quarries are capped so endless games are won with guns, not with a mining town. */
-    fun quarryLimitReached(type: TowerType): Boolean =
-        type == TowerType.QUARRY && towers.count { it.type == TowerType.QUARRY } >= MAX_QUARRIES
+    /**
+     * Quarries are capped so endless games are won with guns, not with a mining town;
+     * railguns so that they stay a VIP's ace and do not become the whole defence.
+     */
+    fun limitReached(type: TowerType): Boolean = when (type) {
+        TowerType.QUARRY -> towers.count { it.type == type } >= MAX_QUARRIES
+        TowerType.RAIL -> towers.count { it.type == type } >= MAX_RAILS
+        else -> false
+    }
 
     /** The cell suits this kind of tower: grass for most, road for mines. */
     fun canPlace(type: TowerType, c: Int, r: Int): Boolean {
@@ -526,7 +532,7 @@ class World(
     }
 
     fun canBuild(type: TowerType, c: Int, r: Int): Boolean =
-        type in rules.towers && !towerLimitReached && !quarryLimitReached(type) && canPlace(type, c, r) && money >= buildCost(type)
+        type in rules.towers && !towerLimitReached && !limitReached(type) && canPlace(type, c, r) && money >= buildCost(type)
 
     fun build(type: TowerType, c: Int, r: Int): Tower? {
         if (!canBuild(type, c, r)) return null
@@ -1280,6 +1286,7 @@ class World(
                 sound(Sfx.ZAP, 0.4f)
             }
             TowerType.SNIPER -> fireSniper(t, s, target, dmg, mx, my)
+            TowerType.RAIL -> fireRail(t, aim, dmg)
             TowerType.MINES, TowerType.RADAR, TowerType.QUARRY -> Unit
         }
         t.shots++
@@ -1496,6 +1503,42 @@ class World(
             particles += Particle(target.x, target.y, cos(a) * 1.2f, sin(a) * 1.2f, 0.25f, 0.25f, 0.04f, 0xFFFFE9B0.toInt(), 0f)
         }
         sound(Sfx.SNIPER, 0.5f)
+    }
+
+    /** A slug through everyone on the line, ground and air, up to the edge of the map; armor does not stop it. */
+    private fun fireRail(t: Tower, aim: Float, dmg: Float) {
+        val dx = cos(aim)
+        val dy = sin(aim)
+        val end = toEdge(t.x, t.y, dx, dy)
+        for (e in enemies) {
+            if (!e.alive || e.underground) continue
+            val ex = e.x - t.x
+            val ey = e.y - t.y
+            val proj = ex * dx + ey * dy
+            if (proj < 0f || proj > end + e.type.radius) continue
+            val perp2 = ex * ex + ey * ey - proj * proj
+            val rr = e.type.radius + RAIL_WIDTH
+            if (perp2 > rr * rr) continue
+            damage(e, dmg * (if (e.type.boss) RAIL_BOSS else 1f), t, armorPierce = 1f)
+            val n = if (lite) 2 else 5
+            for (k in 0 until n) {
+                val a = fx.nextFloat() * 6.283f
+                particles += Particle(e.x, e.y, cos(a) * 1.5f, sin(a) * 1.5f, 0.3f, 0.3f, 0.045f, BOLT, 0f)
+            }
+        }
+        tracers += Tracer(t.x + dx * 0.36f, t.y + dy * 0.36f, t.x + dx * end, t.y + dy * end, RAIL_TRACE, 4)
+        rings += Ring(t.x + dx * 0.4f, t.y + dy * 0.4f, 0.55f, 0.25f, 0.25f, Colors.alpha(BOLT, 0.9f))
+        t.flash = 0.16f
+        shake = max(shake, 0.12f)
+        sound(Sfx.RAIL, 0.55f)
+    }
+
+    /** How far a line from (x, y) along (dx, dy) runs before it leaves the map. */
+    private fun toEdge(x: Float, y: Float, dx: Float, dy: Float): Float {
+        var t = Float.MAX_VALUE
+        if (dx > 1e-4f) t = min(t, (COLS - x) / dx) else if (dx < -1e-4f) t = min(t, -x / dx)
+        if (dy > 1e-4f) t = min(t, (ROWS - y) / dy) else if (dy < -1e-4f) t = min(t, -y / dy)
+        return if (t == Float.MAX_VALUE) 0f else max(0f, t)
     }
 
     private fun updateMine(t: Tower, dt: Float) {
@@ -2434,6 +2477,12 @@ class World(
         const val CLEAR_COST = 40
         const val CLEAR_STEP = 10
         const val MAX_QUARRIES = 4
+
+        // The railgun: how many fit on a map, how wide its slug cuts, what it does to a boss.
+        const val MAX_RAILS = 2
+        const val RAIL_WIDTH = 0.12f
+        const val RAIL_BOSS = 2f
+        const val RAIL_TRACE = 0.3f
 
         // The commander: where he starts, his weapons and his skills at the first level.
         const val COMMANDER_START = 2.2f

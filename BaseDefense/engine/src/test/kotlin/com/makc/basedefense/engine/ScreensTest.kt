@@ -3,6 +3,7 @@ package com.makc.basedefense.engine
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import kotlin.math.abs
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -717,6 +718,72 @@ class ScreensTest {
         run(g, 1f)
         press(g, tall, "admin")
         assertTrue(!g.profile.admin && g.profile.adminKnown)
+    }
+
+    @Test
+    fun theRailgunIsForVip() {
+        // Without VIP it waits at the end of the row, locked.
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.shop = Shop.HERE
+        val g = game(tall, platform)
+        g.profile.tips = false
+        g.startCampaign(Levels.all.first { it.id == 9 }, Difficulty.NORMAL, false)
+        run(g, 0.5f)
+        assertTrue(TowerType.RAIL !in g.play.world!!.rules.towers)
+        g.ui.scrollTo("shop", 10_000f)
+        press(g, tall, "shopRAIL", 0f)
+        assertNull(g.play.placing, "it cannot be placed without VIP")
+        shot(g, tall, "tall_b1_rail_locked")
+        // The Google Play build, with nothing to buy, does not show it at all.
+        val play = game(tall, SilentPlatform().also { unlockAll(it) })
+        play.profile.tips = false
+        play.startCampaign(Levels.all.first { it.id == 9 }, Difficulty.NORMAL, false)
+        run(play, 0.5f)
+        play.ui.scrollTo("shop", 10_000f)
+        assertTrue(!has(play, tall, "shopRAIL"))
+
+        // With VIP it is built like any squad and fires through the whole line.
+        val vip = SilentPlatform()
+        unlockAll(vip)
+        vip.shop = Shop.HERE
+        val g2 = game(tall, vip)
+        g2.profile.grantVip(Vip.FOREVER)
+        g2.profile.tips = false
+        g2.startCampaign(Levels.all.first { it.id == 9 }, Difficulty.NORMAL, false)
+        run(g2, 0.5f)
+        val w = g2.play.world!!
+        w.money = 3000
+        val spot = (0 until ROWS).flatMap { r -> (0 until COLS).map { c -> c to r } }
+            .filter { (c, r) -> w.canPlace(TowerType.RAIL, c, r) }
+            .maxBy { (c, r) -> (0 until ROWS).sumOf { rr -> (0 until COLS).count { cc -> w.map.isRoad(cc, rr) && abs(cc - c) + abs(rr - r) <= 3 } } }
+        g2.ui.scrollTo("shop", 10_000f)
+        press(g2, tall, "shopRAIL", 0f)
+        assertEquals(TowerType.RAIL, g2.play.placing)
+        val (x, y) = cellCentre(tall, spot.first, spot.second)
+        tap(g2, x, y)
+        val rail = w.towers.single { it.type == TowerType.RAIL }
+        tap(g2, x, y)
+        assertEquals(rail, g2.play.selected)
+        press(g2, tall, "up", 0f)
+        press(g2, tall, "up", 0f)
+        assertEquals(2, rail.level)
+        shot(g2, tall, "tall_b2_rail_panel")
+        g2.play.selected = null
+        // Left to fight on its own, so that there is a crowd for it.
+        w.money = 0
+        press(g2, tall, "wave", 0f)
+        botPlay(g2, 120f) { wd -> wd.enemies.count { it.alive } >= 3 && wd.tracers.any { it.kind == 4 && it.life > it.maxLife - 0.05f } }
+        assertTrue(w.tracers.any { it.kind == 4 }, "the railgun fired")
+        shot(g2, tall, "tall_b3_railgun")
+        assertTrue(rail.kills > 0 || rail.damageDealt > 0f)
+
+        // The codex tells what it does.
+        g2.go(Screen.CODEX)
+        run(g2, 0.5f)
+        press(g2, tall, "ctab1", 0f)
+        press(g2, tall, "entry${TowerType.RAIL.ordinal}", 0f)
+        shot(g2, tall, "tall_b4_rail_codex")
     }
 
     @Test

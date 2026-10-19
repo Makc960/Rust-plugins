@@ -121,7 +121,7 @@ class Bot(
         val canBuildMore = !world.towerLimitReached
         for (type in types) {
             if (!canBuildMore) break
-            if (world.quarryLimitReached(type)) continue
+            if (world.limitReached(type)) continue
             val cost = world.buildCost(type)
             val (cell, value) = bestCell(type)
             if (cell < 0 || value <= 0f) continue
@@ -372,6 +372,8 @@ class Bot(
                 Branch.SPIKES -> s.damage * reach(type, only) * 1.3f
                 else -> s.rate * h(s.damage, aimed = false) * 1.8f
             }
+            // Its slug goes on through the whole line behind the target.
+            TowerType.RAIL -> s.rate * h(s.damage, armorPierce = 1f, bossMul = World.RAIL_BOSS) * 2.5f
             TowerType.RADAR, TowerType.QUARRY -> 0f
         }
         return variety * v

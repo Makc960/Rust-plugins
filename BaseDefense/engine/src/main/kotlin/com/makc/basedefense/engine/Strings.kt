@@ -54,6 +54,8 @@ object Tx {
     val ON_ROAD = L("Мины ставятся прямо на дорогу", "Mines go right on the road")
     val TOWER_LIMIT = L("Больше отрядов ставить нельзя: лимит %d", "No more squads: the limit is %d")
     val QUARRY_LIMIT = L("Не больше %d складов", "At most %d supply squads")
+    val RAIL_LIMIT = L("Не больше %d рельсотронов", "At most %d railguns")
+    val RAIL_VIP = L("Рельсотрон — только для VIP", "The railgun is for VIP only")
     val ROAD = L("дорога", "road")
 
     // Tower panel
@@ -80,6 +82,7 @@ object Tx {
     val AURA = L("урон рядом +%s", "nearby damage +%s")
     val REARM = L("перезарядка %sс", "rearm %ss")
     val PIERCE = L("пробивает %d", "pierces %d")
+    val THROUGH = L("насквозь", "pierces all")
     val MISSILES = L("ракет %d", "%d missiles")
     val ROCK = L("Камень", "Rock")
     val TREE = L("Дерево", "Tree")
@@ -252,11 +255,14 @@ object Tx {
     val VIP_ROW_RESERVE = L("Второй шанс в бою", "Second chance")
     val VIP_ROW_XP = L("Опыт командира", "Commander experience")
     val VIP_ROW_GIFT = L("Подарок каждый день", "A gift every day")
+    val VIP_ROW_RAIL = L("Сверхоружие: рельсотрон", "Superweapon: railgun")
+    val RAIL_NOTE = L("Без специализаций: три уровня, и каждый — огромный урон. Не больше %d на карте.", "No specialisations: three levels, each with huge damage. At most %d on a map.")
     val VIP_LIVES = L("+%d жизней", "+%d lives")
     val VIP_GIFT = L("Подарок VIP: +%d очко улучшений", "VIP gift: +%d upgrade point")
     val VIP_OPEN = L("Открыт, пока действует VIP", "Yours while VIP lasts")
 
     // Pop-ups
+    val PROMO_RAIL = L("Рельсотрон — самое мощное оружие в игре", "The railgun, the mightiest weapon in the game")
     val PROMO_1 = L("Все командиры в твоём распоряжении", "Every commander at your command")
     val PROMO_2 = L("Второй шанс: +%d жизней, когда база пала", "A second chance: +%d lives when the base falls")
     val PROMO_3 = L("+%d%% монет на старте и +%d%% за врагов", "+%d%% starting coins and +%d%% per kill")

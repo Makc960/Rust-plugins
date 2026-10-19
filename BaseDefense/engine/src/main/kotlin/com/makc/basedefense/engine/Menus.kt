@@ -292,6 +292,7 @@ internal class Menus(private val game: Game) {
         val tw = pw - d(48f)
         val list = when (p) {
             Popup.VIP -> listOf(
+                Tx.PROMO_RAIL.t,
                 Tx.PROMO_1.t,
                 Tx.PROMO_2.f(Vip.RESERVE_LIVES),
                 Tx.PROMO_3.f(Math.round((Vip.START_MONEY - 1f) * 100f), Math.round((Vip.BOUNTY - 1f) * 100f)),
@@ -733,6 +734,8 @@ internal class Menus(private val game: Game) {
         val hint: String,
         val stats: () -> List<String>,
         val notes: () -> List<String> = { emptyList() },
+        /** Only VIP brings it: a crown on its card. */
+        val crown: Boolean = false,
     )
 
     private fun codexEntries(): List<Entry> {
@@ -761,7 +764,10 @@ internal class Menus(private val game: Game) {
                 Entry(
                     t.key, t.unlock <= progress, t.title.t, { g, cx, cy, s -> renderer.drawTowerIcon(g, t, 2, cx, cy, s, clock) }, t.hint.t,
                     { listOf(Tx.COST.f(t.levels[0].cost)) },
-                    { listOf(b[0].title.t + ": " + b[0].hint.t, b[1].title.t + ": " + b[1].hint.t) },
+                    {
+                        if (b.isEmpty()) listOf(Tx.RAIL_NOTE.f(World.MAX_RAILS)) else listOf(b[0].title.t + ": " + b[0].hint.t, b[1].title.t + ": " + b[1].hint.t)
+                    },
+                    crown = t.vip,
                 )
             }
             else -> Ability.entries.map { a ->
@@ -806,6 +812,7 @@ internal class Menus(private val game: Game) {
             if (e.known) {
                 e.draw(g, x + cw / 2f, y + cw / 2f + d(2f), cw * 0.6f)
                 ui.textMid(g, e.name, x + cw / 2f, y + ch - d(13f), d(10.5f), Ui.TEXT, maxW = cw - d(8f))
+                if (e.crown) ui.icon(g, Icon.CROWN, x + d(12f), y + d(12f), d(14f), Ui.GOLD)
             } else {
                 ui.textMid(g, "?", x + cw / 2f, y + cw / 2f, d(28f), Ui.FADED, font = Font.DISPLAY)
                 ui.textMid(g, "???", x + cw / 2f, y + ch - d(13f), d(10.5f), Ui.FADED)
@@ -977,6 +984,7 @@ internal class Menus(private val game: Game) {
         val vip = Rules(vip = true)
         fun percent(k: Float): Int = Math.round(abs(k - 1f) * 100f)
         return listOf(
+            Triple(Tx.VIP_ROW_RAIL.t, "—", null),
             Triple(Tx.VIP_ROW_COMMANDERS.t, "—", null),
             Triple(Tx.VIP_ROW_RESERVE.t, "—", Tx.VIP_LIVES.f(Vip.RESERVE_LIVES)),
             Triple(Tx.VIP_ROW_START.t, "—", "+${percent(Vip.START_MONEY)}%"),

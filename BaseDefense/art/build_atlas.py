@@ -862,6 +862,31 @@ def sniper_rifle(thick=False, laser=False):
     return front
 
 
+RAIL_CORE = (111, 227, 255, 255)
+RAIL_DARK = (42, 45, 51, 255)
+COIL = (217, 169, 58, 255)
+
+
+def railgun(d, c):
+    """Twin rails with gold coils round a charged core, on a long dark body with a gold sight."""
+    rr(d, c, 16, -18, 104, 18, RAIL_DARK, r=7)
+    rr(d, c, 92, -17, 230, -6, GUNMETAL, w=3, r=3)
+    rr(d, c, 92, 6, 230, 17, GUNMETAL, w=3, r=3)
+    d.line((c + 98, c, c + 226, c), fill=RAIL_CORE, width=6)
+    for x in (118, 154, 190):
+        rr(d, c, x, -22, x + 12, 22, COIL, w=3, r=3)
+    rr(d, c, 40, -32, 96, -19, GUN, w=3, r=4)
+    d.ellipse((c + 90, c - 31, c + 102, c - 19), fill=(255, 210, 90, 255))
+    dot(d, c, 56, 0, 12, RAIL_CORE, w=3)
+
+
+def power_pack(d, c):
+    """The railgun's battery on his back, its cells aglow."""
+    rr(d, c, -104, -34, -28, 34, RAIL_DARK, r=10)
+    for y in (-18, 0, 18):
+        d.line((c - 94, c + y, c - 40, c + y), fill=RAIL_CORE, width=5)
+
+
 def radio_pack(d, c):
     rr(d, c, -98, -30, -30, 30, (86, 92, 70, 255), r=8)
     d.line((c - 82, c - 20, c - 136, c - 84), fill=GUN, width=5)
@@ -1158,7 +1183,7 @@ TEAL = rgba(0x2F9C8F)
 SQUAD = {
     'turret': rgba(0x4E8C3A), 'shotgun': rgba(0xC9A060), 'rocket': rgba(0x9A3A36), 'flamer': rgba(0x43474E),
     'sam': rgba(0x5D9BD6), 'tesla': rgba(0x8A5CC8), 'sniper': rgba(0x55643A), 'mines': rgba(0xE07B2E),
-    'radar': TEAL, 'quarry': rgba(0x3F4F8C),
+    'radar': TEAL, 'quarry': rgba(0x3F4F8C), 'rail': rgba(0x30343C),
 }
 S['trooper.turret'] = trooper('soldier1_machine', SQUAD['turret'])
 S['trooper.minigun'] = trooper('soldier1_hold', SQUAD['turret'], gatling)
@@ -1190,6 +1215,7 @@ S['trooper.jammer'] = trooper('soldier1_hold', SQUAD['radar'], handset, jam_pack
 S['trooper.quarry'] = trooper('soldier1_hold', SQUAD['quarry'], crate)
 S['trooper.drill'] = trooper('soldier1_hold', SQUAD['quarry'], jackhammer)
 S['trooper.bank'] = trooper('soldier1_hold', SQUAD['quarry'], money_bag)
+S['trooper.rail'] = trooper('soldier1_hold', SQUAD['rail'], railgun, power_pack)
 for biome in ('green', 'desert', 'winter', 'volcano'):
     S['pit.%s' % biome] = pit(biome, False)
     S['pit.%s.elite' % biome] = pit(biome, True)

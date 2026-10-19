@@ -171,7 +171,7 @@ enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (
     BOSSES(L("Охотник на боссов", "Boss hunter"), L("Победи 10 боссов", "Defeat 10 bosses"), 10, { it.stat(Stat.BOSS_KILLS) }),
     GHOSTS(L("Охотник за привидениями", "Ghostbuster"), L("Уничтожь 100 невидимок", "Destroy 100 ghosts"), 100, { it.stat(Stat.GHOST_KILLS) }),
     BUILDER(L("Строитель", "Builder"), L("Поставь 200 отрядов", "Deploy 200 squads"), 200, { it.stat(Stat.BUILT) }),
-    ARSENAL(L("Арсенал", "Arsenal"), L("Поставь отряды всех 10 видов", "Deploy all 10 kinds of squad"), 10, { Integer.bitCount(it.stat(Stat.TOWER_TYPES)) }),
+    ARSENAL(L("Арсенал", "Arsenal"), L("Поставь отряды всех 10 видов", "Deploy all 10 kinds of squad"), 10, { Integer.bitCount(it.stat(Stat.TOWER_TYPES) and Achievement.REGULAR) }),
     SPECIALIST(L("Специалист", "Specialist"), L("Выбери специализацию отряда", "Pick a squad specialisation"), 1, { min(1, Integer.bitCount(it.stat(Stat.BRANCHES))) }),
     ALL_BRANCHES(L("Мастер на все руки", "Jack of all trades"), L("Попробуй все 20 специализаций", "Try all 20 specialisations"), 20, { Integer.bitCount(it.stat(Stat.BRANCHES)) }),
     AIRSTRIKES(L("Небесный гнев", "Wrath from above"), L("Вызови 30 авиаударов", "Call 30 airstrikes"), 30, { it.stat(Stat.AIRSTRIKES) }),
@@ -194,6 +194,11 @@ enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (
     ;
 
     val key: String get() = "ach_$name"
+
+    companion object {
+        /** The kinds of squad anyone can deploy, as bits of [Stat.TOWER_TYPES]: the arsenal does not need VIP's. */
+        val REGULAR: Int = TowerType.entries.filter { !it.vip }.fold(0) { m, t -> m or (1 shl t.ordinal) }
+    }
 }
 
 /** Everything that changes how one game plays, besides the level itself. */
@@ -210,9 +215,11 @@ class Rules(
     /** His rank, 1 to [Ranks.MAX], from the battles he led before. */
     val rank: Int = 1,
 ) {
-    val towers: List<TowerType> = TowerType.entries.filter {
-        it.unlock <= progress && (challenge?.kind != ChallengeKind.ONLY || it in challenge.types)
-    }
+    /** Whether [type] fights in this battle, or would with VIP. */
+    fun offers(type: TowerType, vip: Boolean = this.vip): Boolean =
+        type.unlock <= progress && (!type.vip || vip) && (challenge?.kind != ChallengeKind.ONLY || type in challenge.types)
+
+    val towers: List<TowerType> = TowerType.entries.filter { offers(it) }
     val branches: Boolean = progress >= BRANCH_UNLOCK
     val abilitiesAllowed: Boolean = challenge?.kind != ChallengeKind.NO_ABILITIES && Mod.NO_ABILITIES !in mods
 

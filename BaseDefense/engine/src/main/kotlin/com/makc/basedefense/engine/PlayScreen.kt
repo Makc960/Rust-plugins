@@ -598,8 +598,8 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 notify(Tx.TOWER_LIMIT.f(wd.rules.maxTowers))
                 game.sound(Sfx.ERROR, 0.4f)
             }
-            wd.quarryLimitReached(type) -> {
-                notify(Tx.QUARRY_LIMIT.f(World.MAX_QUARRIES))
+            wd.limitReached(type) -> {
+                notify(if (type == TowerType.RAIL) Tx.RAIL_LIMIT.f(World.MAX_RAILS) else Tx.QUARRY_LIMIT.f(World.MAX_QUARRIES))
                 game.sound(Sfx.ERROR, 0.4f)
             }
             wd.money < wd.buildCost(type) -> {
@@ -1136,13 +1136,20 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         g.fillRect(0f, shopY + d(2f), ui.w, d(1f), Ui.PANEL_HI)
     }
 
+    /** Squads only VIP brings, shown locked at the end of the row to players who could get it. */
+    private fun vipOnly(wd: World): List<TowerType> {
+        if (wd.rules.vip || game.shop == Shop.NONE || session?.mode == Mode.TUTORIAL) return emptyList()
+        return TowerType.entries.filter { it.vip && wd.rules.offers(it, vip = true) }
+    }
+
     private fun drawShop(g: Gfx, wd: World) {
         panelBase(g)
         val types = wd.rules.towers
+        val locked = vipOnly(wd)
         val hero = wd.commander
         // The commander's card comes first.
         val first = if (hero != null) 1 else 0
-        val n = types.size + first
+        val n = types.size + first + locked.size
         if (n == 0) return
         val margin = d(8f)
         val gap = d(6f)
@@ -1157,7 +1164,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             val y0 = shopY + d(9f)
             if (x > ui.w || x + cw < 0f) continue
             val cost = wd.buildCost(type)
-            val blocked = wd.towerLimitReached || wd.quarryLimitReached(type)
+            val blocked = wd.towerLimitReached || wd.limitReached(type)
             val affordable = wd.money >= cost && !blocked
             val active = placing == type
             val id = "shop${type.name}"
@@ -1172,9 +1179,35 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             ui.coin(g, x + cw / 2f - costW / 2f - d(5f), y + ch - d(13f), d(11f))
             ui.textMid(g, costText, x + cw / 2f + d(5f), y + ch - d(13f), d(13f), if (affordable) Ui.GOLD else Ui.FADED, font = Font.DISPLAY)
             if (type.role == Role.ROAD) ui.tag(g, Tx.ROAD.t.uppercase(), x + d(4f), y + d(10f), d(7f))
+            if (type.vip) ui.icon(g, Icon.CROWN, x + d(11f), y + d(11f), d(13f), Ui.GOLD)
             if (!affordable) ui.chamfer(g, x, y, cw, ch, d(6f), 0x66101309)
         }
+        for ((i, type) in locked.withIndex()) {
+            val x = margin + (types.size + first + i) * (cw + gap) - off
+            if (x > ui.w || x + cw < 0f) continue
+            drawVipCard(g, type, x, shopY + d(9f), cw, ch)
+        }
         ui.endScroll(g, "shop")
+    }
+
+    /** A VIP squad the player does not have: its picture behind glass, and a crown for a price. */
+    private fun drawVipCard(g: Gfx, type: TowerType, x: Float, y0: Float, cw: Float, ch: Float) {
+        val id = "shop${type.name}"
+        ui.area(id, x, y0, cw, ch) {
+            notify(Tx.RAIL_VIP.t)
+            game.sound(Sfx.ERROR, 0.4f)
+        }
+        val y = y0 + if (ui.down(id)) d(2f) else 0f
+        ui.plate(g, x, y, cw, ch, Ui.PANEL_LIGHT, Ui.GOLD)
+        val icon = min(cw * 0.62f, d(40f))
+        renderer.drawTowerIcon(g, type, 0, x + cw / 2f, y + d(7f) + icon / 2f, icon, clock)
+        ui.chamfer(g, x, y, cw, ch, d(6f), 0x88101309.toInt())
+        ui.lock(g, x + cw / 2f, y + d(7f) + icon / 2f, d(18f), Ui.GOLD)
+        ui.textMid(g, type.short.t, x + cw / 2f, y + ch - d(30f), d(10.5f), Ui.DIM, maxW = cw - d(8f))
+        val label = Tx.VIP.t
+        val lw = g.textWidth(label, d(13f), Font.DISPLAY)
+        ui.icon(g, Icon.CROWN, x + cw / 2f - lw / 2f - d(6f), y + ch - d(13f), d(12f), Ui.GOLD)
+        ui.textMid(g, label, x + cw / 2f + d(6f), y + ch - d(13f), d(13f), Ui.GOLD, font = Font.DISPLAY)
     }
 
     /** The commander in the shop row: his portrait, his level and a light when a skill is ready. */
@@ -1309,6 +1342,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             else -> {
                 val hint = when {
                     t.branch != null -> t.branch!!.hint.t
+                    t.type.branches.isEmpty() -> t.type.hint.t
                     !wd.rules.branches -> Tx.BRANCH_LOCKED.f(BRANCH_UNLOCK)
                     else -> t.type.hint.t
                 }
@@ -1481,6 +1515,12 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 if (branch == Branch.JAMMER) parts += Tx.SLOW.f(Num.percent(s.extra2))
             }
             TowerType.QUARRY -> parts += Tx.COINS_PER_WAVE.f(s.damage.toInt())
+            TowerType.RAIL -> {
+                parts += Tx.DMG.f(Num.int(dmg))
+                parts += Tx.PER_SECOND.f(Num.one(s.rate))
+                parts += Tx.RANGE.f(Num.one(range))
+                parts += Tx.THROUGH.t
+            }
         }
         return parts
     }
