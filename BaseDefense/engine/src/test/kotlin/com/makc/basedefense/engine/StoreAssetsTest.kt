@@ -3,6 +3,7 @@ package com.makc.basedefense.engine
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import kotlin.math.abs
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertNotNull
@@ -190,24 +191,35 @@ class StoreAssetsTest {
         for (lang in Language.entries) {
             val tag = lang.name.lowercase()
             val platform = SilentPlatform(language = tag)
-            for (l in Levels.all) if (l.id <= 20) platform.putInt("stars_${l.id}", if (l.id % 3 == 0) 2 else 3)
+            for (l in Levels.all) if (l.id <= 29) platform.putInt("stars_${l.id}", if (l.id % 3 == 0) 2 else 3)
             for (l in listOf(1, 2, 3, 5, 9, 12)) platform.putInt("hard_$l", 1)
             for (l in listOf(1, 4, 7, 10)) platform.putInt("chal_$l", 1)
             for (key in Codex.keys) platform.putInt("seen_$key", 1)
+            platform.putString("news_seen", Game.VERSION)
             val g = phone(platform)
             g.profile.tips = false
             run(g, 30f)
             shot(g, "screen-$tag-1-menu")
 
-            g.startCampaign(Levels.all.first { it.id == 12 }, Difficulty.NORMAL, false)
+            // The volcano erupting over its lava bridges.
+            g.startCampaign(Levels.all.first { it.id == 27 }, Difficulty.NORMAL, false)
             run(g, 0.5f)
-            play(g, 600f) { it.wavesStarted >= 7 && it.enemies.size > 12 }
+            play(g, 1500f) { it.wavesStarted >= 7 && it.enemies.size > 10 && it.lava.size >= 2 }
             run(g, 0.2f)
-            shot(g, "screen-$tag-2-desert")
+            shot(g, "screen-$tag-2-volcano")
 
-            g.startCampaign(Levels.all.first { it.id == 20 }, Difficulty.NORMAL, false)
+            g.startCampaign(Levels.all.first { it.id == 30 }, Difficulty.NORMAL, false)
             run(g, 0.5f)
-            play(g, 3000f) { it.enemies.any { e -> e.type == EnemyType.HELI && e.y > 4f } }
+            play(g, 3000f) { it.enemies.any { e -> e.type == EnemyType.TITAN && e.dist > 2f } }
+            // The squads would bring it down at the edge of the map; a tougher one walks in among them.
+            g.play.world!!.enemies.first { it.type == EnemyType.TITAN }.hp *= 4f
+            // Caught between stomps, with no fireball over it.
+            play(g, 600f) { w ->
+                w.enemies.any { e ->
+                    e.type == EnemyType.TITAN && e.dist > 17f && e.jamPulse <= 0f &&
+                        w.blasts.none { b -> b.age < Blast.FIRE_LIFE && abs(b.x - e.x) < 1.2f && abs(b.y - e.y) < 1.2f }
+                }
+            }
             run(g, 0.1f)
             shot(g, "screen-$tag-3-boss")
 
@@ -227,7 +239,7 @@ class StoreAssetsTest {
             run(g, 0.5f)
             tap(g, "play")
             run(g, 0.5f)
-            tap(g, "world2")
+            tap(g, "world3")
             run(g, 0.2f)
             shot(g, "screen-$tag-5-worlds")
 
@@ -235,8 +247,14 @@ class StoreAssetsTest {
             run(g, 0.5f)
             tap(g, "codex")
             run(g, 0.5f)
-            tap(g, "entry7")
+            tap(g, "entry${EnemyType.TITAN.ordinal}")
             shot(g, "screen-$tag-6-codex")
+
+            g.startCampaign(Levels.all.first { it.id == 12 }, Difficulty.NORMAL, false)
+            run(g, 0.5f)
+            play(g, 600f) { it.wavesStarted >= 7 && it.enemies.size > 12 }
+            run(g, 0.2f)
+            shot(g, "screen-$tag-7-desert")
         }
     }
 }

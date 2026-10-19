@@ -415,6 +415,14 @@ object Tx {
     val REMIND_CAMPAIGN_TEXT = L("Уровень %d ещё не взят. Вперёд!", "Level %d is still to be won. Forward!")
     val REMIND_BACK = L("Враги у ворот базы!", "Enemies at the gates!")
     val REMIND_BACK_TEXT = L("Отряды ждут командира. Возвращайся в бой.", "Your squads await their commander. Back to battle.")
+    val NEWS_TITLE = L("ЧТО НОВОГО В %s", "WHAT'S NEW IN %s")
+    val NEWS = listOf(
+        L("Новый мир «Вулкан»: 8 уровней, извержения, четыре новых врага и босс-титан", "A new world, the Volcano: 8 levels, eruptions, four new enemies and the titan boss"),
+        L("Командиры растут в ранге до 10 и с 5 ранга получают третий навык", "Commanders rise to rank 10 and learn a third skill at rank 5"),
+        L("Камуфляж для отрядов и форма для командиров", "Camouflage for the squads and uniforms for the commanders"),
+        L("Операция недели с медалями и сезоны с наградами каждый месяц", "A weekly operation with medals and monthly seasons full of rewards"),
+    )
+    val NEWS_GO = L("В КАМПАНИЮ", "TO THE CAMPAIGN")
     val UPDATE_TITLE = L("НОВАЯ ВЕРСИЯ", "NEW VERSION")
     val UPDATE_TEXT = L("Вышло обновление игры. Поставь его, чтобы получить всё новое.", "An update of the game is out. Install it to get everything new.")
     val UPDATE_GO = L("ОБНОВИТЬ", "UPDATE")

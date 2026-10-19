@@ -31,7 +31,7 @@ internal class Menus(private val game: Game) {
     private var commandersBottom = 0f
 
     /** A window over the main menu: the tutorial on the first visit, a new version, reminders once, VIP now and then. */
-    private enum class Popup { WELCOME, UPDATE, REMINDERS, VIP, ENDED }
+    private enum class Popup { WELCOME, NEWS, UPDATE, REMINDERS, VIP, ENDED }
 
     /** The new version is offered once a run of the game. */
     private var updateOffered = false
@@ -253,7 +253,13 @@ internal class Menus(private val game: Game) {
     private fun pickPopup(): Popup? {
         if (!profile.tutorialOffered && profile.totalStars == 0) {
             profile.tutorialOffered = true
+            profile.newsSeen = Game.VERSION
             return Popup.WELCOME
+        }
+        // Who played an earlier version hears once what this one brings.
+        if (profile.newsSeen != Game.VERSION) {
+            profile.newsSeen = Game.VERSION
+            if (profile.totalStars > 0) return Popup.NEWS
         }
         if (game.updateOut && !updateOffered) {
             updateOffered = true
@@ -284,26 +290,31 @@ internal class Menus(private val game: Game) {
         val pw = min(ui.w - d(36f), d(350f))
         val px = (ui.w - pw) / 2f
         val tw = pw - d(48f)
-        val vipLines = listOf(
-            Tx.PROMO_1.t,
-            Tx.PROMO_2.f(Vip.RESERVE_LIVES),
-            Tx.PROMO_3.f(Math.round((Vip.START_MONEY - 1f) * 100f), Math.round((Vip.BOUNTY - 1f) * 100f)),
-            Tx.PROMO_4.f(Vip.MAX_SPEED),
-        )
+        val list = when (p) {
+            Popup.VIP -> listOf(
+                Tx.PROMO_1.t,
+                Tx.PROMO_2.f(Vip.RESERVE_LIVES),
+                Tx.PROMO_3.f(Math.round((Vip.START_MONEY - 1f) * 100f), Math.round((Vip.BOUNTY - 1f) * 100f)),
+                Tx.PROMO_4.f(Vip.MAX_SPEED),
+            )
+            Popup.NEWS -> Tx.NEWS.map { it.t }
+            else -> emptyList()
+        }
         val text = when (p) {
             Popup.WELCOME -> Tx.WELCOME_TEXT.t
             Popup.UPDATE -> Tx.UPDATE_TEXT.t
             Popup.REMINDERS -> Tx.REMINDERS_TEXT.t
             Popup.ENDED -> Tx.ENDED_TEXT.t
-            Popup.VIP -> null
+            Popup.VIP, Popup.NEWS -> null
         }
         val textH = if (text != null) ui.lines(g, text, d(13.5f), tw).size * d(13.5f) * 1.3f else 0f
-        val listH = if (p == Popup.VIP) vipLines.sumOf { ui.lines(g, it, d(12.5f), tw - d(28f)).size.toDouble() }.toFloat() * d(12.5f) * 1.25f + vipLines.size * d(12f) else 0f
+        val listH = list.sumOf { ui.lines(g, it, d(12.5f), tw - d(28f)).size.toDouble() }.toFloat() * d(12.5f) * 1.25f + list.size * d(12f)
         val ph = d(56f) + d(110f) + textH + listH + d(140f)
         val py = max(ui.top + d(12f), (ui.h - ph) / 2f)
         ui.area("popup", px, py, pw, ph, silent = true) {}
         val title = when (p) {
             Popup.WELCOME -> Tx.WELCOME_TITLE.t
+            Popup.NEWS -> Tx.NEWS_TITLE.f(Game.VERSION)
             Popup.UPDATE -> Tx.UPDATE_TITLE.t
             Popup.REMINDERS -> Tx.REMINDERS_TITLE.t
             Popup.VIP -> Tx.VIP_TITLE.t
@@ -316,6 +327,9 @@ internal class Menus(private val game: Game) {
         if (p == Popup.WELCOME) {
             ui.well(g, cx - d(40f), y, d(80f), d(80f), d(8f))
             renderer.drawCommanderIcon(g, CommanderType.SERGEANT, cx, y + d(40f), d(66f))
+        } else if (p == Popup.NEWS) {
+            ui.well(g, cx - d(40f), y, d(80f), d(80f), d(8f))
+            renderer.drawEnemyIcon(g, EnemyType.TITAN, cx, y + d(40f), d(64f), clock)
         } else {
             val icon = when (p) {
                 Popup.UPDATE -> Icon.DOWNLOAD
@@ -327,11 +341,9 @@ internal class Menus(private val game: Game) {
         }
         y += d(96f)
         if (text != null) y += ui.paragraph(g, text, cx, y, tw, d(13.5f), Ui.TEXT, Align.CENTER, spacing = 1.3f)
-        if (p == Popup.VIP) {
-            for (line in vipLines) {
-                ui.icon(g, Icon.CHECK, px + d(34f), y + d(8f), d(15f), Ui.GOLD)
-                y += ui.paragraph(g, line, px + d(50f), y, tw - d(28f), d(12.5f), Ui.TEXT, spacing = 1.25f) + d(12f)
-            }
+        for (line in list) {
+            ui.icon(g, Icon.CHECK, px + d(34f), y + d(8f), d(15f), if (vipLike) Ui.GOLD else Ui.ACCENT)
+            y += ui.paragraph(g, line, px + d(50f), y, tw - d(28f), d(12.5f), Ui.TEXT, spacing = 1.25f) + d(12f)
         }
         val bx = px + d(22f)
         val bw = pw - d(44f)
@@ -342,6 +354,12 @@ internal class Menus(private val game: Game) {
             Popup.WELCOME -> ui.button(g, "popupGo", bx, by, bw, d(56f), Tx.WELCOME_GO.t, Style.PRIMARY, size = 17f, icon = Icon.PLAY) {
                 popup = null
                 game.startTutorial()
+            }
+            Popup.NEWS -> ui.button(g, "popupGo", bx, by, bw, d(56f), Tx.NEWS_GO.t, Style.PRIMARY, size = 17f, icon = Icon.FLAG) {
+                popup = null
+                world = ((profile.progress - 1) / Levels.PER_WORLD).coerceIn(0, Biome.entries.size - 1)
+                sheet = null
+                open(Screen.LEVELS)
             }
             Popup.UPDATE -> ui.button(g, "popupGo", bx, by, bw, d(56f), Tx.UPDATE_GO.t, Style.PRIMARY, size = 17f, icon = Icon.DOWNLOAD) {
                 popup = null

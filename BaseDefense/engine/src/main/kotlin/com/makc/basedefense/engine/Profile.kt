@@ -381,6 +381,11 @@ class Profile(private val p: Platform) {
         get() = p.getInt("tutorial_offered", 0) != 0
         set(v) = p.putInt("tutorial_offered", if (v) 1 else 0)
 
+    /** The last version whose news the player has been shown. */
+    var newsSeen: String?
+        get() = p.getString("news_seen")
+        set(v) = p.putString("news_seen", v)
+
     /** The game asked once whether it may send reminders. */
     var remindersAsked: Boolean
         get() = p.getInt("reminders_asked", 0) != 0

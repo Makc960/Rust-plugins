@@ -28,8 +28,11 @@ class ScreensTest {
         I18n.lang = Language.RU
     }
 
-    private fun game(phone: Phone, platform: Platform = SilentPlatform()): Game =
-        Game(platform).apply { resize(phone.w, phone.h, phone.density, phone.top, phone.bottom) }
+    /** A game on [phone]; the news of this version count as read unless [news]. */
+    private fun game(phone: Phone, platform: Platform = SilentPlatform(), news: Boolean = false): Game {
+        if (!news && platform.getString("news_seen") == null) platform.putString("news_seen", Game.VERSION)
+        return Game(platform).apply { resize(phone.w, phone.h, phone.density, phone.top, phone.bottom) }
+    }
 
     private fun frame(game: Game, phone: Phone): BufferedImage {
         val img = BufferedImage(phone.w, phone.h, BufferedImage.TYPE_INT_ARGB)
@@ -213,7 +216,7 @@ class ScreensTest {
             botPlay(g, 400f) { it.weather > 2f && it.wavesStarted > 4 }
             run(g, 0.4f)
             shot(g, tall, "tall_21_$name")
-            botPlay(g, 3000f) { it.enemies.any { e -> e.type.boss && e.y > 2f } }
+            botPlay(g, 3000f) { it.enemies.any { e -> e.type.boss && e.dist > 3f } }
             shot(g, tall, "tall_22_${name}_boss")
         }
     }
@@ -595,6 +598,33 @@ class ScreensTest {
         assertTrue(has(g, tall, "adPoint"), "VIP is over")
         repeat(Ads.PER_DAY) { g.profile.countAd(platform.today()) }
         assertTrue(!has(g, tall, "adPoint"))
+    }
+
+    @Test
+    fun playersOfAnEarlierVersionHearTheNewsOnce() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.putInt("tutorial_offered", 1)
+        val g = game(tall, platform, news = true)
+        run(g, 1.5f)
+        assertTrue(has(g, tall, "popupGo"))
+        shot(g, tall, "tall_a8_news")
+        press(g, tall, "popupGo")
+        assertEquals(Screen.LEVELS, g.screen)
+        assertEquals(Game.VERSION, g.profile.newsSeen)
+        val again = game(tall, platform, news = true)
+        run(again, 1.5f)
+        assertTrue(!has(again, tall, "popupGo"), "once")
+
+        // A new player meets the tutorial offer, and never these news.
+        val fresh = SilentPlatform()
+        val g2 = game(tall, fresh, news = true)
+        run(g2, 1.5f)
+        press(g2, tall, "popupLater")
+        fresh.putInt("stars_1", 3)
+        val g3 = game(tall, fresh, news = true)
+        run(g3, 1.5f)
+        assertTrue(!has(g3, tall, "popupGo"))
     }
 
     @Test

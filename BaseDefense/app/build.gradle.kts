@@ -34,7 +34,7 @@ android {
         targetSdk = 36
         // Every CI build counts up, so each one installs over the last and Play accepts it.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100) ?: 2
-        versionName = "2.5"
+        versionName = "3.0"
         buildConfigField("String", "SUPPORT_URL", "\"${if (store == "play") "" else supportUrl}\"")
         val shop = when (store) {
             "rustore" -> "HERE"
