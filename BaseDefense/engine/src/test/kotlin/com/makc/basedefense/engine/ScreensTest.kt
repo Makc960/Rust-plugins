@@ -444,6 +444,32 @@ class ScreensTest {
     }
 
     @Test
+    fun theIntroPlaysWhenTheGameOpens() {
+        val platform = SilentPlatform()
+        val g = Game(platform, showIntro = true).apply { resize(tall.w, tall.h, tall.density, tall.top, tall.bottom) }
+        assertEquals(Screen.INTRO, g.screen)
+        run(g, 0.7f)
+        shot(g, tall, "tall_00_intro_plane")
+        run(g, 0.75f)
+        shot(g, tall, "tall_00_intro_blast")
+        assertTrue(Sfx.PLANE in platform.played && Sfx.BOOM in platform.played, "the plane flies over and bombs")
+        run(g, 1f)
+        shot(g, tall, "tall_00_intro_title")
+        run(g, 0.7f)
+        shot(g, tall, "tall_00_intro_ready")
+        run(g, 2.5f)
+        assertEquals(Screen.MENU, g.screen, "the menu follows by itself")
+        assertTrue(has(g, tall, "popupGo"), "and offers a new player the tutorial")
+
+        // A tap skips it.
+        val g2 = Game(SilentPlatform(), showIntro = true).apply { resize(small.w, small.h, small.density, small.top, small.bottom) }
+        run(g2, 2.4f)
+        shot(g2, small, "small_00_intro")
+        press(g2, small, "intro", 0.5f)
+        assertEquals(Screen.MENU, g2.screen)
+    }
+
+    @Test
     fun commandersInMenusAndBattle() {
         val platform = SilentPlatform()
         for (l in Levels.all) if (l.id <= 8) platform.putInt("stars_${l.id}", 3)

@@ -1105,14 +1105,14 @@ class Renderer {
     }
 
     /** A commander facing up, fitted into [size]: his portrait in menus and panels. */
-    fun drawCommanderIcon(g: Gfx, type: CommanderType, cx: Float, cy: Float, size: Float) {
+    fun drawCommanderIcon(g: Gfx, type: CommanderType, cx: Float, cy: Float, size: Float, alpha: Float = 1f) {
         val a = art(g)
         g.save()
         g.translate(cx, cy)
         if (a != null) {
             val s = a.commander(type)
             g.scale(size / max(s.shownW, s.shownH))
-            g.put(s, -s.shownDy, s.shownDx, 1f, -90f)
+            g.put(s, -s.shownDy, s.shownDx, 1f, -90f, alpha)
         } else {
             g.scale(size * 1.9f)
             drawHeroShape(g, type, 0f, 0f, -90f, 0f)

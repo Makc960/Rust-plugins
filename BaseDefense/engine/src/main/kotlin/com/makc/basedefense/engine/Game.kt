@@ -3,7 +3,7 @@ package com.makc.basedefense.engine
 import kotlin.math.abs
 import kotlin.math.min
 
-internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS }
+internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS, INTRO }
 
 enum class Mode { CAMPAIGN, ENDLESS, DAILY, TUTORIAL }
 
@@ -67,14 +67,15 @@ internal class Session(
 /**
  * The whole game behind a few calls from the phone: [update], [render], [touch],
  * [pinch] and [pan]. Screens and saves live here; the battle itself is [World].
+ * With [showIntro] it opens on the [Intro] instead of the menu.
  */
-class Game(private val platform: Platform) {
+class Game(private val platform: Platform, showIntro: Boolean = false) {
     internal val profile = Profile(platform)
     internal val ui = Ui { s -> sound(s, if (s == Sfx.CLICK) 0.5f else 0.4f) }
     internal val renderer = Renderer()
     internal var clock = 0f
         private set
-    internal var screen = Screen.MENU
+    internal var screen = if (showIntro) Screen.INTRO else Screen.MENU
         private set
     private var nextScreen: Screen? = null
     private var fade = 0f
@@ -82,6 +83,7 @@ class Game(private val platform: Platform) {
     internal var session: Session? = null
     internal val play = PlayScreen(this)
     internal val menus = Menus(this)
+    internal val intro = Intro(this)
 
     private val lastPlayed = FloatArray(Sfx.entries.size) { -10f }
     private var track: Track? = null
@@ -94,7 +96,7 @@ class Game(private val platform: Platform) {
     init {
         I18n.lang = profile.language
         checkPurchases()
-        menus.enterMenu()
+        if (screen == Screen.MENU) menus.enterMenu()
     }
 
     internal val today: Int get() = platform.today()
@@ -160,7 +162,11 @@ class Game(private val platform: Platform) {
                 fade = 0f
             }
         }
-        if (screen == Screen.PLAY) play.update(step) else menus.update(step)
+        when (screen) {
+            Screen.PLAY -> play.update(step)
+            Screen.INTRO -> intro.update(step)
+            else -> menus.update(step)
+        }
         for (t in toasts) t.life -= step
         toasts.removeAll { it.life <= 0f }
         updateMusic()
@@ -184,7 +190,7 @@ class Game(private val platform: Platform) {
         ui.begin()
         g.fillRect(0f, 0f, ui.w, ui.h, Ui.BG)
         if (ui.w <= 0f || ui.h <= 0f) return
-        if (screen != Screen.MENU && screen != Screen.PLAY) ui.backdrop(g)
+        if (screen != Screen.MENU && screen != Screen.PLAY && screen != Screen.INTRO) ui.backdrop(g)
         when (screen) {
             Screen.MENU -> menus.menu(g)
             Screen.LEVELS -> menus.levels(g)
@@ -196,6 +202,7 @@ class Game(private val platform: Platform) {
             Screen.VIP -> menus.vip(g)
             Screen.COMMANDERS -> menus.commanders(g)
             Screen.PLAY -> play.render(g)
+            Screen.INTRO -> intro.render(g)
         }
         drawToasts(g)
         if (nextScreen != null) {
@@ -245,6 +252,7 @@ class Game(private val platform: Platform) {
         when (screen) {
             Screen.MENU -> return false
             Screen.PLAY -> return play.back()
+            Screen.INTRO -> intro.skip()
             Screen.LEVELS -> if (!menus.back()) go(Screen.MENU)
             else -> go(menus.returnTo())
         }

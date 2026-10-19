@@ -611,16 +611,21 @@ class World(
         if (!abilityReady(Ability.AIRSTRIKE)) return false
         use(Ability.AIRSTRIKE)
         airstrikes++
+        flyover(x, y, airstrikeDamage)
+        return true
+    }
+
+    /** The plane and its three bombs, also flown in the intro; gives the seconds until the middle bomb goes off. */
+    internal fun flyover(x: Float, y: Float, damage: Float): Float {
         val start = ROWS + 2.5f
         plane = Plane(x, start)
-        val dmg = airstrikeDamage
         for (k in 0 until 3) {
             val by = y + (1 - k) * 0.7f
             val bx = x + (fx.nextFloat() - 0.5f) * 0.3f
-            bombs += Bomb(bx, by, (start - by) / PLANE_SPEED + Bomb.BOMB_FALL, dmg)
+            bombs += Bomb(bx, by, (start - by) / PLANE_SPEED + Bomb.BOMB_FALL, damage)
         }
         sound(Sfx.PLANE, 0.8f)
-        return true
+        return (start - y) / PLANE_SPEED + Bomb.BOMB_FALL
     }
 
     fun freeze(): Boolean {

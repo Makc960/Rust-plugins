@@ -27,7 +27,8 @@ class MainActivity : ComponentActivity() {
         // A payment app may have opened the game to say how a payment went.
         if (savedInstanceState == null) store.handleIntent(intent)
         platform = AndroidPlatform(this, store)
-        game = Game(platform)
+        // The intro plays when the game opens, not when Android brings it back.
+        game = Game(platform, showIntro = savedInstanceState == null)
         view = GameView(this, game)
         setContentView(view)
         hideSystemBars()
