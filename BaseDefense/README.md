@@ -108,7 +108,8 @@ APK подписан открытым ключом `app/base-defense.keystore`, 
   просит оценку и ставит обновления: в сборке для RuStore (`-Pstore=rustore`) через SDK RuStore из `src/rustore`,
   в остальных (`github`, `play`) из `src/nostore` ничего не продаётся. `Adverts` показывает ролики за награду: в сборке
   для RuStore с `-PrewardedAdUnit=R-M-…` через Yandex Mobile Ads, иначе роликов нет.
-- `store/` — тексты и картинки для Google Play, политика конфиденциальности и инструкция по публикации.
+- `store/` — тексты и картинки для Google Play, политика конфиденциальности и инструкция по публикации;
+  `store/rustore.py` загружает сборку в RuStore через API по метке `rustore-draft-…` (см. `store/PUBLISHING.md`, шаг 10).
 - `art/` — сборка атласа спрайтов `engine/src/main/resources/sprites` из паков Kenney (см. `art/README.md`).
   Движок рисует картинки через `Gfx.sprite`; если атласа нет, тот же мир рисуется фигурами. Иконки интерфейса
   в атласе белые, `Ui.icon` красит их в нужный цвет.

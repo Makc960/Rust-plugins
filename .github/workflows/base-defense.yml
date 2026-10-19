@@ -2,9 +2,13 @@ name: Base Defense APK
 
 on:
   push:
+    branches: ["**"]
     paths:
       - "BaseDefense/**"
       - ".github/workflows/base-defense.yml"
+    # A tag rustore-check-… tries the RuStore API key; rustore-draft-… builds the commit and uploads its
+    # RuStore APK as a draft version; rustore-submit-… sends that version to moderation too.
+    tags: ["rustore-*"]
   workflow_dispatch:
 
 permissions:
@@ -16,6 +20,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ !startsWith(github.ref, 'refs/tags/rustore-check') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -97,6 +102,7 @@ jobs:
             BaseDefense/engine/build/store
 
       - name: Publish to the base-defense release
+        if: github.ref_type == 'branch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -110,6 +116,7 @@ jobs:
   # RuStore builds pull in RuStore's Pay SDK; this checks they still compile against it,
   # even without the upload key secrets (the APK is signed with the shared key and thrown away).
   rustore-check:
+    if: github.ref_type == 'branch'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -127,3 +134,29 @@ jobs:
       # With Yandex's test unit, so the advert code is built the way a real unit builds it.
       - name: Build a RuStore APK
         run: ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore -PrewardedAdUnit=demo-rewarded-yandex
+
+  # Talks to the RuStore API with the key from RuStore Console (secrets RUSTORE_KEY_ID and RUSTORE_PRIVATE_KEY).
+  rustore:
+    needs: build
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/rustore-') && (needs.build.result == 'success' || startsWith(github.ref, 'refs/tags/rustore-check')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/rustore-check') }}
+        with:
+          name: BaseDefense-RuStore
+          path: rustore-build
+
+      - name: RuStore
+        env:
+          RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
+          RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          case "$TAG" in
+            rustore-check*) python3 BaseDefense/store/rustore.py check ;;
+            rustore-submit*) python3 BaseDefense/store/rustore.py upload rustore-build/BaseDefense-RuStore.apk --submit ;;
+            *) python3 BaseDefense/store/rustore.py upload rustore-build/BaseDefense-RuStore.apk ;;
+          esac
