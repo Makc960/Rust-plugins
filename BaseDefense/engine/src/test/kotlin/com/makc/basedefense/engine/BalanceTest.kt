@@ -59,6 +59,22 @@ class BalanceTest {
         }
         assertTrue(won >= days / 2, "the bot won only $won of $days dailies")
     }
+
+    @Test
+    fun weeklyOperationsAreHardButBeatable() {
+        val medals = ArrayList<Int>()
+        for (k in 0 until 6) {
+            val week = 3000 + k
+            val progress = 8 + k * 3
+            val level = Levels.weekly(week, progress)
+            val rules = Rules(mods = Mod.forWeek(week), progress = progress)
+            val w = Sim.play(level, rules, { Bot(it) })
+            Sim.report("weekly ${Mod.forWeek(week).joinToString { it.name }} p$progress", w)
+            medals += if (w.phase == Phase.WON) Weekly.medal(w.lives, w.maxLives) else 0
+        }
+        assertTrue(medals.count { it > 0 } >= 3, "the bot won only ${medals.count { it > 0 }} of 6 operations: $medals")
+        assertTrue(medals.count { it == Weekly.GOLD } < 6, "gold should not come every week: $medals")
+    }
 }
 
 object Sim {

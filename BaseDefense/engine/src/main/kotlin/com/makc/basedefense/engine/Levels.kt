@@ -256,6 +256,7 @@ object Levels {
     const val ENDLESS_ID = 100
     const val DAILY_ID = 200
     const val TUTORIAL_ID = 300
+    const val WEEKLY_ID = 400
 
     private val B = EnemyType.BANDIT
     private val RU = EnemyType.RUNNER
@@ -1014,6 +1015,28 @@ object Levels {
             plan = WavePlan(
                 20, intro, budget = 8.5f + 0.3f * p, growth = 0.38f, hp = 1f + 0.035f * p, hpGrowth = 1.085f,
                 bosses = bosses, seed = 1000 + day % 100_000, bossEvery = if (Mod.BOSS_RUSH in mods && bossesKnown) 5 else 0,
+            ),
+        )
+    }
+
+    /**
+     * The weekly operation: a reached map, fifteen heavier waves, a boss halfway and two at
+     * the end once the player has met them.
+     */
+    fun weekly(week: Int, progress: Int): LevelDef {
+        val reached = all.take(progress.coerceIn(1, all.size))
+        val rng = Random(week * 31_337 + 7)
+        val source = reached[rng.nextInt(reached.size)]
+        val known = EnemyType.entries.filter { !it.boss && it.campaign <= progress }.sortedBy { it.campaign }
+        val intro = known.mapIndexed { i, type -> type to if (i < 2) 0 else min(5, 1 + (i - 2) * 4 / max(1, known.size - 2)) }
+        val bosses = if (progress >= EnemyType.HELI.campaign) mapOf(Weekly.MID_BOSS to listOf(APC), Weekly.WAVES - 1 to listOf(APC, HELI)) else emptyMap()
+        val p = progress.coerceIn(1, all.size)
+        return LevelDef(
+            WEEKLY_ID, L("Операция недели", "Weekly operation"), source.biome, source.ascii, source.paths,
+            startMoney = 300 + 9 * p,
+            plan = WavePlan(
+                Weekly.WAVES, intro, budget = 10.5f + 0.4f * p, growth = 0.42f, hp = 1.15f + 0.045f * p, hpGrowth = 1.09f,
+                bosses = bosses, seed = 5000 + week % 100_000,
             ),
         )
     }

@@ -5,7 +5,7 @@ import kotlin.math.min
 
 internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS, INTRO, WARDROBE }
 
-enum class Mode { CAMPAIGN, ENDLESS, DAILY, TUTORIAL }
+enum class Mode { CAMPAIGN, ENDLESS, DAILY, TUTORIAL, WEEKLY }
 
 /** One battle and everything chosen for it. */
 internal class Session(
@@ -22,7 +22,11 @@ internal class Session(
     val rank: Int,
     listener: WorldListener,
 ) {
-    val mods: List<Mod> = if (mode == Mode.DAILY) Mod.forDay(day) else emptyList()
+    val mods: List<Mod> = when (mode) {
+        Mode.DAILY -> Mod.forDay(day)
+        Mode.WEEKLY -> Mod.forWeek(Weekly.week(day))
+        else -> emptyList()
+    }
     val rules = Rules(difficulty, if (challenge) level.challenge else null, perks, mods, progress, vip, commander, rank)
     val world = World(level, rules, listener)
 
@@ -50,6 +54,7 @@ internal class Session(
                     Mode.ENDLESS -> Levels.endless(progress)
                     Mode.DAILY -> Levels.daily(day, progress)
                     Mode.TUTORIAL -> Levels.tutorial()
+                    Mode.WEEKLY -> Levels.weekly(Weekly.week(day), progress)
                 }
                 // Battles saved before commanders came along go on without one.
                 val commander = CommanderType.entries.firstOrNull { it.name == head["commander"] }
@@ -362,6 +367,11 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
     internal fun startDaily() {
         val day = today
         begin(Session(Mode.DAILY, Levels.daily(day, profile.progress), Difficulty.NORMAL, false, day, profile.progress, profile.perks, vip, commander, rank, play))
+    }
+
+    internal fun startWeekly() {
+        val day = today
+        begin(Session(Mode.WEEKLY, Levels.weekly(Weekly.week(day), profile.progress), Difficulty.NORMAL, false, day, profile.progress, profile.perks, vip, commander, rank, play))
     }
 
     /** The training battle, the same for everyone: the sergeant, no VIP, the first squads. */

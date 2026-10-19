@@ -95,7 +95,7 @@ class Profile(private val p: Platform) {
     val perks: Perks get() = Perks.decode(Perk.entries.joinToString(".") { perk(it).toString() })
 
     /** Stars, hard wins, medals and daily wins all count, VIP's gifts and points bought in the starter pack. */
-    val points: Int get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS) + stat(Stat.VIP_POINTS) + boughtPoints
+    val points: Int get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS) + stat(Stat.VIP_POINTS) + stat(Stat.WEEKLY_POINTS) + boughtPoints
 
     /** Upgrade points from purchases; resetting progress keeps them. */
     val boughtPoints: Int get() = p.getInt("bought_points", 0)
@@ -161,6 +161,23 @@ class Profile(private val p: Platform) {
     val endlessUnlocked: Boolean get() = stars(3) > 0
 
     val dailyUnlocked: Boolean get() = stars(2) > 0
+
+    val weeklyUnlocked: Boolean get() = stars(Weekly.UNLOCK) > 0
+
+    /** The best medal of [week]'s operation: 0 none, 1 bronze, 2 silver, 3 gold. */
+    fun weeklyMedal(week: Int): Int = if (p.getInt("weekly_week", -1) == week) p.getInt("weekly_medal", 0) else 0
+
+    /** Records a won operation; gives the upgrade points its new medals brought. */
+    fun recordWeekly(week: Int, medal: Int): Int {
+        val before = weeklyMedal(week)
+        if (medal <= before) return 0
+        val points = (before + 1..medal).sumOf { Weekly.POINTS[it] }
+        p.putInt("weekly_week", week)
+        p.putInt("weekly_medal", medal)
+        addStat(Stat.WEEKLY_POINTS, points)
+        if (medal == Weekly.GOLD) addStat(Stat.WEEKLY_GOLD, 1)
+        return points
+    }
 
     /** Waves held in today's daily challenge, or 0. */
     fun dailyBest(day: Int): Int = if (p.getInt("daily_day", -1) == day) p.getInt("daily_best", 0) else 0
@@ -350,6 +367,8 @@ class Profile(private val p: Platform) {
         p.putInt("daily_best", 0)
         p.putInt("daily_won", -10)
         p.putInt("daily_streak", 0)
+        p.putInt("weekly_week", -1)
+        p.putInt("weekly_medal", 0)
         for (c in CommanderType.entries) p.putInt("service_${c.name}", 0)
         p.putString("save", null)
     }

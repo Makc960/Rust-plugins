@@ -181,10 +181,11 @@ internal class Menus(private val game: Game) {
         y += bh + gap
         val dailyOpen = profile.dailyUnlocked
         ui.button(
-            g, "daily", bx, y, bw, bh, Tx.DAILY.t, enabled = dailyOpen, size = 16f,
+            g, "daily", bx, y, bw, bh, Tx.MISSIONS.t, enabled = dailyOpen, size = 16f,
             icon = if (dailyOpen) Icon.CALENDAR else Icon.LOCK, sub = if (dailyOpen) null else Tx.DAILY_LOCKED.t,
         ) { open(Screen.DAILY) }
-        if (dailyOpen && !profile.dailyWon(game.today)) {
+        val weekDue = profile.weeklyUnlocked && profile.weeklyMedal(Weekly.week(game.today)) == 0
+        if (dailyOpen && (!profile.dailyWon(game.today) || weekDue)) {
             g.fillCircle(bx + bw - d(4f), y + d(4f), d(7f), Ui.EDGE)
             g.fillCircle(bx + bw - d(4f), y + d(4f), d(5f), Ui.RED)
         }
@@ -807,8 +808,19 @@ internal class Menus(private val game: Game) {
 
     // --- daily ----------------------------------------------------------------------------
 
+    /** The missions screen: today's challenge or this week's operation. */
+    private var missionsTab = 0
+
     fun daily(g: Gfx) {
-        val top = ui.header(g, Tx.DAILY.t) { game.go(Screen.MENU) }
+        val header = ui.header(g, Tx.MISSIONS.t) { game.go(Screen.MENU) }
+        ui.segmented(g, "missions", d(14f), header, ui.w - d(28f), d(40f), listOf(Tx.TAB_DAY.t, Tx.TAB_WEEK.t), missionsTab, size = 13f) {
+            missionsTab = it
+        }
+        val top = header + d(50f)
+        if (missionsTab == 1) weekly(g, top) else dailyTab(g, top)
+    }
+
+    private fun dailyTab(g: Gfx, top: Float) {
         val day = game.today
         val level = Levels.daily(day, profile.progress)
         val mods = Mod.forDay(day)
@@ -845,6 +857,53 @@ internal class Menus(private val game: Game) {
         ui.textMid(g, reward, ui.w / 2f, y + d(8f), d(11.5f), Ui.DIM, maxW = w, font = Font.BODY)
         val by = max(y + d(26f), ui.h - ui.bottom - d(72f))
         ui.button(g, "dstart", x, by, w, d(56f), Tx.START.t, Style.PRIMARY, size = 20f, icon = Icon.PLAY) { game.startDaily() }
+    }
+
+    private fun weekly(g: Gfx, top: Float) {
+        val x = d(14f)
+        val w = ui.w - d(28f)
+        if (!profile.weeklyUnlocked) {
+            ui.lock(g, ui.w / 2f, top + d(60f), d(40f), Ui.DIM)
+            ui.paragraph(g, Tx.WEEKLY_LOCKED.f(Weekly.UNLOCK), ui.w / 2f, top + d(96f), w - d(40f), d(14f), Ui.DIM, Align.CENTER)
+            return
+        }
+        val day = game.today
+        val week = Weekly.week(day)
+        val level = Levels.weekly(week, profile.progress)
+        ui.textMid(g, Tx.WEEKLY_NAME.f(Weekly.name(week).t).uppercase(), ui.w / 2f, top + d(12f), d(19f), Ui.GOLD, maxW = w, font = Font.DISPLAY)
+        ui.textMid(g, Tx.WEEKLY_DAYS.f(Weekly.firstDay(week + 1) - day), ui.w / 2f, top + d(34f), d(11.5f), Ui.DIM, maxW = w)
+        val thumbH = min(d(170f), (ui.h - ui.bottom - top) * 0.24f)
+        val thumbW = thumbH * COLS / ROWS
+        var y = top + d(48f)
+        framedThumb(g, thumb(level), (ui.w - thumbW) / 2f, y, thumbW, thumbH)
+        y += thumbH + d(10f)
+        val source = Levels.all.firstOrNull { it.ascii == level.ascii }
+        val about = listOfNotNull(
+            source?.let { Tx.DAILY_MAP.f(it.name.t) },
+            if (level.plan.bosses.isNotEmpty()) Tx.WEEKLY_BOSSES.f(Weekly.MID_BOSS + 1, Weekly.WAVES) else null,
+        ).joinToString(" · ")
+        ui.textMid(g, about, ui.w / 2f, y + d(6f), d(11.5f), Ui.DIM, maxW = w)
+        y += d(20f)
+        for (m in Mod.forWeek(week)) {
+            ui.plate(g, x, y, w, d(46f), Ui.PANEL)
+            ui.icon(g, Icon.WARNING, x + d(22f), y + d(23f), d(20f), Ui.ACCENT)
+            ui.text(g, m.title.t, x + d(42f), y + d(20f), d(13.5f), Ui.TEXT, maxW = w - d(54f))
+            ui.text(g, m.hint.t, x + d(42f), y + d(36f), d(11f), Ui.DIM, maxW = w - d(54f), font = Font.BODY)
+            y += d(51f)
+        }
+        y += d(4f)
+        ui.caption(g, Tx.WEEKLY_MEDALS.t, x + d(4f), y + d(10f), Ui.ACCENT)
+        y += d(16f)
+        val have = profile.weeklyMedal(week)
+        for (k in 0 until 3) {
+            val earned = k < have
+            ui.icon(g, Icon.MEDAL, x + d(16f), y + d(14f), d(22f), if (earned) Ui.MEDAL_COLORS[k] else Ui.PANEL_HI)
+            ui.textMid(g, Tx.MEDAL_RULES[k].t, x + d(34f), y + d(14f), d(13f), if (earned) Ui.TEXT else Ui.DIM, Align.LEFT, maxW = w * 0.55f)
+            ui.textMid(g, Tx.WEEKLY_REWARD.f(Weekly.POINTS[k + 1]), x + w - d(4f), y + d(14f), d(11.5f), if (earned) Ui.GREEN else Ui.GOLD, Align.RIGHT)
+            y += d(28f)
+        }
+        val by = max(y + d(14f), ui.h - ui.bottom - d(72f))
+        ui.button(g, "wstart", x, by, w, d(56f), Tx.START.t, Style.PRIMARY, size = 20f, icon = Icon.PLAY) { game.startWeekly() }
     }
 
     // --- VIP ------------------------------------------------------------------------------

@@ -317,6 +317,27 @@ object Tx {
     val SKILL_FROM_RANK = L("с %d ранга", "from rank %d")
     val STUN_FOR = L("оглушение %s с", "stun %s s")
 
+    // Missions: the daily challenge and the weekly operation
+    val MISSIONS = L("ЗАДАНИЯ", "MISSIONS")
+    val MISSIONS_SUB = L("задание дня и операция недели", "daily challenge and weekly operation")
+    val TAB_DAY = L("ДЕНЬ", "DAY")
+    val TAB_WEEK = L("НЕДЕЛЯ", "WEEK")
+    val WEEKLY_NAME = L("Операция «%s»", "Operation %s")
+    val WEEKLY_LOCKED = L("Операция недели откроется после %d уровня кампании", "The weekly operation opens after campaign level %d")
+    val WEEKLY_DAYS = L("До новой операции: %d дн.", "Next operation in %d d")
+    val WEEKLY_BOSSES = L("Боссы на %d и %d волне", "Bosses on waves %d and %d")
+    val WEEKLY_MEDALS = L("Медали недели", "This week's medals")
+    val MEDAL_RULES = listOf(
+        L("Победа", "A win"),
+        L("Половина жизней", "Half the lives kept"),
+        L("Девять десятых жизней", "Nine tenths kept"),
+    )
+    val MEDALS = listOf(L("бронза", "bronze"), L("серебро", "silver"), L("золото", "gold"))
+    val WEEKLY_REWARD = L("+%d к очкам улучшений", "+%d upgrade points")
+    val WEEKLY_DONE = L("Операция выполнена", "Operation complete")
+    val WEEKLY_MEDAL = L("Медаль: %s", "Medal: %s")
+    val POINTS_GAINED = L("Очки улучшений: +%d", "Upgrade points: +%d")
+
     // Looks
     val WARDROBE = L("ОБЛИКИ", "LOOKS")
     val WARDROBE_BTN = L("Облики", "Looks")
@@ -356,8 +377,12 @@ object Tx {
 
     /** Everything above, for the translation test. */
     val all: List<L>
-        get() = Tx::class.java.declaredFields.filter { it.type == L::class.java }.map {
+        get() = Tx::class.java.declaredFields.flatMap {
             it.isAccessible = true
-            it.get(Tx) as L
+            when (val v = it.get(Tx)) {
+                is L -> listOf(v)
+                is List<*> -> v.filterIsInstance<L>()
+                else -> emptyList()
+            }
         }
 }

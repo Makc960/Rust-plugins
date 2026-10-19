@@ -85,8 +85,12 @@ enum class Mod(val title: L, val hint: L) {
         private val CONFLICTS = listOf(RICH to POOR, FAST to TOUGH, RICH to CHEAP_UPGRADES, NO_ABILITIES to FEW_TOWERS)
 
         /** Two mods that make sense together, the same for everybody on a given day. */
-        fun forDay(day: Int): List<Mod> {
-            val rng = Random(day * 7349 + 11)
+        fun forDay(day: Int): List<Mod> = pick(Random(day * 7349 + 11))
+
+        /** The weekly operation's two, the same all week. */
+        fun forWeek(week: Int): List<Mod> = pick(Random(week * 92_821 + 5))
+
+        private fun pick(rng: Random): List<Mod> {
             val first = entries[rng.nextInt(entries.size)]
             val rest = entries.filter { it != first && (first to it) !in CONFLICTS && (it to first) !in CONFLICTS }
             return listOf(first, rest[rng.nextInt(rest.size)])
@@ -104,6 +108,10 @@ enum class Stat {
 
     /** The highest rank any commander reached. */
     BEST_RANK,
+
+    /** Upgrade points from weekly operations' medals, and gold medals won. */
+    WEEKLY_POINTS,
+    WEEKLY_GOLD,
 }
 
 /** What the VIP subscription gives; the rules and the comparison screen both read it here. */
@@ -160,6 +168,8 @@ enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (
     CLEARING(L("Расчистка", "Land clearing"), L("Убери 20 камней, деревьев или кактусов", "Clear 20 rocks, trees or cacti"), 20, { it.stat(Stat.OBSTACLES) }),
     RANK_5(L("Бывалый", "Seasoned"), L("Доведи командира до 5 ранга", "Raise a commander to rank 5"), 5, { it.stat(Stat.BEST_RANK) }),
     RANK_10(L("Ветеран", "Veteran"), L("Доведи командира до 10 ранга", "Raise a commander to rank 10"), 10, { it.stat(Stat.BEST_RANK) }),
+    WEEKLY_GOLD(L("Золотая операция", "Golden operation"), L("Получи золото операции недели", "Win gold in a weekly operation"), 1, { it.stat(Stat.WEEKLY_GOLD) }),
+    WEEKLY_GOLD_5(L("Генштаб", "General staff"), L("Получи золото пяти операций недели", "Win gold in five weekly operations"), 5, { it.stat(Stat.WEEKLY_GOLD) }),
     ;
 
     val key: String get() = "ach_$name"

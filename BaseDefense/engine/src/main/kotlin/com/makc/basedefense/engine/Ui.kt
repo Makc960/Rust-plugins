@@ -1170,6 +1170,9 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
         val WELL = 0xFF1A1E14.toInt()
         val EDGE = 0xFF0F120B.toInt()
         val EMPTY = 0xFF151810.toInt()
+
+        /** Bronze, silver and gold. */
+        val MEDAL_COLORS = intArrayOf(0xFFD08A4E.toInt(), 0xFFD5DCE2.toInt(), 0xFFFFD24A.toInt())
         val TEXT = 0xFFF3EBD3.toInt()
         val DIM = 0xFFA6A58A.toInt()
         val FADED = 0xFF70735F.toInt()

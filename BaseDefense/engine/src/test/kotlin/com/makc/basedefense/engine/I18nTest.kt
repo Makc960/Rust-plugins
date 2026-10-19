@@ -59,6 +59,8 @@ class I18nTest {
             add(c.name to c.weapon)
         }
         for (r in RankPerk.entries) add(r.name to r.text)
+        for (n in Weekly.names) add("WEEKLY" to n)
+        for (c in Camo.entries) add(c.name to c.title)
         for (l in Levels.all) add("level ${l.id}" to l.name)
     }
 

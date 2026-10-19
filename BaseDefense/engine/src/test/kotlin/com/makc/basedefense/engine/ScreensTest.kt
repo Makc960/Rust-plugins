@@ -542,6 +542,39 @@ class ScreensTest {
     }
 
     @Test
+    fun theWeeklyOperation() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.putInt("promo_day", platform.today())
+        val g = game(tall, platform)
+        run(g, 2f)
+        press(g, tall, "daily")
+        press(g, tall, "missions1")
+        shot(g, tall, "tall_a5_weekly")
+        press(g, tall, "wstart", 0.5f)
+        val s = g.session!!
+        assertEquals(Mode.WEEKLY, s.mode)
+        val w = g.play.world!!
+        w.winForTest()
+        run(g, 4f)
+        shot(g, tall, "tall_a6_weekly_won")
+        assertEquals(Weekly.GOLD, g.profile.weeklyMedal(Weekly.week(platform.today())))
+        assertTrue(g.profile.points >= Weekly.POINTS.sum())
+
+        val small2 = SilentPlatform()
+        small2.putInt("stars_1", 3)
+        small2.putInt("stars_2", 3)
+        small2.putInt("seen_${Tips.COMMANDER}", 1)
+        small2.putInt("tutorial_offered", 1)
+        val g2 = game(small, small2)
+        run(g2, 1f)
+        press(g2, small, "daily")
+        press(g2, small, "missions1")
+        shot(g2, small, "small_a5_weekly_locked")
+        assertTrue(!has(g2, small, "wstart"), "locked until level ${Weekly.UNLOCK}")
+    }
+
+    @Test
     fun commandersInMenusAndBattle() {
         val platform = SilentPlatform()
         for (l in Levels.all) if (l.id <= 8) platform.putInt("stars_${l.id}", 3)

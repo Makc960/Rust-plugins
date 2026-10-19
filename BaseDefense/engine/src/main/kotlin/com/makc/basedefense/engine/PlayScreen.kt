@@ -90,6 +90,9 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private var resultService = 0
     private var resultRankUp = 0
 
+    /** Upgrade points a weekly operation's medals brought. */
+    private var resultPoints = 0
+
     private class Card(val kind: L, val title: String, val text: String, val stats: List<String> = emptyList(), val icon: (Gfx, Float, Float, Float) -> Unit)
 
     private val cards = ArrayList<Card>()
@@ -155,6 +158,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         resultAchievements = emptyList()
         resultService = 0
         resultRankUp = 0
+        resultPoints = 0
         reviewAt = -1f
         flushed = false
         cards.clear()
@@ -303,6 +307,11 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 lesson = null
                 if (won) profile.tutorialDone = true
             }
+            Mode.WEEKLY -> if (won) {
+                resultStars = Weekly.medal(wd.lives, wd.maxLives)
+                resultPoints = profile.recordWeekly(Weekly.week(s.day), resultStars)
+                if (wd.leaked == 0) profile.addStat(Stat.FLAWLESS, 1)
+            }
         }
         val hero = wd.commander
         if (hero != null && s.mode != Mode.TUTORIAL) {
@@ -349,7 +358,8 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private fun leave() {
         val s = session
         val to = if (s?.mode == Mode.CAMPAIGN) Screen.LEVELS else Screen.MENU
-        if (s?.mode == Mode.DAILY && overlay == Overlay.RESULT) game.leaveBattle(Screen.DAILY) else game.leaveBattle(to)
+        val missions = (s?.mode == Mode.DAILY || s?.mode == Mode.WEEKLY) && overlay == Overlay.RESULT
+        if (missions) game.leaveBattle(Screen.DAILY) else game.leaveBattle(to)
     }
 
     private fun closeCard() {
@@ -1532,6 +1542,17 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 if (won) lines += Tx.TUT_DONE_TEXT.t to Ui.GOLD
                 lines += Tx.KILLED.f(wd.kills) to Ui.TEXT
             }
+            Mode.WEEKLY -> {
+                if (won) {
+                    lines += Tx.WEEKLY_DONE.t to Ui.GOLD
+                    lines += Tx.WEEKLY_MEDAL.f(Tx.MEDALS[resultStars - 1].t) to Ui.GOLD
+                    if (resultPoints > 0) lines += Tx.POINTS_GAINED.f(resultPoints) to Ui.GOLD
+                } else {
+                    lines += Tx.WAVE_OF.f(wd.wavesStarted, wd.totalWaves) to Ui.TEXT
+                }
+                lines += Tx.LIVES.f(wd.lives, wd.maxLives) to Ui.TEXT
+                lines += Tx.KILLED.f(wd.kills) to Ui.TEXT
+            }
         }
         val hero = wd.commander
         if (hero != null && resultService > 0) lines += Tx.SERVICE.f(resultService) to Ui.TEXT
@@ -1545,7 +1566,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         val rowH = d(26f)
         val tutorialWon = s.mode == Mode.TUTORIAL && won
         val buttonsH = (if (next != null || tutorialWon) d(172f) else d(118f)) + (if (offerVip) d(64f) else 0f)
-        val headH = if (s.mode == Mode.ENDLESS || (s.mode == Mode.CAMPAIGN && won)) d(92f) else d(12f)
+        val headH = if (s.mode == Mode.ENDLESS || ((s.mode == Mode.CAMPAIGN || s.mode == Mode.WEEKLY) && won)) d(92f) else d(12f)
         val achH = if (achievements.isEmpty()) 0f else d(30f) + achievements.size * d(24f)
         val ph = d(56f) + headH + lines.size * rowH + achH + buttonsH + d(34f)
         val band = if (won) 0xFF3B5A24.toInt() else 0xFF6B2219.toInt()
@@ -1561,6 +1582,15 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 val sy = y + d(42f) - (if (k == 1) d(8f) else 0f)
                 ui.star(g, sx, sy, d(24f), false)
                 if (k < resultStars && appear > 0f) ui.star(g, sx, sy, d(24f) * max(0.4f, pop), true)
+            }
+            y += headH
+        } else if (s.mode == Mode.WEEKLY && won) {
+            for (k in 0 until 3) {
+                val appear = ((since - 0.25f - k * 0.3f) * 5f).coerceIn(0f, 1f)
+                val sx = ui.w / 2f + (k - 1) * d(60f)
+                val sy = y + d(42f) - (if (k == 1) d(8f) else 0f)
+                val earned = k < resultStars && appear > 0f
+                ui.icon(g, Icon.MEDAL, sx, sy, d(46f) * (if (earned && appear < 1f) appear * 1.2f else 1f), if (earned) Ui.MEDAL_COLORS[k] else Ui.EMPTY)
             }
             y += headH
         } else if (s.mode == Mode.ENDLESS) {
