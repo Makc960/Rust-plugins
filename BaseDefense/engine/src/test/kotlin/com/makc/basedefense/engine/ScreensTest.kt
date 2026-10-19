@@ -688,6 +688,38 @@ class ScreensTest {
     }
 
     @Test
+    fun promoCodesFromTheSettings() {
+        val platform = SilentPlatform()
+        platform.putInt("stars_1", 3)
+        val g = game(tall, platform)
+        g.promoCodes = listOf(PromoCode(Promo.hash("TEST-ADMIN"), admin = true))
+        run(g, 1f)
+        press(g, tall, "settings")
+        assertTrue(!has(g, tall, "admin"), "no admin switch before the code")
+        platform.typed = "nothing"
+        press(g, tall, "promo")
+        assertTrue(!g.profile.admin)
+        platform.typed = "test-admin"
+        press(g, tall, "promo")
+        assertTrue(g.profile.admin)
+        run(g, 0.5f)
+        shot(g, tall, "tall_a9_admin")
+
+        // Every world is open, and so are the commanders and VIP.
+        g.go(Screen.MENU)
+        run(g, 1f)
+        press(g, tall, "play")
+        press(g, tall, "world3", 0f)
+        assertTrue(has(g, tall, "level32"))
+        shot(g, tall, "tall_b0_admin_volcano")
+
+        g.go(Screen.SETTINGS)
+        run(g, 1f)
+        press(g, tall, "admin")
+        assertTrue(!g.profile.admin && g.profile.adminKnown)
+    }
+
+    @Test
     fun theWeeklyOperation() {
         val platform = SilentPlatform()
         unlockAll(platform)

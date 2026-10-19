@@ -31,7 +31,8 @@ import java.util.concurrent.atomic.AtomicIntegerArray
 /**
  * Sound through SoundPool and MediaPlayer (effects and music are synthesized once
  * into WAV files), vibration, saves, the date, the [Store], the [Notices] and the [Adverts].
- * [askNotifications] asks the player to allow notifications and hears the answer.
+ * [askNotifications] asks the player to allow notifications and hears the answer;
+ * [textWindow] shows a window to type a line in.
  */
 class AndroidPlatform(
     context: Context,
@@ -39,6 +40,7 @@ class AndroidPlatform(
     private val notices: Notices,
     private val adverts: Adverts,
     private val askNotifications: ((Boolean) -> Unit) -> Unit,
+    private val textWindow: (title: String, hint: String, ok: String, done: (String?) -> Unit) -> Unit,
 ) : Platform {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("base_defense", Context.MODE_PRIVATE)
@@ -199,6 +201,8 @@ class AndroidPlatform(
     override val adReady: Boolean get() = adverts.ready
 
     override fun showAd(done: (Boolean) -> Unit) = adverts.show(done)
+
+    override fun askText(title: String, hint: String, ok: String, done: (String?) -> Unit) = textWindow(title, hint, ok, done)
 
     override fun openUrl(url: String) {
         try {

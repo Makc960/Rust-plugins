@@ -172,6 +172,47 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
         }
     }
 
+    /** The promo codes this game knows; tests add their own. */
+    internal var promoCodes = Promo.CODES
+
+    /** Asks for a promo code and hands over what it gives. */
+    internal fun enterPromo() {
+        platform.askText(Tx.PROMO_TITLE.t, Tx.PROMO_HINT.t, Tx.PROMO_GO.t) { text -> if (text != null) redeem(text) }
+    }
+
+    internal fun redeem(text: String): PromoResult {
+        val code = Promo.find(text, promoCodes)
+        val result = if (code == null) PromoResult.UNKNOWN else profile.redeem(code, today)
+        when (result) {
+            PromoResult.DONE -> {
+                toast(Tx.PROMO_DONE.f(code!!.rewards.joinToString(", ") { describe(it) }), Icon.STAR)
+                sound(Sfx.ACHIEVEMENT, 0.8f)
+            }
+            PromoResult.ADMIN -> {
+                toast(Tx.ADMIN_ON.t, Icon.CROWN)
+                sound(Sfx.ACHIEVEMENT, 0.8f)
+            }
+            PromoResult.USED -> toast(Tx.PROMO_USED.t, Icon.WARNING)
+            PromoResult.EXPIRED -> toast(Tx.PROMO_EXPIRED.t, Icon.WARNING)
+            PromoResult.UNKNOWN -> toast(Tx.PROMO_UNKNOWN.t, Icon.WARNING)
+        }
+        return result
+    }
+
+    /** Switches admin mode, once its code has been entered here. */
+    internal fun setAdmin(on: Boolean) {
+        if (!profile.adminKnown) return
+        profile.admin = on
+        toast(if (on) Tx.ADMIN_ON.t else Tx.ADMIN_OFF.t, Icon.CROWN)
+    }
+
+    private fun describe(r: Reward): String = when (r.kind) {
+        RewardKind.POINTS -> Tx.GIFT_POINTS.f(r.amount)
+        RewardKind.SERVICE -> Tx.GIFT_SERVICE.f(r.amount)
+        RewardKind.VIP_DAYS -> Tx.GIFT_VIP.f(r.amount)
+        RewardKind.CAMO -> Camo.URBAN.title.t
+    }
+
     internal val supportUrl: String? get() = platform.supportUrl
 
     internal fun startUpdate() = platform.startUpdate()

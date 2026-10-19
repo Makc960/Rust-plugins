@@ -513,7 +513,7 @@ internal class Menus(private val game: Game) {
         var y = max(ty + thumbH, iy) + d(18f)
         ui.caption(g, Tx.DIFFICULTY.t, px + d(18f), y + d(10f))
         y += d(18f)
-        val hardOpen = stars > 0
+        val hardOpen = profile.hardOpen(lvl.id)
         ui.segmented(
             g, "diff", px + d(16f), y, pw - d(32f), d(40f), Difficulty.entries.map { it.title.t }, sheetDifficulty.ordinal,
             { it != Difficulty.HARD.ordinal || hardOpen }, size = 13f,
@@ -559,6 +559,12 @@ internal class Menus(private val game: Game) {
         if (support != null) {
             ui.button(g, "support", x, y, w, d(54f), Tx.SUPPORT.t, Style.PRIMARY, size = 16f, icon = Icon.HEART) { game.openUrl(support) }
             y += d(72f)
+        }
+        ui.button(g, "promo", x, y, w, d(50f), Tx.PROMO.t, Style.NORMAL, size = 15f, icon = Icon.STAR) { game.enterPromo() }
+        y += d(64f)
+        if (profile.adminKnown) {
+            ui.toggle(g, "admin", x, y, w, d(46f), Tx.ADMIN_MODE.t, profile.admin) { game.setAdmin(it) }
+            y += d(58f)
         }
         val armed = clock - resetArmedAt < 3f
         ui.button(g, "reset", x, y, w, d(46f), if (armed) Tx.RESET_SURE.t else Tx.RESET.t, if (armed) Style.DANGER else Style.GHOST, size = 14f) {
@@ -733,7 +739,7 @@ internal class Menus(private val game: Game) {
         val progress = profile.progress
         return when (codexTab) {
             0 -> EnemyType.entries.map { e ->
-                Entry(e.key, profile.seen(e.key), e.title.t, { g, cx, cy, s -> renderer.drawEnemyIcon(g, e, cx, cy, s, clock) }, e.hint.t, {
+                Entry(e.key, profile.known(e.key), e.title.t, { g, cx, cy, s -> renderer.drawEnemyIcon(g, e, cx, cy, s, clock) }, e.hint.t, {
                     buildList {
                         add(Tx.HEALTH.f(e.hp.roundToInt()))
                         add(Tx.SPEED.f(Num.one(e.speed)))

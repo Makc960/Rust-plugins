@@ -76,6 +76,9 @@ interface Platform {
 
     /** Plays a rewarded advert; [done] hears true when the player watched it to the reward. */
     fun showAd(done: (Boolean) -> Unit) = done(false)
+
+    /** Asks the player to type a line, like a promo code; [done] hears it, or null when they cancel. */
+    fun askText(title: String, hint: String, ok: String, done: (String?) -> Unit) = done(null)
 }
 
 /** A notification for later: on [day] (days since 1970) at [minute] past midnight, phone time. */
@@ -107,6 +110,9 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
 
     /** What the phone answers when asked for notifications. */
     var allowsReminders = true
+
+    /** What the player types when asked; null cancels. */
+    var typed: String? = null
 
     /** Adverts: whether the build has them, one is loaded, and the player watches it through. */
     override var ads = false
@@ -192,4 +198,6 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
         adsShown++
         done(adWatched)
     }
+
+    override fun askText(title: String, hint: String, ok: String, done: (String?) -> Unit) = done(typed)
 }

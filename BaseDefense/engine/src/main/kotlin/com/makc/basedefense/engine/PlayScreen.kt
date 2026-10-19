@@ -1722,7 +1722,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             y += d(54f)
         } else if (next != null) {
             ui.button(g, "next", bx, y, bw, d(52f), Tx.NEXT_LEVEL_BTN.f(next.name.t.uppercase()), Style.PRIMARY, size = 16f, icon = Icon.PLAY) {
-                game.startCampaign(next, s.difficulty.takeIf { profile.stars(next.id) > 0 || it != Difficulty.HARD } ?: Difficulty.NORMAL, false)
+                game.startCampaign(next, s.difficulty.takeIf { profile.hardOpen(next.id) || it != Difficulty.HARD } ?: Difficulty.NORMAL, false)
             }
             y += d(64f)
             ui.button(g, "again", bx, y, bw, d(44f), Tx.AGAIN.t, icon = Icon.UNDO) { game.restart() }

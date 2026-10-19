@@ -1,11 +1,15 @@
 package com.makc.basedefense
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
 import android.view.WindowManager
+import android.widget.EditText
+import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,7 +42,7 @@ class MainActivity : ComponentActivity() {
         store = Stores.create(this)
         // A payment app may have opened the game to say how a payment went.
         if (savedInstanceState == null) store.handleIntent(intent)
-        platform = AndroidPlatform(this, store, Notices(this), Advertising.create(this), ::askNotifications)
+        platform = AndroidPlatform(this, store, Notices(this), Advertising.create(this), ::askNotifications, ::askText)
         // The intro plays when the game opens, not when Android brings it back.
         game = Game(platform, showIntro = savedInstanceState == null)
         view = GameView(this, game)
@@ -86,6 +90,37 @@ class MainActivity : ComponentActivity() {
             }
             done(false)
         }
+    }
+
+    /** A window with one line to type in, for a promo code; [done] hears the line, or null when cancelled. */
+    private fun askText(title: String, hint: String, ok: String, done: (String?) -> Unit) {
+        val input = EditText(this).apply {
+            this.hint = hint
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        val pad = (resources.displayMetrics.density * 20f).toInt()
+        val box = FrameLayout(this).apply {
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input)
+        }
+        var answered = false
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(title)
+            .setView(box)
+            .setPositiveButton(ok) { _, _ ->
+                answered = true
+                done(input.text.toString())
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .setOnDismissListener {
+                if (!answered) done(null)
+                hideSystemBars()
+            }
+            .create()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        dialog.show()
+        input.requestFocus()
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -53,11 +53,15 @@ class Profile(private val p: Platform) {
 
     fun medal(id: Int): Boolean = p.getInt("chal_$id", 0) != 0
 
-    fun unlocked(id: Int): Boolean = id <= 1 || stars(id - 1) > 0
+    fun unlocked(id: Int): Boolean = admin || id <= 1 || stars(id - 1) > 0
+
+    /** Hard opens on a level once it is won. */
+    fun hardOpen(id: Int): Boolean = admin || stars(id) > 0
 
     /** The highest campaign level the player may play. */
     val progress: Int
         get() {
+            if (admin) return Levels.all.size
             var n = 1
             while (n < Levels.all.size && stars(n) > 0) n++
             return n
@@ -95,10 +99,10 @@ class Profile(private val p: Platform) {
 
     val perks: Perks get() = Perks.decode(Perk.entries.joinToString(".") { perk(it).toString() })
 
-    /** Stars, hard wins, medals and daily wins all count, VIP's gifts and points bought in the starter pack. */
+    /** Stars, hard wins, medals and daily wins all count, VIP's gifts, points bought in the starter pack or given by codes. */
     val points: Int
         get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS) + stat(Stat.VIP_POINTS) + stat(Stat.WEEKLY_POINTS) +
-            stat(Stat.PASS_POINTS) + stat(Stat.AD_POINTS) + boughtPoints
+            stat(Stat.PASS_POINTS) + stat(Stat.AD_POINTS) + boughtPoints + giftPoints + (if (admin) Promo.ADMIN_POINTS else 0)
 
     /** Upgrade points from purchases; resetting progress keeps them. */
     val boughtPoints: Int get() = p.getInt("bought_points", 0)
@@ -151,6 +155,9 @@ class Profile(private val p: Platform) {
 
     fun seen(key: String): Boolean = p.getInt("seen_$key", 0) != 0
 
+    /** The codex shows it: met, or everything is open to the admin. */
+    fun known(key: String): Boolean = admin || seen(key)
+
     fun markSeen(key: String) {
         if (!seen(key)) p.putInt("seen_$key", 1)
     }
@@ -161,11 +168,11 @@ class Profile(private val p: Platform) {
         get() = p.getInt("best_endless", 0)
         set(v) = p.putInt("best_endless", max(v, bestEndless))
 
-    val endlessUnlocked: Boolean get() = stars(3) > 0
+    val endlessUnlocked: Boolean get() = admin || stars(3) > 0
 
-    val dailyUnlocked: Boolean get() = stars(2) > 0
+    val dailyUnlocked: Boolean get() = admin || stars(2) > 0
 
-    val weeklyUnlocked: Boolean get() = stars(Weekly.UNLOCK) > 0
+    val weeklyUnlocked: Boolean get() = admin || stars(Weekly.UNLOCK) > 0
 
     /** The best medal of [week]'s operation: 0 none, 1 bronze, 2 silver, 3 gold. */
     fun weeklyMedal(week: Int): Int = if (p.getInt("weekly_week", -1) == week) p.getInt("weekly_medal", 0) else 0
@@ -215,19 +222,21 @@ class Profile(private val p: Platform) {
     /** The last day VIP is paid for, in days since 1970; 0 when never. Resetting progress keeps it. */
     val vipUntil: Int get() = p.getInt("vip_until", 0)
 
-    fun vip(today: Int): Boolean = today <= vipUntil
+    fun vip(today: Int): Boolean = admin || today <= vipUntil
 
     /** VIP is paid up to [until]; a paid period is never cut short. */
     fun grantVip(until: Int) {
         if (until > vipUntil) p.putInt("vip_until", until)
     }
 
-    val vipForever: Boolean get() = vipUntil >= Vip.FOREVER
+    val vipForever: Boolean get() = admin || vipUntil >= Vip.FOREVER
 
     // --- purchases and commanders ---------------------------------------------------------
 
-    /** Bought once and kept, even when progress is reset. */
-    fun owned(product: Product): Boolean = p.getInt("own_${product.id}", 0) != 0
+    /** Bought once and kept, even when progress is reset; the admin has it all. */
+    fun owned(product: Product): Boolean = admin || bought(product)
+
+    private fun bought(product: Product): Boolean = p.getInt("own_${product.id}", 0) != 0
 
     /** Hands over what [product] gives, once; buying the subscription goes through [grantVip] instead. */
     fun grant(product: Product) {
@@ -235,7 +244,7 @@ class Profile(private val p: Platform) {
             p.putInt("pass_season", Season.of(p.today()))
             return
         }
-        if (product.subscription || owned(product)) return
+        if (product.subscription || bought(product)) return
         p.putInt("own_${product.id}", 1)
         when (product) {
             Product.VIP_FOREVER -> grantVip(Vip.FOREVER)
@@ -291,7 +300,7 @@ class Profile(private val p: Platform) {
     fun grantCamo(c: Camo) = p.putInt("own_${c.key}", 1)
 
     fun camoOpen(c: Camo): Boolean = when {
-        c == Camo.FIELD -> true
+        c == Camo.FIELD || admin -> true
         c.world?.let { worldWon(it) } == true -> true
         c.product?.let { owned(it) } == true -> true
         c == Camo.PARADE && vip(p.today()) -> true
@@ -332,7 +341,7 @@ class Profile(private val p: Platform) {
     }
 
     /** The premium track is bought for this month. */
-    fun passPremium(today: Int): Boolean = p.getInt("pass_season", -1) == Season.of(today)
+    fun passPremium(today: Int): Boolean = admin || p.getInt("pass_season", -1) == Season.of(today)
 
     private fun claimKey(today: Int, premium: Boolean) = "pass_${if (premium) "paid" else "free"}_${Season.of(today)}"
 
@@ -350,13 +359,18 @@ class Profile(private val p: Platform) {
         val reward = (if (premium) Season.premium(tier) else Season.free(tier)) ?: return false
         val key = claimKey(today, premium)
         p.putInt(key, p.getInt(key, 0) or (1 shl (tier - 1)))
+        give(reward, today) { addStat(Stat.PASS_POINTS, it) }
+        return true
+    }
+
+    /** Hands over [reward]; its upgrade points go where [addPoints] puts them. */
+    private fun give(reward: Reward, today: Int, addPoints: (Int) -> Unit) {
         when (reward.kind) {
-            RewardKind.POINTS -> addStat(Stat.PASS_POINTS, reward.amount)
+            RewardKind.POINTS -> addPoints(reward.amount)
             RewardKind.SERVICE -> addService(battleCommander, reward.amount)
             RewardKind.VIP_DAYS -> grantVip(max(vipUntil, today - 1) + reward.amount)
-            RewardKind.CAMO -> if (camoOpen(Camo.URBAN)) addStat(Stat.PASS_POINTS, Season.CAMO_POINTS) else grantCamo(Camo.URBAN)
+            RewardKind.CAMO -> if (camoOpen(Camo.URBAN)) addPoints(Season.CAMO_POINTS) else grantCamo(Camo.URBAN)
         }
-        return true
     }
 
     /** Rewards reached and not yet taken, on both tracks. */
@@ -411,7 +425,7 @@ class Profile(private val p: Platform) {
     /** Service [c] earned in the battles he led; it decides his rank. */
     fun service(c: CommanderType): Int = p.getInt("service_${c.name}", 0)
 
-    fun rank(c: CommanderType): Int = Ranks.of(service(c))
+    fun rank(c: CommanderType): Int = if (admin) Ranks.MAX else Ranks.of(service(c))
 
     /** Adds [n] to [c]'s service; gives his new rank when it went up, else 0. */
     fun addService(c: CommanderType, n: Int): Int {
@@ -420,6 +434,41 @@ class Profile(private val p: Platform) {
         val after = rank(c)
         if (after > before) maxStat(Stat.BEST_RANK, after)
         return if (after > before) after else 0
+    }
+
+    // --- promo codes ----------------------------------------------------------------------
+
+    /** Admin mode: every level, world, mode, squad, commander, rank, look, VIP and upgrade open. */
+    var admin: Boolean
+        get() = p.getInt("admin", 0) != 0
+        set(v) {
+            p.putInt("admin", if (v) 1 else 0)
+            // Upgrades bought with the admin's points do not outlast them.
+            if (!v && freePoints < 0) resetPerks()
+        }
+
+    /** The admin's code was entered on this phone, so admin mode can be switched back on. */
+    val adminKnown: Boolean get() = p.getInt("admin_known", 0) != 0
+
+    /** Upgrade points given by codes; resetting progress keeps them. */
+    val giftPoints: Int get() = p.getInt("gift_points", 0)
+
+    private fun codeKey(code: PromoCode) = "code_${code.hash.take(16)}"
+
+    fun codeUsed(code: PromoCode): Boolean = p.getInt(codeKey(code), 0) != 0
+
+    /** Hands over what [code] gives, once a code; the admin's may be entered again. */
+    fun redeem(code: PromoCode, today: Int): PromoResult {
+        if (today > code.until) return PromoResult.EXPIRED
+        if (code.admin) {
+            p.putInt("admin_known", 1)
+            admin = true
+            return PromoResult.ADMIN
+        }
+        if (codeUsed(code)) return PromoResult.USED
+        p.putInt(codeKey(code), 1)
+        for (r in code.rewards) give(r, today) { p.putInt("gift_points", giftPoints + it) }
+        return PromoResult.DONE
     }
 
     // --- the game in progress -------------------------------------------------------------
