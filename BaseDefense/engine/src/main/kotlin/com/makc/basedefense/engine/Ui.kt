@@ -79,6 +79,19 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
     private var lastX = 0f
     private var lastY = 0f
 
+    // Lists glide on after a flick and spring back when pulled past an end.
+    private val velocities = HashMap<String, Float>()
+    private val moving = HashSet<String>()
+    private var clock = 0f
+
+    /** Where the finger would have put the held list, before the pull past an end is eased. */
+    private var dragRaw = 0f
+
+    /** The finger's last positions along the held list and when they were, for the speed of a flick. */
+    private val trackT = FloatArray(TRACK)
+    private val trackP = FloatArray(TRACK)
+    private var trackN = 0
+
     /** True while a touch that started on a control is held. */
     val busy: Boolean get() = pressed != null || slider != null || scrolling
 
@@ -124,6 +137,14 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
                 scroll = scrolls.lastOrNull { it.r.contains(x, y) }
                 val b = buttons.lastOrNull { it.contains(x, y) }
                 pressed = b?.id
+                scroll?.let { sc ->
+                    // A touch catches a gliding list; it does not also press what happens to pass under it.
+                    val v = velocities.remove(sc.id) ?: 0f
+                    if (abs(v) > d(CATCH_SPEED)) pressed = null
+                    dragRaw = unrubber(offsets[sc.id] ?: 0f, limits[sc.id] ?: 0f)
+                    trackN = 0
+                    track(if (sc.horizontal) x else y)
+                }
                 return b != null || scroll != null
             }
             Touch.MOVE -> {
@@ -138,10 +159,13 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
                         scrolling = true
                         pressed = null
                     }
-                    if (scrolling) {
-                        val delta = if (sc.horizontal) lastX - x else lastY - y
-                        offsets[sc.id] = ((offsets[sc.id] ?: 0f) + delta).coerceIn(0f, limits[sc.id] ?: 0f)
+                    val limit = limits[sc.id] ?: 0f
+                    if (scrolling && limit > 0f) {
+                        dragRaw += if (sc.horizontal) lastX - x else lastY - y
+                        offsets[sc.id] = rubber(dragRaw, limit)
+                        moving += sc.id
                     }
+                    track(if (sc.horizontal) x else y)
                 }
                 lastX = x
                 lastY = y
@@ -153,8 +177,13 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
                     return true
                 }
                 val wasScrolling = scrolling
+                val sc = scroll
                 scrolling = false
                 scroll = null
+                if (sc != null && wasScrolling) {
+                    track(if (sc.horizontal) x else y)
+                    release(sc.id, -fingerSpeed())
+                }
                 val p = pressed ?: return wasScrolling
                 pressed = null
                 val b = buttons.lastOrNull { it.contains(x, y) }
@@ -169,6 +198,7 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
                 return true
             }
             Touch.CANCEL -> {
+                scroll?.let { release(it.id, 0f) }
                 pressed = null
                 slider = null
                 scroll = null
@@ -180,6 +210,87 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
 
     // --- scrolling ------------------------------------------------------------------------
 
+    /** Lets go of list [id], which glides on at [speed] (offset per second) unless it is past an end. */
+    private fun release(id: String, speed: Float) {
+        val limit = limits[id] ?: 0f
+        if (limit <= 0f) return
+        val off = offsets[id] ?: 0f
+        velocities[id] = if (off in 0f..limit) speed.coerceIn(-d(MAX_FLING), d(MAX_FLING)) else 0f
+        moving += id
+    }
+
+    private fun track(p: Float) {
+        val i = trackN % TRACK
+        trackT[i] = clock
+        trackP[i] = p
+        trackN++
+    }
+
+    /** How fast the finger moved along the list just before it let go, in pixels per second. */
+    private fun fingerSpeed(): Float {
+        if (trackN < 2) return 0f
+        val last = (trackN - 1) % TRACK
+        var first = last
+        for (k in 1 until min(trackN, TRACK)) {
+            val i = (last - k + TRACK) % TRACK
+            if (trackT[last] - trackT[i] > TRACK_WINDOW) break
+            first = i
+        }
+        // A finger that stood still before letting go throws nothing.
+        return (trackP[last] - trackP[first]) / max(trackT[last] - trackT[first], 1f / 60f)
+    }
+
+    /** Past either end a list follows the finger less and less, never more than [OVERSCROLL]. */
+    private fun rubber(raw: Float, limit: Float): Float {
+        val m = d(OVERSCROLL)
+        return when {
+            raw < 0f -> -m * -raw / (-raw + 2f * m)
+            raw > limit -> limit + m * (raw - limit) / (raw - limit + 2f * m)
+            else -> raw
+        }
+    }
+
+    /** The finger position that [rubber] turns into [off]. */
+    private fun unrubber(off: Float, limit: Float): Float {
+        val m = d(OVERSCROLL)
+        return when {
+            off < 0f -> min(-off, m * 0.99f).let { -2f * m * it / (m - it) }
+            off > limit -> min(off - limit, m * 0.99f).let { limit + 2f * m * it / (m - it) }
+            else -> off
+        }
+    }
+
+    /** Moves the lists that glide or spring back; call once a frame. */
+    fun update(dt: Float) {
+        clock += dt
+        if (moving.isEmpty()) return
+        val held = scroll?.id
+        val iter = moving.iterator()
+        while (iter.hasNext()) {
+            val id = iter.next()
+            if (id == held) continue
+            val edgeMax = max(0f, limits[id] ?: 0f)
+            var v = velocities[id] ?: 0f
+            var off = (offsets[id] ?: 0f) + v * dt
+            val edge = off.coerceIn(0f, edgeMax)
+            if (off != edge) {
+                // Past an end the glide dies fast and a spring pulls the list back.
+                v *= exp(-EDGE_BRAKE * dt)
+                off = edge + ((off - edge) * exp(-SPRING * dt)).coerceIn(-d(OVERSCROLL), d(OVERSCROLL))
+                if (abs(off - edge) < 0.5f) off = edge
+            } else {
+                v *= exp(-FRICTION * dt)
+            }
+            if (abs(v) < d(MIN_SPEED)) v = 0f
+            offsets[id] = off
+            velocities[id] = v
+            if (v == 0f && off == edge) {
+                velocities.remove(id)
+                iter.remove()
+            }
+        }
+    }
+
     /**
      * Starts a list that scrolls inside (x, y, w, h); returns the offset to subtract
      * from content positions. Call [endScroll] after drawing the content.
@@ -189,7 +300,9 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
         scrolls += Scroll(id, r, horizontal)
         val limit = max(0f, content - (if (horizontal) sw else sh))
         limits[id] = limit
-        val off = (offsets[id] ?: 0f).coerceIn(0f, limit)
+        val stored = offsets[id] ?: 0f
+        // Only a list held or still settling may stand past its ends.
+        val off = if (id in moving || scroll?.id == id) stored.coerceIn(-d(OVERSCROLL), limit + d(OVERSCROLL)) else stored.coerceIn(0f, limit)
         offsets[id] = off
         g.save()
         g.clip(x, y, sw, sh)
@@ -203,7 +316,7 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
         val r = scrolls.lastOrNull { it.id == id }?.r ?: return
         val limit = limits[id] ?: 0f
         if (limit <= 0f) return
-        val off = offsets[id] ?: 0f
+        val off = (offsets[id] ?: 0f).coerceIn(0f, limit)
         val horizontal = scrolls.last { it.id == id }.horizontal
         // A thin bar shows there is more.
         if (horizontal) {
@@ -217,12 +330,20 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
         }
     }
 
+    /** Where list [id] stands now; tests watch it glide. */
+    fun scrollOffset(id: String): Float = offsets[id] ?: 0f
+
     fun resetScroll(id: String) {
         offsets.remove(id)
+        velocities.remove(id)
+        moving.remove(id)
     }
 
+    /** Puts list [id] at [value] at once; it is kept within the list's ends when drawn. */
     fun scrollTo(id: String, value: Float) {
         offsets[id] = value
+        velocities.remove(id)
+        moving.remove(id)
     }
 
     // --- text -----------------------------------------------------------------------------
@@ -1157,6 +1278,21 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
     }
 
     companion object {
+        // How lists move. The finger's speed comes from its last TRACK positions within TRACK_WINDOW
+        // seconds. Speeds are in dp a second: the fastest glide, the slowest before it stops, and the
+        // speed above which a touch only catches the list. A list goes at most OVERSCROLL dp past an
+        // end. FRICTION slows a glide, SPRING pulls a list back from past an end and EDGE_BRAKE stops
+        // a glide there, each as a rate per second.
+        private const val TRACK = 8
+        private const val TRACK_WINDOW = 0.1f
+        private const val FRICTION = 2.6f
+        private const val MAX_FLING = 4500f
+        private const val MIN_SPEED = 12f
+        private const val CATCH_SPEED = 120f
+        private const val OVERSCROLL = 90f
+        private const val SPRING = 12f
+        private const val EDGE_BRAKE = 20f
+
         // Olive drab and khaki, signal yellow, paper and red ink.
         val BG = 0xFF191C14.toInt()
         val BG_DEEP = 0xFF11140D.toInt()

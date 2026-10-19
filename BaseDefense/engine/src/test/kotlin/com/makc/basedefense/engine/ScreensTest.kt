@@ -628,6 +628,66 @@ class ScreensTest {
     }
 
     @Test
+    fun listsGlideAfterAFlickAndSpringBackFromTheEnds() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        val g = game(tall, platform)
+        run(g, 1f)
+        g.go(Screen.ACHIEVEMENTS)
+        run(g, 1f)
+        val id = Screen.ACHIEVEMENTS.name
+        val x = tall.w / 2f
+        fun drag(fromY: Float, step: Float, steps: Int, release: Boolean = true) {
+            g.touch(Touch.DOWN, x, fromY)
+            for (k in 1..steps) {
+                g.touch(Touch.MOVE, x, fromY + k * step)
+                g.update(1f / 60f)
+                frame(g, tall)
+            }
+            if (release) g.touch(Touch.UP, x, fromY + steps * step)
+        }
+        fun settle(seconds: Float) {
+            var t = 0f
+            while (t < seconds) {
+                g.update(1f / 60f)
+                frame(g, tall)
+                t += 1f / 60f
+            }
+        }
+
+        // A quick flick up: the list goes on after the finger leaves, then comes to rest.
+        frame(g, tall)
+        drag(1900f, -90f, 4)
+        val released = g.ui.scrollOffset(id)
+        settle(0.3f)
+        val gliding = g.ui.scrollOffset(id)
+        assertTrue(gliding > released + 50f, "it glides on: $released then $gliding")
+        settle(4f)
+        val rest = g.ui.scrollOffset(id)
+        settle(0.5f)
+        assertEquals(rest, g.ui.scrollOffset(id), "and stops")
+
+        // A touch on a gliding list holds it where it is.
+        drag(1900f, -90f, 4)
+        settle(0.1f)
+        g.touch(Touch.DOWN, x, 1200f)
+        val caught = g.ui.scrollOffset(id)
+        settle(0.5f)
+        assertEquals(caught, g.ui.scrollOffset(id))
+        g.touch(Touch.UP, x, 1200f)
+
+        // Pulled past the top it follows the finger only part of the way, and springs back.
+        g.ui.scrollTo(id, 0f)
+        frame(g, tall)
+        drag(700f, 60f, 6, release = false)
+        val pulled = g.ui.scrollOffset(id)
+        assertTrue(pulled < 0f && pulled > -360f, "past the top, held back: $pulled")
+        g.touch(Touch.UP, x, 1060f)
+        settle(1.5f)
+        assertEquals(0f, g.ui.scrollOffset(id))
+    }
+
+    @Test
     fun theWeeklyOperation() {
         val platform = SilentPlatform()
         unlockAll(platform)

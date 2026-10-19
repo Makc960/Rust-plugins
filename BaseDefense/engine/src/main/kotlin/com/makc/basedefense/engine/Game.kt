@@ -210,6 +210,7 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
     fun update(dt: Float) {
         val step = dt.coerceIn(0f, 0.1f)
         clock += step
+        ui.update(step)
         val target = nextScreen
         if (target != null) {
             val before = fade
