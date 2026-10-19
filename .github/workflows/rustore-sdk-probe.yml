@@ -1,0 +1,74 @@
+# Temporary: prints the public API of RuStore's review and update SDKs, which this sandbox cannot download.
+name: RuStore SDK probe
+
+on:
+  push:
+    paths:
+      - ".github/workflows/rustore-sdk-probe.yml"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Dump the SDKs
+        run: |
+          mkdir -p /tmp/probe && cd /tmp/probe
+          python3 - <<'PY'
+          import re, subprocess, urllib.request, zipfile, os, io
+          REPO = "https://nexus-external.rustore.ru/repository/maven-rustore-exposed"
+          def get(path):
+              try:
+                  with urllib.request.urlopen(REPO + "/" + path, timeout=40) as f:
+                      return f.read()
+              except Exception as e:
+                  print("MISS", path, e)
+                  return None
+          bom = get("ru/rustore/sdk/bom/2026.10.01/bom-2026.10.01.pom").decode()
+          deps = re.findall(r"<groupId>([^<]+)</groupId>\s*<artifactId>([^<]+)</artifactId>\s*<version>([^<]+)</version>", bom)
+          pins = {(g, a): v for g, a, v in deps}
+          for target, prefix in [("review", "ru/rustore/sdk/review"), ("appupdate", "ru/rustore/sdk/appupdate")]:
+              seen = set()
+              todo = [("ru.rustore.sdk", target, pins.get(("ru.rustore.sdk", target)))]
+              jars = []
+              while todo:
+                  g, a, v = todo.pop()
+                  if (g, a) in seen or v is None:
+                      continue
+                  seen.add((g, a))
+                  base = g.replace(".", "/") + f"/{a}/{v}/{a}-{v}"
+                  pom = get(base + ".pom")
+                  if pom:
+                      pom = pom.decode()
+                      print("===== POM", g, a, v)
+                      for dg, da, dv in re.findall(r"<groupId>([^<]+)</groupId>\s*<artifactId>([^<]+)</artifactId>\s*<version>([^<]+)</version>", pom):
+                          print("  dep", dg, da, dv)
+                          if dg.startswith("ru.rustore") or dg.startswith("ru.vk"):
+                              todo.append((dg, da, pins.get((dg, da), dv)))
+                  aar = get(base + ".aar")
+                  if aar:
+                      z = zipfile.ZipFile(io.BytesIO(aar))
+                      if a == target and "AndroidManifest.xml" in z.namelist():
+                          print("===== MANIFEST", g, a, v)
+                          print(z.read("AndroidManifest.xml").decode(errors="replace"))
+                      for n in z.namelist():
+                          if n.endswith(".jar"):
+                              p = f"{a}-{os.path.basename(n)}"
+                              open(p, "wb").write(z.read(n))
+                              jars.append(p)
+              cp = ":".join(jars)
+              names = []
+              for j in jars:
+                  for n in zipfile.ZipFile(j).namelist():
+                      if n.endswith(".class") and (n.startswith(prefix) or n.startswith("ru/rustore/sdk/core/tasks")) and "/internal/" not in n and "$" not in n.split("/")[-1][:1]:
+                          names.append(n[:-6].replace("/", "."))
+              names = sorted(set(names))
+              print("===== CLASSES", target, len(names))
+              for chunk in range(0, len(names), 60):
+                  out = subprocess.run(["javap", "-public", "-cp", cp] + names[chunk:chunk + 60], capture_output=True, text=True)
+                  print(out.stdout)
+                  print(out.stderr[:2000])
+          PY
