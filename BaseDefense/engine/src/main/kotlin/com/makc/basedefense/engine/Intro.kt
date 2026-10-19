@@ -131,8 +131,9 @@ internal class Intro(private val game: Game) : WorldListener {
 
     fun render(g: Gfx) {
         val w = world
+        // It rises out of the ground colour of Android's launch screen.
         if (w == null) {
-            g.fillRect(0f, 0f, ui.w, ui.h, BLACK)
+            g.fillRect(0f, 0f, ui.w, ui.h, Ui.BG)
             return
         }
         drawMap(g, w)
@@ -141,7 +142,7 @@ internal class Intro(private val game: Game) : WorldListener {
         drawBar(g)
         val flash = (time - boomAt) / FLASH
         if (flash in 0f..1f) g.fillRect(0f, 0f, ui.w, ui.h, Colors.alpha(FLASH_COLOR, 0.3f * (1f - flash)))
-        if (time < FADE_IN) g.fillRect(0f, 0f, ui.w, ui.h, Colors.alpha(BLACK, 1f - time / FADE_IN))
+        if (time < FADE_IN) g.fillRect(0f, 0f, ui.w, ui.h, Colors.alpha(Ui.BG, 1f - time / FADE_IN))
         ui.area("intro", 0f, 0f, ui.w, ui.h, silent = true) { if (time > SKIP_AFTER) skip() }
     }
 
@@ -314,7 +315,6 @@ internal class Intro(private val game: Game) : WorldListener {
         const val CREW_AT = 0.585f
         const val STRIPS = 10
 
-        val BLACK = 0xFF000000.toInt()
         val SHADE = 0xFF0E1009.toInt()
         val FIRE = 0xFFFF9A3C.toInt()
         val FLASH_COLOR = 0xFFFFF1C8.toInt()

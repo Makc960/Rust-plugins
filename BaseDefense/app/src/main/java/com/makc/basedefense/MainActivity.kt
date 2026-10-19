@@ -1,6 +1,7 @@
 package com.makc.basedefense
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -31,6 +32,15 @@ class MainActivity : ComponentActivity() {
         game = Game(platform, showIntro = savedInstanceState == null)
         view = GameView(this, game)
         setContentView(view)
+        // The launch picture was only for the start; the game paints the whole screen from here on.
+        window.setBackgroundDrawableResource(R.color.background)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Android's launch screen melts into the intro, its emblem coming at the player.
+            splashScreen.setOnExitAnimationListener { splash ->
+                splash.iconView?.animate()?.scaleX(SPLASH_ZOOM)?.scaleY(SPLASH_ZOOM)?.setDuration(SPLASH_EXIT_MS)?.start()
+                splash.animate().alpha(0f).setDuration(SPLASH_EXIT_MS).withEndAction { splash.remove() }.start()
+            }
+        }
         hideSystemBars()
 
         // The bars are hidden, but the HUD still keeps clear of the camera cutout
@@ -83,5 +93,10 @@ class MainActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             hide(WindowInsetsCompat.Type.systemBars())
         }
+    }
+
+    private companion object {
+        const val SPLASH_EXIT_MS = 380L
+        const val SPLASH_ZOOM = 1.6f
     }
 }

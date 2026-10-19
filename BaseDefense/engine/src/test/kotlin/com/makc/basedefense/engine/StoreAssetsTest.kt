@@ -5,12 +5,14 @@ import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
  * Pictures for the Google Play listing: the 512 px icon, the 1024x500 feature
  * graphic and phone screenshots in both languages, all drawn by the game itself.
  * They land in `build/store`; the ones in the repository's `store` folder are copies.
+ * The title for Android's launch screen is made here too; the app's res folders keep copies.
  */
 class StoreAssetsTest {
     private val out = File(System.getProperty("screens.dir") ?: "build/screens").resolveSibling("store").apply { mkdirs() }
@@ -69,6 +71,43 @@ class StoreAssetsTest {
         shape(g, ink, 45f, 71.5f, 54f, 66.5f, 63f, 71.5f, 63f, 75f, 54f, 70f, 45f, 75f)
         save(img, "icon-512")
         assertTrue(File(out, "icon-512.png").length() > 1000)
+    }
+
+    /** The title as the menu draws it, 200x80 dp at 4 px per dp on a clear ground, under the launch screen's emblem. */
+    @Test
+    fun splashTitle() {
+        for (lang in Language.entries) {
+            I18n.lang = lang
+            val img = BufferedImage(800, 320, BufferedImage.TYPE_INT_ARGB)
+            val g = AwtGfx(img)
+            val ui = Ui { }
+            ui.w = 800f
+            ui.h = 320f
+            ui.dp = 4f
+            val big = 116f
+            val maxW = 680f
+            val ty = 16f + big * 0.74f
+            ui.text(g, Tx.TITLE_1.t, 400f + ui.d(2f), ty + ui.d(3f), big, Ui.EDGE, Align.CENTER, maxW, Font.DISPLAY)
+            ui.text(g, Tx.TITLE_1.t, 400f, ty, big, Ui.TEXT, Align.CENTER, maxW, Font.DISPLAY)
+            ui.tape(g, Tx.TITLE_2.t, 400f, ty + big * 0.8f, ui.fit(g, Tx.TITLE_2.t, big * 0.9f, maxW - big, Font.DISPLAY), -3f)
+            val box = assertNotNull(opaqueBox(img))
+            assertTrue(box[0] > 0 && box[1] > 0 && box[2] < img.width - 1 && box[3] < img.height - 1, "the title fits with room to spare")
+            ImageIO.write(img, "png", File(out, "splash_brand_${lang.name.lowercase()}.png"))
+        }
+    }
+
+    /** Left, top, right and bottom of what is drawn, or null for an empty picture. */
+    private fun opaqueBox(img: BufferedImage): IntArray? {
+        var box: IntArray? = null
+        for (y in 0 until img.height) for (x in 0 until img.width) {
+            if (img.getRGB(x, y) ushr 24 == 0) continue
+            val b = box ?: intArrayOf(x, y, x, y).also { box = it }
+            b[0] = minOf(b[0], x)
+            b[1] = minOf(b[1], y)
+            b[2] = maxOf(b[2], x)
+            b[3] = maxOf(b[3], y)
+        }
+        return box
     }
 
     @Test

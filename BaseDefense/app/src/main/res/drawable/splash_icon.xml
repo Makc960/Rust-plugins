@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher's emblem on Android's launch screen (12 and later): the plate spins in
+  and lands, then the rank chevrons light up one after the other.
+-->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector
+            android:width="108dp"
+            android:height="108dp"
+            android:viewportWidth="108"
+            android:viewportHeight="108">
+            <group
+                android:name="plate"
+                android:pivotX="54"
+                android:pivotY="54"
+                android:rotation="-30"
+                android:scaleX="0.3"
+                android:scaleY="0.3">
+                <path
+                    android:fillColor="#0F120B"
+                    android:pathData="M42,27 H66 L81,42 V66 L66,81 H42 L27,66 V42 Z" />
+                <path
+                    android:fillColor="#9A6A10"
+                    android:pathData="M42.6,28.5 H65.4 L79.5,42.6 V65.4 L65.4,79.5 H42.6 L28.5,65.4 V42.6 Z" />
+                <path
+                    android:fillColor="#FFD978"
+                    android:pathData="M42.6,28.5 H65.4 L79.5,42.6 V63.6 L65.4,77.7 H42.6 L28.5,63.6 V42.6 Z" />
+                <path
+                    android:fillColor="#F2B634"
+                    android:pathData="M43.1,30 H64.9 L78,43.1 V63.1 L64.9,76.2 H43.1 L30,63.1 V43.1 Z" />
+                <path
+                    android:fillColor="#22200F"
+                    android:pathData="M39,54 C39,41.5 45.5,34 54,34 C62.5,34 69,41.5 69,54 Z M38,53 H70 L74.5,58.5 H33.5 Z" />
+                <path
+                    android:fillColor="#F2B634"
+                    android:pathData="M40.2,46.5 H67.8 V49.2 H40.2 Z" />
+                <path
+                    android:name="upper"
+                    android:fillAlpha="0"
+                    android:fillColor="#22200F"
+                    android:pathData="M45,65.5 L54,60.5 L63,65.5 V69 L54,64 L45,69 Z" />
+                <path
+                    android:name="lower"
+                    android:fillAlpha="0"
+                    android:fillColor="#22200F"
+                    android:pathData="M45,71.5 L54,66.5 L63,71.5 V75 L54,70 L45,75 Z" />
+            </group>
+        </vector>
+    </aapt:attr>
+
+    <target android:name="plate">
+        <aapt:attr name="android:animation">
+            <set>
+                <objectAnimator
+                    android:duration="480"
+                    android:interpolator="@android:anim/overshoot_interpolator"
+                    android:propertyName="scaleX"
+                    android:valueFrom="0.3"
+                    android:valueTo="1" />
+                <objectAnimator
+                    android:duration="480"
+                    android:interpolator="@android:anim/overshoot_interpolator"
+                    android:propertyName="scaleY"
+                    android:valueFrom="0.3"
+                    android:valueTo="1" />
+                <objectAnimator
+                    android:duration="480"
+                    android:interpolator="@android:anim/decelerate_interpolator"
+                    android:propertyName="rotation"
+                    android:valueFrom="-30"
+                    android:valueTo="0" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="lower">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="140"
+                android:propertyName="fillAlpha"
+                android:startOffset="480"
+                android:valueFrom="0"
+                android:valueTo="1" />
+        </aapt:attr>
+    </target>
+    <target android:name="upper">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="140"
+                android:propertyName="fillAlpha"
+                android:startOffset="640"
+                android:valueFrom="0"
+                android:valueTo="1" />
+        </aapt:attr>
+    </target>
+</animated-vector>
