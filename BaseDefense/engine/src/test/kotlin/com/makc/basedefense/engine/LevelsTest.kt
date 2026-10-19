@@ -31,7 +31,7 @@ class LevelsTest {
 
     @Test
     fun worldsHaveTheirOwnLook() {
-        assertEquals(32, Levels.all.size)
+        assertEquals(40, Levels.all.size)
         for (level in Levels.all) {
             assertEquals(level.id - 1, Levels.all.indexOf(level), "levels go in order")
             assertEquals(Biome.entries[level.world], level.biome, "level ${level.id} biome")
@@ -40,6 +40,7 @@ class LevelsTest {
             if (level.biome == Biome.DESERT) assertTrue(cacti > 0, "desert level ${level.id} has cacti") else assertEquals(0, cacti)
             if (level.biome != Biome.WINTER) assertEquals(0, ice, "only the north has ice, level ${level.id}")
             if (level.biome == Biome.VOLCANO) assertTrue(level.ascii.any { '~' in it }, "volcano level ${level.id} has lava")
+            if (level.biome == Biome.RUINS) assertEquals(2, level.paths.size, "the city comes down two roads at once, level ${level.id}")
             assertTrue(level.challenge != null, "level ${level.id} has a challenge")
         }
         assertTrue(Levels.all.filter { it.biome == Biome.WINTER }.count { l -> l.ascii.any { 'i' in it } } >= 6)

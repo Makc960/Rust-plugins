@@ -14,6 +14,7 @@ enum class Chapter(val heading: L, val world: Int) {
     DESERT(L("ГЛАВА 2", "CHAPTER 2"), 1),
     NORTH(L("ГЛАВА 3", "CHAPTER 3"), 2),
     VOLCANO(L("ГЛАВА 4", "CHAPTER 4"), 3),
+    RUINS(L("ГЛАВА 5", "CHAPTER 5"), 4),
     ;
 
     companion object {
@@ -186,6 +187,12 @@ internal class Story(private val game: Game) : WorldListener {
             Chapter.VOLCANO -> listOf(
                 page(0, Tx.STORY_VOLCANO_TITLES, Tx.STORY_VOLCANO_TEXTS) { fight(32, FIRE_WALKERS, Colors.alpha(EMBER, 0.12f), plane = true) },
                 page(1, Tx.STORY_VOLCANO_TITLES, Tx.STORY_VOLCANO_TEXTS) {
+                    bosses(CITY_GATE, listOf(EnemyType.AIRSHIP), CITY, Colors.alpha(EMBER, 0.14f))
+                },
+            )
+            Chapter.RUINS -> listOf(
+                page(0, Tx.STORY_RUINS_TITLES, Tx.STORY_RUINS_TEXTS) { fight(40, CITY, Colors.alpha(DUSK, 0.12f), plane = true) },
+                page(1, Tx.STORY_RUINS_TITLES, Tx.STORY_RUINS_TEXTS) {
                     quiet(COAST, listOf(TowerType.TURRET, TowerType.ROCKET, TowerType.SNIPER, TowerType.TESLA, TowerType.SHOTGUN), Colors.alpha(DUSK, 0.12f))
                 },
             )
@@ -491,6 +498,7 @@ internal class Story(private val game: Game) : WorldListener {
         private const val COAST = 1
         private const val DUNES = 9
         private const val RIVER = 18
+        private const val CITY_GATE = 33
 
         /** Letters a second, and the pause before they start. */
         private const val TYPE_SPEED = 38f
@@ -512,6 +520,7 @@ internal class Story(private val game: Game) : WorldListener {
         private val SQUADS = listOf(TowerType.TURRET, TowerType.ROCKET, TowerType.SHOTGUN, TowerType.SNIPER, TowerType.TESLA, TowerType.FLAMER)
         private val NORTHERNERS = listOf(EnemyType.BRUTE, EnemyType.MEDIC, EnemyType.SHIELD, EnemyType.BANDIT, EnemyType.RUNNER)
         private val FIRE_WALKERS = listOf(EnemyType.SALAMANDER, EnemyType.SALAMANDER, EnemyType.JUGGERNAUT, EnemyType.DIGGER)
+        private val CITY = listOf(EnemyType.BIKER, EnemyType.BIKER, EnemyType.BANDIT, EnemyType.FLAME_TANK, EnemyType.SALAMANDER, EnemyType.RUNNER)
 
         private val SHADE = 0xFF0E1009.toInt()
         private val DUSK = 0xFFFFB45A.toInt()

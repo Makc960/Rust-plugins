@@ -54,6 +54,7 @@ class Renderer {
         Biome.DESERT -> DESERT
         Biome.WINTER -> WINTER
         Biome.VOLCANO -> VOLCANO
+        Biome.RUINS -> RUINS
     }
 
     /** [pxPerCell] is how big a cell is on screen, for the cached terrain picture. */
@@ -79,6 +80,7 @@ class Renderer {
         for (s in w.smokes) drawSmoke(g, s, time)
         for (b in w.bombs) drawBomb(g, b)
         for (b in w.lava) drawLavaBomb(g, b, time)
+        for (a in w.ambushes) drawHatch(g, a, time)
         for (p in w.projectiles) drawProjectile(g, p)
         for (t in w.tracers) drawTracer(g, t)
         if (a != null) for (b in w.blasts) drawFireball(g, a, b)
@@ -320,6 +322,18 @@ class Renderer {
                     val y = r + 0.15f + ((h ushr (k * 6 + 3)) and 63) / 63f * 0.7f
                     g.fillCircle(x, y, 0.03f, pal.tuft)
                 }
+                Biome.RUINS -> {
+                    // A crack in the concrete and a few chips of brick.
+                    val x = c + 0.2f + (h and 15) / 15f * 0.5f
+                    val y = r + 0.2f + ((h ushr 4) and 15) / 15f * 0.5f
+                    g.line(x, y, x + 0.12f, y + 0.08f, pal.tuft, 0.025f)
+                    g.line(x + 0.12f, y + 0.08f, x + 0.18f, y + 0.22f, pal.tuft, 0.025f)
+                    for (k in 0 until 2) {
+                        val bx = c + 0.15f + ((h ushr (k * 6 + 9)) and 63) / 63f * 0.7f
+                        val by = r + 0.15f + ((h ushr (k * 6 + 12)) and 63) / 63f * 0.7f
+                        g.fillRect(bx, by, 0.06f, 0.04f, BRICK)
+                    }
+                }
             }
         }
     }
@@ -383,6 +397,7 @@ class Renderer {
                     Biome.WINTER -> drawPine(g, cx, cy)
                     Biome.DESERT -> drawPalm(g, cx, cy, hash(c, r))
                     Biome.VOLCANO -> drawCharred(g, cx, cy)
+                    Biome.RUINS -> drawWreck(g, cx, cy, hash(c, r))
                     Biome.GREEN -> {
                         g.fillCircle(cx + 0.07f, cy + 0.1f, 0.42f, SHADOW)
                         g.fillCircle(cx, cy, 0.42f, TREE)
@@ -444,6 +459,20 @@ class Renderer {
         g.fillCircle(cx - 0.12f, cy + 0.1f, 0.18f, CHARRED_DARK)
         g.fillCircle(cx + 0.1f, cy - 0.12f, 0.05f, EMBER)
         g.fillCircle(cx - 0.15f, cy - 0.06f, 0.035f, EMBER)
+    }
+
+    /** A burnt-out car left in the street, turned a little. */
+    private fun drawWreck(g: Gfx, cx: Float, cy: Float, h: Int) {
+        g.save()
+        g.translate(cx, cy)
+        g.rotate(((h and 7) - 3.5f) * 6f + (if (h and 8 == 0) 0f else 90f))
+        g.fillRoundRect(-0.36f + 0.05f, -0.2f + 0.07f, 0.72f, 0.4f, 0.1f, SHADOW)
+        g.fillRoundRect(-0.36f, -0.2f, 0.72f, 0.4f, 0.1f, WRECK)
+        g.fillRoundRect(-0.16f, -0.16f, 0.34f, 0.32f, 0.06f, WRECK_DARK)
+        g.fillRoundRect(-0.1f, -0.12f, 0.2f, 0.24f, 0.04f, 0xFF2A2624.toInt())
+        g.fillCircle(-0.26f, -0.12f, 0.035f, RUST)
+        g.fillCircle(0.25f, 0.1f, 0.045f, RUST)
+        g.restore()
     }
 
     private fun drawPalm(g: Gfx, cx: Float, cy: Float, h: Int) {
@@ -1243,6 +1272,9 @@ class Renderer {
         EnemyType.TITAN -> 0.9f
         EnemyType.DIGGER -> 0.8f
         EnemyType.JUGGERNAUT -> 1.25f
+        EnemyType.BIKER -> 0.95f
+        EnemyType.FLAME_TANK -> 1f
+        EnemyType.AIRSHIP -> 1f
         // Drawn half again as big in the atlas.
         EnemyType.MOTHER -> type.radius / 0.38f
         // People: their shoulders are about 0.26 cells across in the atlas.
@@ -1253,11 +1285,14 @@ class Renderer {
         val sway = when (type) {
             EnemyType.SWARM, EnemyType.MOTHER -> sin(time * 10f) * 7f
             EnemyType.BRUTE -> sin(time * 6f) * 2.5f
-            EnemyType.APC, EnemyType.HELI, EnemyType.DRONE, EnemyType.DIGGER, EnemyType.JUGGERNAUT -> 0f
+            EnemyType.APC, EnemyType.HELI, EnemyType.DRONE, EnemyType.DIGGER, EnemyType.JUGGERNAUT, EnemyType.FLAME_TANK -> 0f
+            EnemyType.AIRSHIP -> sin(time * 1.2f) * 2f
+            EnemyType.BIKER -> sin(time * 9f) * 2f
             EnemyType.TITAN -> sin(time * 3f) * 1.5f
             else -> sin(time * 12f) * 4f
         }
         g.put(a.enemies[type.ordinal], x, y, enemyScale(type), angle + sway, alpha)
+        if (type == EnemyType.AIRSHIP) propellers(g, x, y, angle + sway, time, alpha)
         if (type == EnemyType.HELI) {
             g.save()
             g.translate(x, y)
@@ -1486,6 +1521,33 @@ class Renderer {
                 g.fillRoundRect(0.2f, 0.3f, 0.5f, 0.12f, 0.04f, GUN)
                 g.fillRoundRect(0.22f, -0.12f, 0.16f, 0.24f, 0.05f, 0xFFD62E28.toInt())
             }
+            EnemyType.BIKER -> {
+                g.fillRoundRect(-0.36f, -0.06f, 0.72f, 0.12f, 0.06f, GUN)
+                g.fillCircle(-0.3f, 0f, 0.09f, 0xFF15181B.toInt())
+                g.fillCircle(0.3f, 0f, 0.09f, 0xFF15181B.toInt())
+                g.fillRoundRect(-0.14f, -0.1f, 0.34f, 0.2f, 0.08f, type.color)
+                g.line(0.2f, -0.17f, 0.2f, 0.17f, GUN, 0.04f)
+                g.fillCircle(-0.04f, 0f, 0.11f, 0xFF2E2E2E.toInt())
+            }
+            EnemyType.FLAME_TANK -> {
+                g.fillRoundRect(-r, -r, r * 2f, r * 0.42f, 0.05f, 0xFF3A3F45.toInt())
+                g.fillRoundRect(-r, r * 0.58f, r * 2f, r * 0.42f, 0.05f, 0xFF3A3F45.toInt())
+                g.fillRoundRect(-r * 0.85f, -r * 0.65f, r * 1.7f, r * 1.3f, 0.08f, type.color)
+                g.fillRoundRect(-r * 0.7f, -r * 0.4f, r * 0.5f, r * 0.8f, 0.06f, 0xFFD8A040.toInt())
+                g.fillCircle(r * 0.1f, 0f, r * 0.38f, Colors.darker(type.color, 0.25f))
+                g.line(r * 0.2f, 0f, r * 1.15f, 0f, GUN, 0.07f)
+                g.glow(r * 1.2f, 0f, 0.14f, Colors.alpha(FIRE, 0.5f + 0.3f * sin(time * 20f)))
+            }
+            EnemyType.AIRSHIP -> {
+                g.fillRoundRect(-0.9f, -0.34f, 1.8f, 0.68f, 0.34f, type.color)
+                g.fillRoundRect(-0.7f, -0.2f, 1.4f, 0.16f, 0.08f, Colors.darker(type.color, 0.12f))
+                xs[0] = -0.95f; ys[0] = 0f
+                xs[1] = -1.15f; ys[1] = -0.36f
+                xs[2] = -0.7f; ys[2] = 0f
+                xs[3] = -1.15f; ys[3] = 0.36f
+                g.fillPolygon(xs, ys, 4, 0xFFB8332B.toInt())
+                g.fillRoundRect(-0.25f, -0.1f, 0.5f, 0.2f, 0.05f, GUN)
+            }
             EnemyType.HELI -> {
                 g.fillRoundRect(-0.85f, -0.05f, 0.6f, 0.1f, 0.04f, type.color)
                 g.line(-0.85f, -0.17f, -0.85f, 0.17f, Colors.alpha(GUN, 0.8f), 0.04f)
@@ -1609,6 +1671,35 @@ class Renderer {
         g.fillCircle(bx - 0.03f, by - 0.03f, 0.07f, 0xFFFFB347.toInt())
     }
 
+    /** A cellar hatch about to burst open: a red ring that tightens, and the lid lifting. */
+    private fun drawHatch(g: Gfx, a: Ambush, time: Float) {
+        val f = (1f - a.timer / World.AMBUSH_WARN).coerceIn(0f, 1f)
+        val pulse = 0.5f + 0.5f * sin(time * 14f)
+        g.strokeCircle(a.x, a.y, 0.5f - 0.15f * f, Colors.alpha(World.AMBUSH, 0.45f + 0.45f * pulse), 0.05f)
+        g.fillCircle(a.x, a.y, 0.26f, 0xFF1E1C1A.toInt())
+        val lift = f * 0.16f
+        g.fillCircle(a.x + lift, a.y - lift, 0.24f, 0xFF5E5A54.toInt())
+        g.strokeCircle(a.x + lift, a.y - lift, 0.24f, 0xFF3A3632.toInt(), 0.03f)
+        g.line(a.x + lift - 0.14f, a.y - lift, a.x + lift + 0.14f, a.y - lift, 0xFF3A3632.toInt(), 0.03f)
+        g.line(a.x + lift, a.y - lift - 0.14f, a.x + lift, a.y - lift + 0.14f, 0xFF3A3632.toInt(), 0.03f)
+    }
+
+    /** The airship's two propellers at its tail, spinning. */
+    private fun propellers(g: Gfx, x: Float, y: Float, angle: Float, time: Float, alpha: Float) {
+        g.save()
+        g.translate(x, y)
+        g.rotate(angle)
+        for (side in listOf(-0.36f, 0.36f)) {
+            g.save()
+            g.translate(-0.62f, side)
+            g.rotate((time * 1100f) % 360f)
+            g.fillCircle(0f, 0f, 0.17f, Colors.alpha(0xFF0E1216.toInt(), 0.16f * alpha))
+            g.line(-0.17f, 0f, 0.17f, 0f, Colors.alpha(0xFF15191D.toInt(), 0.75f * alpha), 0.04f)
+            g.restore()
+        }
+        g.restore()
+    }
+
     private fun drawPlane(g: Gfx, p: Plane) {
         val a = art(g)
         if (a != null) {
@@ -1678,6 +1769,17 @@ class Renderer {
                     g.fillCircle(x, y, if (ember) 0.035f else 0.045f, Colors.alpha(if (ember) 0xFFFFA040.toInt() else 0xFF9A928C.toInt(), 0.85f * level))
                 }
             }
+            Biome.RUINS -> {
+                // Dust and smoke drift across the streets while the ambush is on.
+                g.fillRect(0f, 0f, COLS.toFloat(), ROWS.toFloat(), Colors.alpha(0xFF2A2622.toInt(), 0.2f * level))
+                for (i in 0 until 40) {
+                    val h = hash(i, 57)
+                    val y = ((h and 1023) / 1023f) * ROWS
+                    val speed = 0.4f + ((h ushr 10) and 7) * 0.1f
+                    val x = (((h ushr 14) and 1023) / 1023f * (COLS + 2) + time * speed) % (COLS + 2) - 1f
+                    g.fillCircle(x, y, 0.06f + ((h ushr 24) and 3) * 0.02f, Colors.alpha(0xFFB4AEA6.toInt(), 0.35f * level))
+                }
+            }
             Biome.GREEN -> Unit
         }
     }
@@ -1717,6 +1819,9 @@ class Renderer {
             EnemyType.SAPPER -> 0.34f
             EnemyType.TITAN -> 0.7f
             EnemyType.DIGGER -> 0.42f
+            EnemyType.BIKER -> 0.42f
+            EnemyType.FLAME_TANK -> 0.56f
+            EnemyType.AIRSHIP -> 0.95f
             else -> type.radius
         }
         g.save()
@@ -1776,6 +1881,7 @@ class Renderer {
                 Biome.WINTER -> drawPine(g, 0f, 0f)
                 Biome.DESERT -> drawPalm(g, 0f, 0f, 3)
                 Biome.VOLCANO -> drawCharred(g, 0f, 0f)
+                Biome.RUINS -> drawWreck(g, 0f, 0f, 3)
                 Biome.GREEN -> {
                     g.fillCircle(0f, 0f, 0.42f, TREE)
                     g.fillCircle(-0.16f, 0.12f, 0.2f, TREE_DARK)
@@ -1881,6 +1987,13 @@ class Renderer {
             rock = 0xFF46484F.toInt(), rockLight = 0xFF5E616A.toInt(), snow = false, lava = true,
         )
 
+        val RUINS = Palette(
+            grassA = 0xFF8C8882.toInt(), grassB = 0xFF86827C.toInt(), tuft = 0xFF68645E.toInt(),
+            roadEdge = 0xFF46484C.toInt(), road = 0xFF55585D.toInt(), roadDot = 0xFFC9B458.toInt(),
+            water = 0xFF4C6A73.toInt(), waterLight = 0xFF8EA8AF.toInt(),
+            rock = 0xFFA39D95.toInt(), rockLight = 0xFFC0BAB2.toInt(), snow = false,
+        )
+
         val TREE = 0xFF1E9E55.toInt()
         val TREE_DARK = 0xFF167A41.toInt()
         val TREE_LIGHT = 0xFF33C06F.toInt()
@@ -1888,6 +2001,10 @@ class Renderer {
         val CACTUS = 0xFF4E9845.toInt()
         val CACTUS_LIGHT = 0xFF6FB862.toInt()
         val CHARRED = 0xFF392D28.toInt()
+        val WRECK = 0xFF5A3A2C.toInt()
+        val WRECK_DARK = 0xFF3A2A22.toInt()
+        val RUST = 0xFFA4552C.toInt()
+        val BRICK = 0xFF9A5A44.toInt()
         val CHARRED_DARK = 0xFF231B18.toInt()
         val EMBER = 0xFFFF8A2A.toInt()
         val LAVA_CRUST = 0xFF2E2420.toInt()

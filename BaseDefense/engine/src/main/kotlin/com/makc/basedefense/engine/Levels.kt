@@ -45,12 +45,14 @@ enum class Biome(val title: L, val short: L) {
     DESERT(L("Пустыня", "Desert"), L("Пустыня", "Desert")),
     WINTER(L("Север", "The North"), L("Север", "North")),
     VOLCANO(L("Вулкан", "Volcano"), L("Вулкан", "Volcano")),
+    RUINS(L("Руины города", "City Ruins"), L("Руины", "Ruins")),
 }
 
 /**
  * The grid of a level. Terrain comes from the ASCII picture: '.' grass you can
  * build on, '#' road, 'i' icy road, 'B' base, '~' water (lava by the volcano), '=' bridge,
- * and obstacles that can be cleared for coins: 'T' tree, 'R' rock, 'C' cactus.
+ * and obstacles that can be cleared for coins: 'T' tree (a burnt-out car in the city), 'R' rock
+ * (rubble in the city), 'C' cactus.
  */
 class GameMap(val level: LevelDef) {
     val paths = level.paths.map { Path(it) }
@@ -249,7 +251,7 @@ class LevelDef(
     val daily: Boolean get() = id == Levels.DAILY_ID
     val campaign: Boolean get() = id in 1..Levels.all.size
 
-    /** 0 to 3 for campaign levels, -1 for the others. */
+    /** 0 to 4 for campaign levels, -1 for the others. */
     val world: Int get() = if (campaign) (id - 1) / Levels.PER_WORLD else -1
 }
 
@@ -276,11 +278,15 @@ object Levels {
     private val DIG = EnemyType.DIGGER
     private val JUG = EnemyType.JUGGERNAUT
     private val TITAN = EnemyType.TITAN
+    private val BIKE = EnemyType.BIKER
+    private val FT = EnemyType.FLAME_TANK
+    private val AIR = EnemyType.AIRSHIP
 
     private val G = Biome.GREEN
     private val D = Biome.DESERT
     private val W = Biome.WINTER
     private val V = Biome.VOLCANO
+    private val R = Biome.RUINS
 
     /** Every enemy of the later worlds, joining one by one. */
     private val ALL = listOf(B to 0, RU to 0, SW to 0, BR to 0, DR to 1, ME to 2, SH to 3, GH to 4, SA to 5, MO to 6)
@@ -291,6 +297,12 @@ object Levels {
     private val V27 = listOf(B to 0, RU to 0, SAL to 0, DIG to 0, BR to 1, DR to 2, SW to 3, ME to 3, SH to 4, GH to 5, SA to 6, MO to 7)
     private val V28 = listOf(B to 0, RU to 0, SAL to 0, DIG to 0, JUG to 1, BR to 2, DR to 2, SW to 3, ME to 4, SH to 5, GH to 6, SA to 7, MO to 8)
     private val VOLC = listOf(B to 0, RU to 0, SAL to 0, DIG to 0, BR to 0, JUG to 1, DR to 2, SW to 3, ME to 3, SH to 4, GH to 5, SA to 6, MO to 7)
+
+    /** The city's raiders and machines join the same way, and everything met before comes along. */
+    private val R33 = listOf(B to 0, RU to 0, SAL to 0, BIKE to 1, BR to 2, SW to 2, DR to 3, ME to 3, DIG to 4, SH to 4, GH to 6, SA to 6, JUG to 7, MO to 8)
+    private val R34 = listOf(B to 0, BIKE to 0, SAL to 0, BR to 1, SW to 2, DR to 3, ME to 3, DIG to 3, SH to 4, GH to 6, SA to 6, JUG to 7, MO to 8)
+    private val R35 = listOf(B to 0, BIKE to 0, SAL to 0, BR to 1, FT to 2, SW to 2, DR to 3, ME to 3, DIG to 4, SH to 4, GH to 6, SA to 6, JUG to 7, MO to 8)
+    private val CITY = listOf(B to 0, BIKE to 0, SAL to 0, BR to 0, DIG to 1, SW to 2, FT to 3, DR to 3, ME to 4, SH to 4, GH to 6, SA to 6, JUG to 7, MO to 8)
 
     val all: List<LevelDef> = listOf(
         // --- Green Valley -------------------------------------------------------------------
@@ -1193,6 +1205,248 @@ object Levels {
             ),
             challenge = Challenge.only(TowerType.ROCKET, TowerType.SNIPER, TowerType.SAM, TowerType.MINES),
         ),
+
+        // --- The City Ruins ------------------------------------------------------------------
+        LevelDef(
+            33, L("Окраины", "Outskirts"), R,
+            listOf(
+                "#..T..R.#",
+                "#.R.....#",
+                "#...T...#",
+                "####.####",
+                ".T.#R#.R.",
+                "...#.#...",
+                "R..#.#..T",
+                ".###.###.",
+                ".#..~..#.",
+                ".#.~~~.#R",
+                ".#..R..#.",
+                ".#######.",
+                "T...#..R.",
+                "..R.B....",
+                "~~.....TR",
+            ),
+            listOf(
+                intArrayOf(0, -1, 0, 3, 3, 3, 3, 7, 1, 7, 1, 11, 4, 11, 4, 13),
+                intArrayOf(8, -1, 8, 3, 5, 3, 5, 7, 7, 7, 7, 11, 4, 11, 4, 13),
+            ),
+            startMoney = 520,
+            plan = WavePlan(
+                17, R33, budget = 16f, growth = 0.4f, hp = 1.9f, hpGrowth = 1.085f,
+                bosses = mapOf(9 to listOf(APC)), seed = 33, favor = listOf(BIKE),
+            ),
+            challenge = Challenge.maxTowers(13),
+        ),
+        LevelDef(
+            34, L("Проспект", "The Avenue"), R,
+            listOf(
+                "T..R....#",
+                "######..#",
+                "..R..#.T#",
+                "T....#..#",
+                ".#####..#",
+                ".#..R...#",
+                ".#.~~.###",
+                ".#.~~.#..",
+                ".#....#.R",
+                ".####.#..",
+                "R...#.#.T",
+                "..T.###..",
+                "....#..R.",
+                ".R..B....",
+                "T....R..T",
+            ),
+            listOf(
+                intArrayOf(-1, 1, 5, 1, 5, 4, 1, 4, 1, 9, 4, 9, 4, 13),
+                intArrayOf(8, -1, 8, 6, 6, 6, 6, 11, 4, 11, 4, 13),
+            ),
+            startMoney = 530,
+            plan = WavePlan(
+                18, R34, budget = 16f, growth = 0.4f, hp = 1.9f, hpGrowth = 1.085f,
+                bosses = mapOf(17 to listOf(HELI)), seed = 34,
+            ),
+            challenge = Challenge.NO_SELL,
+        ),
+        LevelDef(
+            35, L("Вокзал", "The Station"), R,
+            listOf(
+                "#.R...T.#",
+                "#..~~~..#",
+                "#T.....R#",
+                "####.####",
+                "R..#.#..T",
+                ".T.#.#...",
+                "####.####",
+                "#...R...#",
+                "#.T...~.#",
+                "####.####",
+                ".R.#.#.T.",
+                "...#.#..R",
+                "T..###...",
+                "..R.B..T.",
+                "~~~...~~~",
+            ),
+            listOf(
+                intArrayOf(0, -1, 0, 3, 3, 3, 3, 6, 0, 6, 0, 9, 3, 9, 3, 12, 4, 12, 4, 13),
+                intArrayOf(8, -1, 8, 3, 5, 3, 5, 6, 8, 6, 8, 9, 5, 9, 5, 12, 4, 12, 4, 13),
+            ),
+            startMoney = 540,
+            plan = WavePlan(
+                18, R35, budget = 16.5f, growth = 0.4f, hp = 1.9f, hpGrowth = 1.085f,
+                bosses = mapOf(17 to listOf(TITAN)), seed = 35,
+            ),
+            challenge = Challenge.only(TowerType.SHOTGUN, TowerType.ROCKET, TowerType.TESLA, TowerType.SAM),
+        ),
+        LevelDef(
+            36, L("Площадь", "The Square"), R,
+            listOf(
+                "T.R.#.R.T",
+                "#########",
+                "#.......#",
+                "#..R.R..#",
+                "#.......#",
+                "#...~...#",
+                "#..~~~..#",
+                "#...~...#",
+                "#..R.R..#",
+                "#.......#",
+                "#########",
+                "T.R.#..R.",
+                "....#.T..",
+                ".R..B....",
+                "T...R..TR",
+            ),
+            listOf(
+                intArrayOf(4, -1, 4, 1, 0, 1, 0, 10, 4, 10, 4, 13),
+                intArrayOf(4, -1, 4, 1, 8, 1, 8, 10, 4, 10, 4, 13),
+            ),
+            startMoney = 540,
+            plan = WavePlan(
+                19, CITY, budget = 16.5f, growth = 0.4f, hp = 1.9f, hpGrowth = 1.085f,
+                bosses = mapOf(9 to listOf(APC), 18 to listOf(APC, HELI)), seed = 36, favor = listOf(BIKE),
+            ),
+            challenge = Challenge.maxTowers(14),
+        ),
+        LevelDef(
+            37, L("Заводской район", "Factory District"), R,
+            listOf(
+                "..R..T..R",
+                "########.",
+                "R.T....#.",
+                ".....R.#T",
+                ".#######.",
+                ".#.T.....",
+                ".#...####",
+                ".#.~.#...",
+                ".###.#.R.",
+                "T..#.#...",
+                "...#.###.",
+                ".###...#.",
+                ".#..R..#T",
+                ".B######.",
+                "..T..R...",
+            ),
+            listOf(
+                intArrayOf(-1, 1, 7, 1, 7, 4, 1, 4, 1, 8, 3, 8, 3, 11, 1, 11, 1, 13),
+                intArrayOf(9, 6, 5, 6, 5, 10, 7, 10, 7, 13, 1, 13),
+            ),
+            startMoney = 560,
+            plan = WavePlan(
+                19, CITY, budget = 16.5f, growth = 0.4f, hp = 1.8f, hpGrowth = 1.085f,
+                bosses = mapOf(18 to listOf(TITAN)), seed = 37,
+            ),
+            challenge = Challenge.LOW_BUDGET,
+        ),
+        LevelDef(
+            38, L("Телебашня", "TV Tower"), R,
+            listOf(
+                ".R..T...#",
+                ".########",
+                ".#..R..T.",
+                ".#.~~....",
+                ".######..",
+                "T.R...#.R",
+                "....###..",
+                ".R..B..T.",
+                "..###....",
+                "..#..R..T",
+                "..######.",
+                "R.~~...#.",
+                "..T....#.",
+                "########.",
+                "#..R..T..",
+            ),
+            listOf(
+                intArrayOf(8, -1, 8, 1, 1, 1, 1, 4, 6, 4, 6, 6, 4, 6, 4, 7),
+                intArrayOf(0, 15, 0, 13, 7, 13, 7, 10, 2, 10, 2, 8, 4, 8, 4, 7),
+            ),
+            startMoney = 570,
+            plan = WavePlan(
+                20, CITY, budget = 17f, growth = 0.4f, hp = 1.9f, hpGrowth = 1.08f,
+                bosses = mapOf(9 to listOf(HELI), 19 to listOf(AIR)), seed = 38,
+            ),
+            challenge = Challenge.NO_ABILITIES,
+        ),
+        LevelDef(
+            39, L("Мост", "The Bridge"), R,
+            listOf(
+                ".R..T..R.",
+                "####.####",
+                "...#.#...",
+                ".###.###.",
+                ".#.R.T.#.",
+                ".#.....#.",
+                "~=~~~~~=~",
+                "~=~~~~~=~",
+                ".#..R..#.",
+                ".#.....#.",
+                ".####..#.",
+                "T...####.",
+                "..R.#..R.",
+                "....B....",
+                "T.R...T.R",
+            ),
+            listOf(
+                intArrayOf(-1, 1, 3, 1, 3, 3, 1, 3, 1, 10, 4, 10, 4, 13),
+                intArrayOf(9, 1, 5, 1, 5, 3, 7, 3, 7, 11, 4, 11, 4, 13),
+            ),
+            startMoney = 590,
+            plan = WavePlan(
+                20, CITY, budget = 17f, growth = 0.4f, hp = 1.7f, hpGrowth = 1.08f,
+                bosses = mapOf(9 to listOf(TITAN), 19 to listOf(AIR)), seed = 39, favor = listOf(BIKE),
+            ),
+            challenge = Challenge.NO_LEAKS,
+        ),
+        LevelDef(
+            40, L("Сердце города", "Heart of the City"), R,
+            listOf(
+                "#..R.T..#",
+                "#.T....R#",
+                "#######.#",
+                "R.T...#.#",
+                "....R.#.#",
+                "..#######",
+                "T.#...#..",
+                "..#.~.#.R",
+                "R.#...#..",
+                "..#.###.T",
+                "..#.#..R.",
+                ".T###....",
+                "....#..T.",
+                "R...B....",
+                "..T..R..R",
+            ),
+            listOf(
+                intArrayOf(0, -1, 0, 2, 6, 2, 6, 9, 4, 9, 4, 13),
+                intArrayOf(8, -1, 8, 5, 2, 5, 2, 11, 4, 11, 4, 13),
+            ),
+            startMoney = 600,
+            plan = WavePlan(
+                22, CITY, budget = 17.5f, growth = 0.4f, hp = 2.1f, hpGrowth = 1.08f,
+                bosses = mapOf(7 to listOf(APC, HELI), 14 to listOf(TITAN), 21 to listOf(AIR, TITAN)), seed = 40,
+            ),
+            challenge = Challenge.only(TowerType.TURRET, TowerType.ROCKET, TowerType.SAM, TowerType.SNIPER),
+        ),
     )
 
     private val SPIRAL = listOf(
@@ -1217,6 +1471,7 @@ object Levels {
     fun endless(progress: Int): LevelDef {
         val joins = listOf(
             B to 0, RU to 1, SW to 3, DR to 5, BR to 7, ME to 9, SH to 11, GH to 13, SA to 15, MO to 17, SAL to 19, DIG to 21, JUG to 23,
+            BIKE to 25, FT to 27,
         )
         return LevelDef(
             ENDLESS_ID, L("Бесконечная оборона", "Endless defence"), G, SPIRAL,

@@ -7,6 +7,7 @@ import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -213,6 +214,9 @@ class Bomb(val x: Float, val y: Float, var timer: Float, val damage: Float) {
 /** A lava bomb of an eruption, landing on ([x], [y]) when [timer] runs out. */
 class Lava(val x: Float, val y: Float, var timer: Float, val fall: Float = timer)
 
+/** A cellar hatch on road [path], [dist] along it, that enemies burst out of when [timer] runs out. */
+class Ambush(val x: Float, val y: Float, val path: Int, val dist: Float, var timer: Float)
+
 class Plane(val x: Float, var y: Float)
 
 /** A big line of text across the map for a few seconds. */
@@ -262,6 +266,8 @@ class World(
         private set
     var titanKills = 0
         private set
+    var airshipKills = 0
+        private set
 
     /** Kills of each kind of enemy, by [EnemyType.ordinal]. */
     val killsOf = IntArray(EnemyType.entries.size)
@@ -301,6 +307,7 @@ class World(
     val corpses = ArrayList<Corpse>()
     val bombs = ArrayList<Bomb>()
     val lava = ArrayList<Lava>()
+    val ambushes = ArrayList<Ambush>()
     var plane: Plane? = null
         private set
 
@@ -377,6 +384,7 @@ class World(
     val sandstorm: Boolean get() = weather > 0f && map.biome == Biome.DESERT
     val blizzard: Boolean get() = weather > 0f && map.biome == Biome.WINTER
     val eruption: Boolean get() = weather > 0f && map.biome == Biome.VOLCANO
+    val ambushing: Boolean get() = weather > 0f && map.biome == Biome.RUINS
 
     /** 0 to 1: how thick the weather is, fading in and out. */
     val weatherLevel: Float get() = if (weather <= 0f) 0f else min(1f, min(weather, WEATHER_TIME - weather) / 1.2f)
@@ -444,6 +452,7 @@ class World(
             updatePatches(dt)
             updateBombs(dt)
             updateLava(dt)
+            updateAmbushes(dt)
             enemies.removeAll { !it.alive }
             enemies.addAll(incoming)
             incoming.clear()
@@ -552,6 +561,7 @@ class World(
         val dust = when (map.biome) {
             Biome.WINTER -> 0xFFE8F0F8.toInt()
             Biome.VOLCANO -> ASH
+            Biome.RUINS -> CONCRETE
             else -> 0xFFB9A98A.toInt()
         }
         puff(t.x, t.y, if (lite) 4 else 8, dust)
@@ -635,6 +645,7 @@ class World(
             'T' -> when (map.biome) {
                 Biome.WINTER -> 0xFF2F5A4A.toInt()
                 Biome.VOLCANO -> 0xFF3A2E28.toInt()
+                Biome.RUINS -> 0xFF6B4A3A.toInt()
                 else -> 0xFF3E7A35.toInt()
             }
             'C' -> 0xFF5E8F3A.toInt()
@@ -788,16 +799,66 @@ class World(
         }
         weatherWait -= dt
         if (weatherWait > 0f) return
+        if (map.biome == Biome.RUINS && !ambushReady()) {
+            // Nobody hides in the cellars before a wave is on its way.
+            weatherWait = 3f
+            return
+        }
         weather = WEATHER_TIME
         banner = when (map.biome) {
             Biome.DESERT -> Banner({ L("ПЕСЧАНАЯ БУРЯ", "SANDSTORM").t }, { L("Дальность отрядов −30%", "Squad range −30%").t }, SAND, 2.6f)
             Biome.VOLCANO -> Banner({ L("ИЗВЕРЖЕНИЕ", "ERUPTION").t }, { L("Лава жжёт врагов, но может задеть отряды", "Lava burns enemies but may hit squads").t }, LAVA, 2.6f)
+            Biome.RUINS -> Banner({ L("ЗАСАДА", "AMBUSH").t }, { L("Враги вылезут из подвалов прямо на дорогу", "Enemies will climb out of cellars onto the road").t }, AMBUSH, 2.6f)
             else -> Banner({ L("МЕТЕЛЬ", "BLIZZARD").t }, { L("Отряды стреляют на 25% реже", "Squads fire 25% slower").t }, ICE, 2.6f)
         }
         if (map.biome == Biome.VOLCANO) {
             lavaWait = LAVA_EVERY
             shake = max(shake, 0.4f)
             sound(Sfx.BOOM, 0.8f)
+        }
+        if (map.biome == Biome.RUINS) ambush()
+    }
+
+    /** The wave now on its way, while it still has enemies left. */
+    private fun ambushReady(): Boolean =
+        phase == Phase.RUNNING && wavesStarted > 0 && remaining.containsKey(wavesStarted - 1) && enemies.any { it.alive && onMap(it) }
+
+    /** A hatch opens on every road, somewhere in its middle, a moment before enemies burst out. */
+    private fun ambush() {
+        for ((i, p) in map.paths.withIndex()) {
+            var d = 0f
+            for (k in 0 until 8) {
+                d = p.length * (AMBUSH_FROM + rng.nextFloat() * (AMBUSH_TO - AMBUSH_FROM))
+                p.pointAt(d, tmp)
+                if (tmp[0] in 0.5f..COLS - 0.5f && tmp[1] in 0.5f..ROWS - 0.5f) break
+            }
+            p.pointAt(d, tmp)
+            ambushes += Ambush(tmp[0], tmp[1], i, d, AMBUSH_WARN)
+        }
+        sound(Sfx.SIREN, 0.5f)
+    }
+
+    private fun updateAmbushes(dt: Float) {
+        if (ambushes.isEmpty()) return
+        val iter = ambushes.iterator()
+        while (iter.hasNext()) {
+            val a = iter.next()
+            a.timer -= dt
+            if (a.timer > 0f) continue
+            iter.remove()
+            val wave = wavesStarted - 1
+            // The wave is already beaten: the cellar is empty.
+            if (!remaining.containsKey(wave)) continue
+            val plan = level.plan
+            val kinds = plan.intro.filter { it.second <= wave && !it.first.air && !it.first.boss && it.first.threat <= AMBUSH_THREAT }.map { it.first }
+            val type = if (kinds.isEmpty()) EnemyType.BANDIT else kinds[rng.nextInt(kinds.size)]
+            val count = ((AMBUSH_BUDGET + AMBUSH_GROWTH * wave) / type.threat).roundToInt().coerceIn(2, AMBUSH_MAX)
+            val hp = plan.hp * plan.hpGrowth.pow(wave) * rules.hpMul
+            for (k in 0 until count) spawnEnemy(type, a.path, hp, wave, max(0f, a.dist - k * 0.3f))
+            remaining[wave] = (remaining[wave] ?: 0) + count
+            rings += Ring(a.x, a.y, 1f, 0.5f, 0.5f, Colors.alpha(AMBUSH, 0.9f))
+            puff(a.x, a.y, if (lite) 4 else 10, CONCRETE)
+            sound(Sfx.MINE, 0.5f)
         }
     }
 
@@ -912,8 +973,9 @@ class World(
 
     private fun bossK(e: Enemy): Float = if (e.type.boss) 0.5f else 1f
 
-    private fun slow(e: Enemy, amount: Float, time: Float) {
-        if (amount <= 0f || e.type.unstoppable) return
+    private fun slow(e: Enemy, slowBy: Float, time: Float) {
+        if (slowBy <= 0f || e.type.unstoppable) return
+        val amount = if (e.type.nimble) slowBy * NIMBLE else slowBy
         if (e.slowTimer <= 0f || amount > e.slowAmount + 0.001f) {
             e.slowAmount = amount
             e.slowTimer = time
@@ -966,6 +1028,8 @@ class World(
                 EnemyType.SAPPER -> jam(e, dt)
                 EnemyType.TITAN -> stomp(e, dt)
                 EnemyType.DIGGER -> burrow(e, dt)
+                EnemyType.FLAME_TANK -> scorch(e, dt)
+                EnemyType.AIRSHIP -> drop(e, dt)
                 else -> Unit
             }
             if (e.type.boss) {
@@ -1068,6 +1132,31 @@ class World(
         puff(e.x, e.y, if (lite) 3 else 7, DIRT)
     }
 
+    /** The flame tank burns out the mines and spikes it drives over, and they do nothing for a while. */
+    private fun scorch(e: Enemy, dt: Float) {
+        if (!onMap(e)) return
+        for (t in towers) {
+            if (t.type.role != Role.ROAD || !near(t.x, t.y, e.x, e.y, SCORCH_REACH)) continue
+            if (t.jammed <= 0f) {
+                flame(t.x, t.y, if (lite) 3 else 8, 0.35f)
+                sound(Sfx.FLAME, 0.5f)
+            }
+            t.jammed = max(t.jammed, SCORCH_TIME)
+            t.burning = max(t.burning, SCORCH_TIME)
+        }
+        if (!lite && fx.nextFloat() < dt * 8f) flame(e.x + e.dirX * 0.45f, e.y + e.dirY * 0.45f, 1, 0.12f)
+    }
+
+    /** The airship drops paratroopers onto the road below every few seconds. */
+    private fun drop(e: Enemy, dt: Float) {
+        e.jamTimer -= dt
+        if (e.jamTimer > 0f || !onMap(e)) return
+        e.jamTimer = DROP_EVERY
+        e.jamPulse = 0.6f
+        brood(e, EnemyType.BANDIT, DROP_TROOPERS, 0.3f)
+        sound(Sfx.JAM, 0.4f)
+    }
+
     private fun reachBase(e: Enemy) {
         e.alive = false
         lives -= e.type.damage
@@ -1127,6 +1216,7 @@ class World(
         if (e.type.boss) bossKills++
         if (e.type == EnemyType.GHOST) ghostKills++
         if (e.type == EnemyType.TITAN) titanKills++
+        if (e.type == EnemyType.AIRSHIP) airshipKills++
         killsOf[e.type.ordinal]++
         if (source != null) source.kills++
         commander?.let {
@@ -1448,7 +1538,7 @@ class World(
                 if (cur.type.boss || cur.type.unstoppable) {
                     slow(cur, 0.5f, SLOW_TIME)
                 } else if (cur.stunTimer <= 0f && cur.stunGuard <= 0f) {
-                    cur.stunTimer = s.extra2
+                    cur.stunTimer = s.extra2 * (if (cur.type.nimble) NIMBLE else 1f)
                 }
             } else {
                 slow(cur, s.extra2 * bossK(cur), SLOW_TIME)
@@ -1901,7 +1991,7 @@ class World(
         for (e in enemies) {
             if (!e.alive || !onMap(e) || !near(e.x, e.y, c.x, c.y, EMP_RADIUS)) continue
             hit = true
-            if (e.type.boss || e.type.unstoppable) slow(e, 0.5f, stun) else e.stunTimer = max(e.stunTimer, stun)
+            if (e.type.boss || e.type.unstoppable) slow(e, 0.5f, stun) else e.stunTimer = max(e.stunTimer, stun * (if (e.type.nimble) NIMBLE else 1f))
             damage(e, EMP_DAMAGE * c.power * rules.damageMul, null, pierce = true, hero = true)
         }
         if (!hit) return false
@@ -2353,7 +2443,7 @@ class World(
         put("waves", wavesStarted)
         put("countdown", countdown)
         put("time", time, battleTime)
-        put("stats", kills, leaked, bossKills, ghostKills, built, airstrikes, cleared, maxMoney, branchMask, typeMask, abilitiesUsed, titanKills)
+        put("stats", kills, leaked, bossKills, ghostKills, built, airstrikes, cleared, maxMoney, branchMask, typeMask, abilitiesUsed, titanKills, airshipKills)
         put("killsof", *EnemyType.entries.filter { killsOf[it.ordinal] > 0 }.map { "${it.name}:${killsOf[it.ordinal]}" }.toTypedArray())
         put("cool", *cooldowns.toTypedArray())
         put("weather", weather, weatherWait, lavaWait)
@@ -2379,6 +2469,7 @@ class World(
         for (p in patches) put("patch", p.x, p.y, p.life, p.dps, p.radius)
         for (b in bombs) put("bomb", b.x, b.y, b.timer, b.damage)
         for (b in lava) put("lava", b.x, b.y, b.timer, b.fall)
+        for (a in ambushes) put("ambush", a.x, a.y, a.path, a.dist, a.timer)
         commander?.let {
             put(
                 "hero", it.type.name, it.x, it.y, it.tx, it.ty, it.level, it.xp, it.cooldown, it.kills, it.damageDealt,
@@ -2423,6 +2514,7 @@ class World(
                     typeMask = i(9)
                     abilitiesUsed = i(10)
                     titanKills = f.getOrNull(11)?.toIntOrNull() ?: 0
+                    airshipKills = f.getOrNull(12)?.toIntOrNull() ?: 0
                 }
                 "killsof" -> for (pair in f) {
                     val type = EnemyType.entries.firstOrNull { it.name == pair.substringBefore(':') } ?: continue
@@ -2489,6 +2581,7 @@ class World(
                 "patch" -> patches += Patch(x(0), x(1), x(2), x(3), x(4), null)
                 "bomb" -> bombs += Bomb(x(0), x(1), x(2), x(3))
                 "lava" -> lava += Lava(x(0), x(1), x(2), x(3))
+                "ambush" -> ambushes += Ambush(x(0), x(1), i(2).coerceIn(0, map.paths.size - 1), x(3), x(4))
                 "hero" -> {
                     val c = Commander(CommanderType.valueOf(f[0]), x(1), x(2))
                     c.tx = x(3)
@@ -2583,6 +2676,22 @@ class World(
         const val LAVA_ON_SQUADS = 0.3f
         const val LAVA_POOL = 2f
         const val LAVA_POOL_DPS = 30f
+
+        // The city's ambushes: where along a road the hatch opens, how soon, and how many come out.
+        const val AMBUSH_FROM = 0.35f
+        const val AMBUSH_TO = 0.7f
+        const val AMBUSH_WARN = 2f
+        const val AMBUSH_BUDGET = 4f
+        const val AMBUSH_GROWTH = 0.35f
+        const val AMBUSH_THREAT = 2.5f
+        const val AMBUSH_MAX = 6
+
+        /** How much of a slow or stun holds a biker. */
+        const val NIMBLE = 0.5f
+        const val SCORCH_REACH = 1f
+        const val SCORCH_TIME = 3f
+        const val DROP_EVERY = 5f
+        const val DROP_TROOPERS = 2
         const val BOSS_ALERT = 2.4f
         const val AIRSTRIKE_DAMAGE = 220f
         const val AIRSTRIKE_RADIUS = 1.0f
@@ -2669,6 +2778,8 @@ class World(
         val ICE = 0xFFBFE6FF.toInt()
         val LAVA = 0xFFFF7A2A.toInt()
         val ASH = 0xFF8A7E76.toInt()
+        val CONCRETE = 0xFFB4AEA6.toInt()
+        val AMBUSH = 0xFFFF5A3C.toInt()
         val DIRT = 0xFF9A7A52.toInt()
     }
 }

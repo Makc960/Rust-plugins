@@ -162,6 +162,11 @@ object Tx {
         "Во время извержения падают лавовые бомбы: они жгут врагов, но иногда на минуту накрывают и отряд. Саламандр в огнеупорных костюмах огонь не берёт — против них нужны пули, ракеты и мороз.",
         "In an eruption lava bombs fall: they burn enemies but now and then knock out a squad for a moment. Fire does not hurt salamanders in their fire suits; bring bullets, rockets and frost.",
     )
+    val TIP_RUINS = L("Засады", "Ambushes")
+    val TIP_RUINS_TEXT = L(
+        "В городе враги идут по двум дорогам сразу, а во время засады вылезают из подвалов посреди дороги — красный круг покажет где. Держи отряды не только у края карты. Огнемётные танки выжигают мины, а байкеров замедление держит вполовину.",
+        "In the city enemies come down two roads at once, and in an ambush they climb out of cellars halfway along a road; a red ring shows where. Keep squads away from the edge too. Flame tanks burn out mines, and slowing holds bikers only half as well.",
+    )
     val TIP_COMMANDER = L("Командир", "Commander")
     val TIP_COMMANDER_TEXT = L(
         "Нажми на командира или на его карточку внизу, потом на карту — он пойдёт туда. Стреляет он сам и растёт в уровне прямо в бою, а навыки — в его панели.",
@@ -216,6 +221,7 @@ object Tx {
     val FIREPROOF = L("Не горит", "Fireproof")
     val BURROWS = L("Роет под землёй", "Burrows")
     val UNSTOPPABLE = L("Не остановить", "Unstoppable")
+    val NIMBLE = L("Вёрткий", "Nimble")
     val COST = L("Цена %d", "Cost %d")
     val BRANCHES = L("Специализации: %s и %s", "Specialisations: %s and %s")
     val COOLDOWN = L("Перезарядка %d с", "Cooldown %d s")
@@ -505,11 +511,22 @@ object Tx {
             "Titans and salamanders walk out of the fire. There, by the crater, is the Horde's last lair.",
         ),
     )
-    val STORY_VOLCANO_TITLES = listOf(L("ТИТАНЫ ПАЛИ", "THE TITANS FALL"), L("ДОМОЙ", "HOME"))
+    val STORY_VOLCANO_TITLES = listOf(L("ТИТАНЫ ПАЛИ", "THE TITANS FALL"), L("ГОРОД В ОГНЕ", "THE CITY ABLAZE"))
     val STORY_VOLCANO_TEXTS = listOf(
         L(
-            "Последний титан рухнул в лаву. Орда разбита, её вожаки бегут.",
-            "The last titan fell into the lava. The Horde is broken, its leaders on the run.",
+            "Последний титан рухнул в лаву. Но вожаки Орды ушли от погони — и не в горы.",
+            "The last titan fell into the lava. But the Horde's leaders got away, and not into the mountains.",
+        ),
+        L(
+            "Они ударили по городу, который мы защищали. Улицы в руинах, в подвалах засады, над крышами плывут дирижабли. Сержант ведёт отряды в город.",
+            "They struck the very city we were guarding. Its streets are in ruins, ambushes wait in the cellars, airships float over the roofs. The sergeant leads the squads into the city.",
+        ),
+    )
+    val STORY_RUINS_TITLES = listOf(L("ГОРОД СВОБОДЕН", "THE CITY IS FREE"), L("ДОМОЙ", "HOME"))
+    val STORY_RUINS_TEXTS = listOf(
+        L(
+            "Последний дирижабль рухнул на площадь. Вожаки Орды сдались — война окончена.",
+            "The last airship crashed onto the square. The Horde's leaders gave themselves up: the war is over.",
         ),
         L(
             "Над базой у Побережья снова тихо. Но сержант не снимает часовых: мир тоже надо уметь удержать.",

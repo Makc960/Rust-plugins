@@ -303,6 +303,71 @@ def embers(im, seed, cracks=4, sparks=6):
     return out
 
 
+def concrete(im):
+    """Grass into grey city concrete, keeping its light and shade."""
+    def fn(h, s, v):
+        m = greens(h, s)
+        return np.where(m, 0.09, h), np.where(m, 0.05, s), np.where(m, np.clip(0.56 + (v - 0.7) * 0.6, 0.42, 0.68), v)
+    return recolor(im, fn)
+
+
+def asphalt(im):
+    """The road's grey a shade darker, as old asphalt; the grass around stays for [concrete]."""
+    def fn(h, s, v):
+        m = s < 0.2
+        return h, np.where(m, s * 0.4, s), np.where(m, v * 0.62, v)
+    return recolor(im, fn)
+
+
+def rubble(im, seed, cracks=3, chips=5):
+    """Dark cracks and chips of brick and concrete, only where [im] is drawn."""
+    rng = np.random.default_rng(seed)
+    layer = Image.new('RGBA', im.size)
+    d = ImageDraw.Draw(layer)
+    w, h = im.size
+    for _ in range(cracks):
+        x, y = rng.uniform(0.15, 0.85) * w, rng.uniform(0.15, 0.85) * h
+        pts = [(x, y)]
+        for _k in range(3):
+            x += rng.uniform(-0.1, 0.1) * w
+            y += rng.uniform(-0.1, 0.1) * h
+            pts.append((x, y))
+        d.line(pts, fill=(62, 60, 58, 190), width=max(2, w // 80))
+    for _ in range(chips):
+        x, y = rng.uniform(0.08, 0.92) * w, rng.uniform(0.08, 0.92) * h
+        r = rng.uniform(0.012, 0.024) * w
+        col = [(150, 84, 62, 235), (112, 108, 102, 235), (184, 178, 168, 235)][rng.integers(3)]
+        d.rectangle((x - r, y - r * 0.6, x + r, y + r * 0.6), fill=col)
+    keep = np.minimum(np.asarray(layer.getchannel('A')), np.asarray(im.getchannel('A')))
+    layer.putalpha(Image.fromarray(keep))
+    out = im.copy()
+    out.alpha_composite(layer)
+    return out
+
+
+def slab(im):
+    """A rock into a broken block of pale concrete."""
+    def fn(h, s, v):
+        return np.full_like(h, 0.08), s * 0.15 + 0.03, np.clip(v * 0.8 + 0.16, 0, 0.9)
+    return recolor(im, fn)
+
+
+def rebar(im, seed, rods=4):
+    """Bent rusty rods sticking out of a broken slab."""
+    rng = np.random.default_rng(seed)
+    out = im.copy()
+    d = ImageDraw.Draw(out)
+    w, h = im.size
+    for _ in range(rods):
+        a = rng.uniform(0, 2 * math.pi)
+        x0, y0 = w / 2 + math.cos(a) * w * 0.12, h / 2 + math.sin(a) * h * 0.12
+        x1, y1 = w / 2 + math.cos(a) * w * 0.34, h / 2 + math.sin(a) * h * 0.34
+        bend = a + rng.uniform(-0.8, 0.8)
+        x2, y2 = x1 + math.cos(bend) * w * 0.08, y1 + math.sin(bend) * h * 0.08
+        d.line((x0, y0, x1, y1, x2, y2), fill=(132, 72, 42, 255), width=max(2, w // 50), joint='curve')
+    return out
+
+
 def sandstone(im):
     def fn(h, s, v):
         m = s < 0.4
@@ -1041,7 +1106,8 @@ def sentry_gun():
 
 # --- the squads' pits and props ------------------------------------------------------------
 
-PIT_FLOOR = {'green': (126, 94, 60, 255), 'desert': (194, 158, 108, 255), 'winter': (170, 162, 156, 255), 'volcano': (84, 66, 58, 255)}
+PIT_FLOOR = {'green': (126, 94, 60, 255), 'desert': (194, 158, 108, 255), 'winter': (170, 162, 156, 255), 'volcano': (84, 66, 58, 255),
+             'ruins': (116, 110, 102, 255)}
 
 
 def pit(biome, elite):
@@ -1107,6 +1173,8 @@ S['ground.winter.0'] = snow(S['ground.green.0'])
 S['ground.winter.1'] = snow(S['ground.green.1'])
 S['ground.volcano.0'] = embers(ash(S['ground.green.0']), 1, cracks=2, sparks=3)
 S['ground.volcano.1'] = embers(ash(S['ground.green.1']), 2, cracks=1, sparks=4)
+S['ground.ruins.0'] = rubble(concrete(S['ground.green.0']), 7, cracks=2, chips=4)
+S['ground.ruins.1'] = rubble(concrete(S['ground.green.1']), 8, cracks=1, chips=6)
 
 N, E, SO, WE = 1, 2, 4, 8
 
@@ -1128,7 +1196,8 @@ ROAD_TILES = ['roadEast', 'roadNorth', 'roadCornerLL', 'roadCornerLR', 'roadCorn
               'roadSplitE', 'roadSplitN', 'roadSplitS', 'roadSplitW', 'roadCrossing']
 for biome, prefix, ground, change in (('green', 'tileGrass_', 'tileGrass1', None), ('desert', 'tileSand_', 'tileSand1', None),
                                       ('winter', 'tileGrass_', 'tileGrass1', snow),
-                                      ('volcano', 'tileGrass_', 'tileGrass1', lambda im: ash(cinder(im)))):
+                                      ('volcano', 'tileGrass_', 'tileGrass1', lambda im: ash(cinder(im))),
+                                      ('ruins', 'tileGrass_', 'tileGrass1', lambda im: concrete(asphalt(im)))):
     found = {}
     for t in ROAD_TILES:
         im = tanks(prefix + t).resize((PX, PX), Image.LANCZOS)
@@ -1163,6 +1232,35 @@ S['tree.volcano.0'] = shadowed(trim(embers(charred(td(133)), 3, cracks=1, sparks
 S['tree.volcano.1'] = shadowed(trim(embers(charred(tanks('treeBrown_large')), 4, cracks=1, sparks=6)))
 S['rock.volcano.0'] = shadowed(trim(embers(basalt(td(136)), 5, cracks=3, sparks=2)))
 S['rock.volcano.1'] = shadowed(trim(embers(basalt(td(135)), 6, cracks=3, sparks=2)))
+
+
+def wreck(body, seed):
+    """A burnt-out car from above, nose to the right: rust and soot over its paint, the glass gone."""
+    rng = np.random.default_rng(seed)
+    im, d, c = canvas(1.0)
+    tyre = (34, 32, 30, 255)
+    for (x, y) in ((-30, -26), (22, -26), (-30, 20), (22, 20)):
+        d.rounded_rectangle(box(c, x, y, x + 14, y + 6), radius=2 * U, fill=tyre)
+    part(d, 'round', box(c, -46, -23, 46, 23), body, width=3, radius=10)
+    part(d, 'round', box(c, -24, -18, 16, 18), darker(body, 0.8), width=2.5, radius=6)
+    hole = (36, 33, 31, 255)
+    d.rounded_rectangle(box(c, 16, -16, 29, 16), radius=3 * U, fill=hole)
+    d.rounded_rectangle(box(c, -35, -15, -25, 15), radius=3 * U, fill=hole)
+    for _ in range(9):
+        x, y, r = rng.uniform(-40, 40), rng.uniform(-18, 18), rng.uniform(3, 8)
+        col = [(46, 40, 36, 150), (150, 76, 40, 170), (90, 52, 34, 160)][rng.integers(3)]
+        layer = Image.new('RGBA', im.size)
+        ImageDraw.Draw(layer).ellipse(box(c, x - r, y - r, x + r, y + r), fill=col)
+        keep = np.minimum(np.asarray(layer.getchannel('A')), np.asarray(im.getchannel('A')))
+        layer.putalpha(Image.fromarray(keep))
+        im.alpha_composite(layer)
+    return shrink(im)
+
+
+S['tree.ruins.0'] = shadowed(trim(wreck((122, 70, 50, 255), 11)))
+S['tree.ruins.1'] = shadowed(trim(wreck((84, 98, 112, 255), 12).rotate(28, expand=True, resample=Image.BICUBIC)))
+S['rock.ruins.0'] = shadowed(trim(rubble(rebar(slab(td(136)), 13), 14, cracks=2, chips=2)))
+S['rock.ruins.1'] = shadowed(trim(rubble(rebar(slab(td(135)), 15, rods=3), 16, cracks=2, chips=3)))
 S['cactus'] = shadowed(cactus())
 S['base'] = shadowed(bunker(), alpha=0.35)
 S['scorch'] = trim(td(19))
@@ -1216,7 +1314,7 @@ S['trooper.quarry'] = trooper('soldier1_hold', SQUAD['quarry'], crate)
 S['trooper.drill'] = trooper('soldier1_hold', SQUAD['quarry'], jackhammer)
 S['trooper.bank'] = trooper('soldier1_hold', SQUAD['quarry'], money_bag)
 S['trooper.rail'] = trooper('soldier1_hold', SQUAD['rail'], railgun, power_pack)
-for biome in ('green', 'desert', 'winter', 'volcano'):
+for biome in ('green', 'desert', 'winter', 'volcano', 'ruins'):
     S['pit.%s' % biome] = pit(biome, False)
     S['pit.%s.elite' % biome] = pit(biome, True)
 
@@ -1400,6 +1498,80 @@ S['enemy.salamander'] = glow(fire_suit(character('hitman1_hold')))
 S['enemy.digger'] = scale(drill_robot(), 0.55)
 S['enemy.juggernaut'] = scale(trim(armoured(robot('robot_3Dred'), [(14, 60, 70, 94), (84, 60, 120, 94)])), 0.62)
 S['enemy.titan'] = scale(titan(), 0.75)
+
+
+def motorbike():
+    """A motorbike from above, front to the right."""
+    im, d, c = canvas(1.0)
+    tyre = (30, 32, 36, 255)
+    part(d, 'round', box(c, 24, -6, 50, 6), tyre, width=2, radius=5)
+    part(d, 'round', box(c, -50, -7, -24, 7), tyre, width=2, radius=5)
+    part(d, 'round', box(c, -40, 9, -12, 15), (172, 178, 186, 255), width=1.5, radius=3)
+    part(d, 'round', box(c, -32, -8, 30, 8), (62, 66, 72, 255), width=2, radius=4)
+    part(d, 'ellipse', box(c, 2, -11, 26, 11), (216, 67, 46, 255), width=2.5)
+    part(d, 'round', box(c, 25, -24, 31, 24), (40, 42, 46, 255), width=1.5, radius=3)
+    disc(d, c, 33, 0, 3.5, (255, 226, 120, 255), width=1)
+    return shrink(im)
+
+
+def biker():
+    """A raider on a motorbike, in a black helmet with a red stripe."""
+    im = motorbike()
+    rider = character('manBrown_stand', 0.82)
+    im.alpha_composite(rider, ((im.width - rider.width) // 2 - 8, (im.height - rider.height) // 2))
+    big = Image.new('RGBA', (im.width * HI, im.height * HI))
+    d = ImageDraw.Draw(big)
+    c = big.width / 2
+    disc(d, c, -8, 0, 11, (36, 36, 40, 255), width=1.5)
+    d.rectangle(box(c, -10, -11, -6, 11), fill=(216, 67, 46, 255))
+    im.alpha_composite(shrink(big))
+    return trim(im)
+
+
+def flame_tank():
+    """A tank with a flamethrower for a gun and fuel drums on its back, facing right."""
+    body = recolor(face_right_from_down(tanks('tankBody_darkLarge')), lambda h, s, v: (np.full_like(h, 0.07), np.maximum(s, 0.45), v * 0.95 + 0.05))
+    pad = 40
+    im = Image.new('RGBA', (body.width + 2 * pad, body.height + 2 * pad))
+    im.alpha_composite(body, (pad, pad))
+    big = Image.new('RGBA', (im.width * HI, im.height * HI))
+    d = ImageDraw.Draw(big)
+    c = big.width / 2
+    k = body.height / 128
+    for y in (-18, 18):
+        part(d, 'round', box(c, -46 * k, (y - 11) * k, -14 * k, (y + 11) * k), (224, 150, 54, 255), width=2.5, radius=10 * k)
+        d.line(box(c, -40 * k, y * k, -20 * k, y * k), fill=(150, 90, 30, 255), width=int(2 * U))
+    part(d, 'ellipse', box(c, -12 * k, -20 * k, 28 * k, 20 * k), (110, 74, 44, 255), width=3)
+    part(d, 'round', box(c, 20 * k, -7 * k, 66 * k, 7 * k), (58, 60, 64, 255), width=2, radius=4)
+    part(d, 'round', box(c, 58 * k, -10 * k, 70 * k, 10 * k), (40, 42, 46, 255), width=2, radius=3)
+    im.alpha_composite(shrink(big))
+    return trim(im)
+
+
+def airship():
+    """The airship boss from above, nose to the right; the game spins its propellers."""
+    im, d, c = canvas(2.0)
+    hull = (150, 160, 172, 255)
+    edge = darker(hull, 0.6)
+    red = (184, 51, 43, 255)
+    for sgn in (-1, 1):
+        d.polygon([box(c, -84, 0, -84, 0)[:2], box(c, -128, 52 * sgn, -128, 52 * sgn)[:2],
+                   box(c, -112, 52 * sgn, -112, 52 * sgn)[:2], box(c, -70, 18 * sgn, -70, 18 * sgn)[:2]], fill=red, outline=darker(red), width=2 * U)
+        part(d, 'round', box(c, -94, 46 * sgn - 8, -64, 46 * sgn + 8), (76, 82, 90, 255), width=2, radius=5)
+    part(d, 'ellipse', box(c, -112, -44, 112, 44), hull, edge, width=4)
+    d.ellipse(box(c, -84, -34, 64, -10), fill=lighter(hull, 0.25))
+    for x in (-72, -36, 0, 36, 72):
+        hh = 44 * math.sqrt(1 - (x / 112) ** 2) - 6
+        d.line(box(c, x, -hh, x, hh), fill=darker(hull, 0.85), width=int(2 * U))
+    d.rectangle(box(c, 30, -36, 42, 36), fill=red)
+    disc(d, c, 6, 0, 14, (40, 40, 44, 255), width=2)
+    disc(d, c, 6, 0, 7, red, width=1.5)
+    return shrink(im)
+
+
+S['enemy.biker'] = biker()
+S['enemy.flame_tank'] = scale(flame_tank(), 0.9)
+S['enemy.airship'] = trim(airship())
 S['plane'] = trim(td(270))
 S['shadow.plane'] = trim(td(293))
 S['rocket'] = trim(face_right_from_up(td(251)))

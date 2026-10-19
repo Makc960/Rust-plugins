@@ -209,8 +209,8 @@ class ScreensTest {
             press(g, tall, "world$w", 0f)
             shot(g, tall, "tall_20_world${w + 1}")
         }
-        // Dunes in a sandstorm, the north in a blizzard, the volcano erupting, a boss and branches everywhere.
-        for ((id, name) in listOf(14 to "desert", 23 to "winter", 30 to "volcano")) {
+        // Dunes in a sandstorm, the north in a blizzard, the volcano erupting, an ambush in the city, a boss and branches everywhere.
+        for ((id, name) in listOf(14 to "desert", 23 to "winter", 30 to "volcano", 36 to "ruins")) {
             g.startCampaign(Levels.all.first { it.id == id }, Difficulty.NORMAL, false)
             run(g, 0.5f)
             g.profile.tips = false
@@ -220,6 +220,13 @@ class ScreensTest {
             botPlay(g, 3000f) { it.enemies.any { e -> e.type.boss && e.dist > 3f } }
             shot(g, tall, "tall_22_${name}_boss")
         }
+        // The city's own: an airship dropping its troopers, a flame tank and bikers.
+        val w = g.play.world!!
+        w.spawnForTest(EnemyType.AIRSHIP, 7f).jamTimer = 0.5f
+        w.spawnForTest(EnemyType.FLAME_TANK, 9f, path = 1)
+        for (k in 0 until 3) w.spawnForTest(EnemyType.BIKER, 5f + k * 0.6f, path = 1)
+        run(g, 1.2f)
+        shot(g, tall, "tall_23_ruins_airship")
     }
 
     @Test

@@ -29,6 +29,8 @@ enum class EnemyType(
     val burrows: Boolean = false,
     /** Nothing slows, stuns or knocks it back. */
     val unstoppable: Boolean = false,
+    /** Slowing and stuns hold it only half as well. */
+    val nimble: Boolean = false,
 ) {
     BANDIT(
         L("Бандит", "Bandit"), L("Обычный налётчик", "A plain raider"),
@@ -96,9 +98,23 @@ enum class EnemyType(
         L("Титан", "Titan"), L("Босс. Топот выводит из строя отряды рядом, внутри сидят саламандры", "Boss. Its stomp knocks out squads nearby; salamanders ride inside"),
         3400f, 0.38f, 6f, 200, 10, 0.62f, false, 0f, 0f, 0xFFF2C200.toInt(), 30,
     ),
+
+    // The ruined city's raiders.
+    BIKER(
+        L("Байкер", "Biker"), L("Самый быстрый. Замедление и оглушение держат его вполовину", "The fastest. Slowing and stuns hold him only half as well"),
+        70f, 2.4f, 1f, 7, 1, 0.28f, false, 2f, 0.6f, 0xFFD8432E.toInt(), 33, nimble = true,
+    ),
+    FLAME_TANK(
+        L("Огнемётный танк", "Flame tank"), L("Броня 5, не горит. Выжигает мины и шипы, по которым едет", "Armor 5, fireproof. Burns out the mines and spikes it drives over"),
+        540f, 0.6f, 5f, 22, 3, 0.44f, false, 8f, 2.4f, 0xFF8C5A2B.toInt(), 35, fireproof = true,
+    ),
+    AIRSHIP(
+        L("Дирижабль", "Airship"), L("Босс в воздухе. На ходу сбрасывает десант на дорогу", "Flying boss. Drops paratroopers on the road as it goes"),
+        3000f, 0.32f, 2f, 220, 10, 0.72f, true, 0f, 0f, 0xFF8E9AA6.toInt(), 38,
+    ),
     ;
 
-    val boss: Boolean get() = this == APC || this == HELI || this == TITAN
+    val boss: Boolean get() = this == APC || this == HELI || this == TITAN || this == AIRSHIP
     val key: String get() = "e:$name"
 }
 

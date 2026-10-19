@@ -124,6 +124,8 @@ enum class Stat {
     /** Upgrade points from daily orders and supplies, and orders carried out. */
     ORDER_POINTS,
     ORDERS_DONE,
+
+    AIRSHIP_KILLS,
 }
 
 /** Rewarded adverts, offered only to players without VIP: what they give and how many a day. */
@@ -169,7 +171,8 @@ enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (
     DESERT_STARS(L("Пустынный лис", "Desert fox"), L("Все звёзды Пустыни", "Every star in the Desert"), 24, { it.worldStars(1) }),
     NORTH_STARS(L("Полярник", "Polar explorer"), L("Все звёзды Севера", "Every star in the North"), 24, { it.worldStars(2) }),
     VOLCANO_STARS(L("Огнеборец", "Firefighter"), L("Все звёзды Вулкана", "Every star of the Volcano"), 24, { it.worldStars(3) }),
-    ALL_STARS(L("Генерал", "General"), L("Все 96 звёзд кампании", "All 96 campaign stars"), 96, { it.totalStars }),
+    RUINS_STARS(L("Освободитель", "Liberator"), L("Все звёзды Руин города", "Every star of the City Ruins"), 24, { it.worldStars(4) }),
+    ALL_STARS(L("Генерал", "General"), L("Все 120 звёзд кампании", "All 120 campaign stars"), 120, { it.totalStars }),
     KILLS_1000(L("Тысяча", "A thousand down"), L("Уничтожь 1000 врагов", "Destroy 1000 enemies"), 1000, { it.stat(Stat.KILLS) }),
     KILLS_10000(L("Мясорубка", "Meat grinder"), L("Уничтожь 10 000 врагов", "Destroy 10,000 enemies"), 10000, { it.stat(Stat.KILLS) }),
     BOSSES(L("Охотник на боссов", "Boss hunter"), L("Победи 10 боссов", "Defeat 10 bosses"), 10, { it.stat(Stat.BOSS_KILLS) }),
@@ -182,7 +185,7 @@ enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (
     HARD_WIN(L("Закалённый", "Hardened"), L("Пройди уровень на сложном", "Win a level on hard"), 1, { it.hardWins }),
     HARD_8(L("Железная воля", "Iron will"), L("Пройди 8 уровней на сложном", "Win 8 levels on hard"), 8, { it.hardWins }),
     CHALLENGES_5(L("Испытатель", "Challenger"), L("Получи 5 медалей испытаний", "Earn 5 challenge medals"), 5, { it.medals }),
-    CHALLENGES_ALL(L("Без компромиссов", "No compromise"), L("Получи все 32 медали", "Earn all 32 medals"), 32, { it.medals }),
+    CHALLENGES_ALL(L("Без компромиссов", "No compromise"), L("Получи все 40 медалей", "Earn all 40 medals"), 40, { it.medals }),
     FLAWLESS(L("Ни царапины", "Flawless"), L("Победи, не потеряв ни одной жизни", "Win without losing a single life"), 1, { it.stat(Stat.FLAWLESS) }),
     TYCOON(L("Богач", "Tycoon"), L("Накопи 2000 монет за один бой", "Hold 2000 coins at once"), 2000, { it.stat(Stat.MAX_MONEY) }),
     ENDLESS_20(L("Выживший", "Survivor"), L("Продержись 20 волн в бесконечном режиме", "Survive 20 endless waves"), 20, { it.stat(Stat.ENDLESS_BEST) }),
@@ -195,6 +198,7 @@ enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (
     WEEKLY_GOLD(L("Золотая операция", "Golden operation"), L("Получи золото операции недели", "Win gold in a weekly operation"), 1, { it.stat(Stat.WEEKLY_GOLD) }),
     WEEKLY_GOLD_5(L("Генштаб", "General staff"), L("Получи золото пяти операций недели", "Win gold in five weekly operations"), 5, { it.stat(Stat.WEEKLY_GOLD) }),
     TITANS(L("Укротитель титанов", "Titan tamer"), L("Победи трёх титанов", "Defeat three titans"), 3, { it.stat(Stat.TITAN_KILLS) }),
+    AIRSHIPS(L("Гроза небес", "Sky breaker"), L("Сбей три дирижабля", "Shoot down three airships"), 3, { it.stat(Stat.AIRSHIP_KILLS) }),
     ;
 
     val key: String get() = "ach_$name"

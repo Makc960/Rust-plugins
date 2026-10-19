@@ -772,6 +772,7 @@ internal class Menus(private val game: Game) {
                         if (e.fireproof) add(Tx.FIREPROOF.t)
                         if (e.burrows) add(Tx.BURROWS.t)
                         if (e.unstoppable) add(Tx.UNSTOPPABLE.t)
+                        if (e.nimble) add(Tx.NIMBLE.t)
                     }
                 })
             }
