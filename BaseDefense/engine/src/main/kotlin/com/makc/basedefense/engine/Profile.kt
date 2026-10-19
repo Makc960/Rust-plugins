@@ -395,6 +395,11 @@ class Profile(private val p: Platform) {
         get() = p.getInt("tutorial_offered", 0) != 0
         set(v) = p.putInt("tutorial_offered", if (v) 1 else 0)
 
+    /** The backstory has been told; it is told once, to a new player. */
+    var storySeen: Boolean
+        get() = p.getInt("story_seen", 0) != 0
+        set(v) = p.putInt("story_seen", if (v) 1 else 0)
+
     /** The last version whose news the player has been shown. */
     var newsSeen: String?
         get() = p.getString("news_seen")

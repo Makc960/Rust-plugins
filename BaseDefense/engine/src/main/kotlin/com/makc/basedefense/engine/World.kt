@@ -2221,7 +2221,17 @@ class World(
     }
 
     /** Puts an enemy [dist] cells along a road right away. */
-    internal fun spawnForTest(type: EnemyType, dist: Float, path: Int = 0, hpMul: Float = 1f): Enemy {
+    internal fun spawnForTest(type: EnemyType, dist: Float, path: Int = 0, hpMul: Float = 1f): Enemy = send(type, dist, path, hpMul)
+
+    /** A fight for show, as in the story: it runs, but waves come only when sent and the base cannot fall. */
+    internal fun beginShow() {
+        phase = Phase.RUNNING
+        holdWaves = true
+        lives = SHOW_LIVES
+    }
+
+    /** Puts an enemy [dist] cells along a road right away. */
+    internal fun send(type: EnemyType, dist: Float, path: Int = 0, hpMul: Float = 1f): Enemy {
         val e = spawnEnemy(type, path, hpMul, 0, dist)
         enemies.addAll(incoming)
         incoming.clear()
@@ -2477,6 +2487,7 @@ class World(
         const val CLEAR_COST = 40
         const val CLEAR_STEP = 10
         const val MAX_QUARRIES = 4
+        const val SHOW_LIVES = 1_000_000
 
         // The railgun: how many fit on a map, how wide its slug cuts, what it does to a boss.
         const val MAX_RAILS = 2

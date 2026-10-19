@@ -563,6 +563,8 @@ internal class Menus(private val game: Game) {
         }
         ui.button(g, "promo", x, y, w, d(50f), Tx.PROMO.t, Style.NORMAL, size = 15f, icon = Icon.STAR) { game.enterPromo() }
         y += d(64f)
+        ui.button(g, "story", x, y, w, d(50f), Tx.STORY_TITLE.t, Style.NORMAL, size = 15f, icon = Icon.BOOK) { game.tellStory(Screen.SETTINGS) }
+        y += d(64f)
         if (profile.adminKnown) {
             ui.toggle(g, "admin", x, y, w, d(46f), Tx.ADMIN_MODE.t, profile.admin) { game.setAdmin(it) }
             y += d(58f)

@@ -463,15 +463,69 @@ class ScreensTest {
         run(g, 0.7f)
         shot(g, tall, "tall_00_intro_ready")
         run(g, 2.5f)
-        assertEquals(Screen.MENU, g.screen, "the menu follows by itself")
-        assertTrue(has(g, tall, "popupGo"), "and offers a new player the tutorial")
+        assertEquals(Screen.STORY, g.screen, "a new player hears the backstory by itself")
+        press(g, tall, "storySkip", 1.5f)
+        assertEquals(Screen.MENU, g.screen)
+        assertTrue(has(g, tall, "popupGo"), "and is offered the tutorial")
 
         // A tap skips it.
         val g2 = Game(SilentPlatform(), showIntro = true).apply { resize(small.w, small.h, small.density, small.top, small.bottom) }
         run(g2, 2.4f)
         shot(g2, small, "small_00_intro")
         press(g2, small, "intro", 0.5f)
-        assertEquals(Screen.MENU, g2.screen)
+        assertEquals(Screen.STORY, g2.screen)
+    }
+
+    @Test
+    fun theBackstoryIsToldOnce() {
+        val platform = SilentPlatform()
+        val g = Game(platform, showIntro = true).apply { resize(tall.w, tall.h, tall.density, tall.top, tall.bottom) }
+        run(g, 2.4f)
+        press(g, tall, "intro", 0.5f)
+        assertEquals(Screen.STORY, g.screen)
+        for (page in 0 until Story.PAGES) {
+            assertEquals(page, g.story.page)
+            run(g, 1.2f)
+            assertTrue(!g.story.typed, "the lines are typed out bit by bit")
+            if (page == 0) shot(g, tall, "tall_00_story_typing")
+            run(g, 5f)
+            assertTrue(g.story.typed)
+            shot(g, tall, "tall_00_story_${page + 1}")
+            press(g, tall, "storyNext", 0.3f)
+        }
+        run(g, 1.5f)
+        assertEquals(Screen.MENU, g.screen, "the last page leads to the menu")
+        assertTrue(g.profile.storySeen)
+        assertTrue(has(g, tall, "popupGo"), "where the tutorial is offered")
+
+        // Not again on the next start.
+        val again = Game(platform, showIntro = true).apply { resize(tall.w, tall.h, tall.density, tall.top, tall.bottom) }
+        run(again, 2.4f)
+        press(again, tall, "intro", 0.5f)
+        assertEquals(Screen.MENU, again.screen)
+
+        // But any time from the settings, and back there; a tap types the lines out at once.
+        press(again, tall, "settings")
+        again.ui.scrollTo(Screen.SETTINGS.name, 10_000f)
+        press(again, tall, "story")
+        assertEquals(Screen.STORY, again.screen)
+        assertEquals(0, again.story.page)
+        run(again, 0.8f)
+        press(again, tall, "story", 0.1f)
+        assertTrue(again.story.typed)
+        press(again, tall, "story", 0.1f)
+        assertEquals(1, again.story.page)
+        press(again, tall, "storySkip", 0.5f)
+        assertEquals(Screen.SETTINGS, again.screen)
+
+        // On a small phone too.
+        val g3 = Game(SilentPlatform(), showIntro = true).apply { resize(small.w, small.h, small.density, small.top, small.bottom) }
+        run(g3, 2.4f)
+        press(g3, small, "intro", 0.5f)
+        press(g3, small, "storyNext", 0f)
+        press(g3, small, "storyNext", 0f)
+        run(g3, 4f)
+        shot(g3, small, "small_00_story_2")
     }
 
     @Test

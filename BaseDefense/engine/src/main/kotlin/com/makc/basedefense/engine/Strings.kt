@@ -447,6 +447,41 @@ object Tx {
     val UPDATE_TEXT = L("Вышло обновление игры. Поставь его, чтобы получить всё новое.", "An update of the game is out. Install it to get everything new.")
     val UPDATE_GO = L("ОБНОВИТЬ", "UPDATE")
 
+    // The backstory
+    val STORY_TITLE = L("ПРЕДЫСТОРИЯ", "BACKSTORY")
+    val STORY_SKIP = L("ПРОПУСТИТЬ", "SKIP")
+    val STORY_NEXT = L("ДАЛЕЕ", "NEXT")
+    val STORY_GO = L("К БОЮ!", "TO BATTLE!")
+    val STORY_CHAPTERS = listOf(
+        L("ДО ВОЙНЫ", "BEFORE THE WAR"),
+        L("ОРДА", "THE HORDE"),
+        L("БРОНЯ", "ARMOUR"),
+        L("ПОСЛЕДНИЙ РУБЕЖ", "THE LAST LINE"),
+        L("ТВОЙ ПРИКАЗ", "YOUR ORDERS"),
+    )
+    val STORY_TEXTS = listOf(
+        L(
+            "Много лет наша база у Побережья стерегла единственную дорогу к городу. Служба была тихой: дозоры, учения, чай у костра.",
+            "For years our base on the Coast guarded the only road to the city. Duty was quiet: patrols, drills, tea by the fire.",
+        ),
+        L(
+            "Потом из пустыни пришла Орда — налётчики, мутанты и громилы. Посёлок за посёлком падал перед ней.",
+            "Then the Horde came out of the desert: raiders, mutants and brutes. Town after town fell before it.",
+        ),
+        L(
+            "За Ордой шли броневики и вертолёты. Армия отступила за горы, и между врагом и городом осталась только наша база.",
+            "Armoured cars and helicopters followed the Horde. The army fell back beyond the mountains, and only our base stood between the enemy and the city.",
+        ),
+        L(
+            "Сержант Волков собрал добровольцев: «Окопаться у дороги! Ни шагу назад — за нами город».",
+            "Sergeant Volkov gathered volunteers: \"Dig in by the road! Not one step back: the city is behind us.\"",
+        ),
+        L(
+            "Теперь командуешь ты. Расставляй отряды, улучшай их, вызывай авиаудары — и ни один враг не должен дойти до базы.",
+            "Now you are in command. Place squads, upgrade them, call in airstrikes, and let no enemy reach the base.",
+        ),
+    )
+
     /** Everything above, for the translation test. */
     val all: List<L>
         get() = Tx::class.java.declaredFields.flatMap {

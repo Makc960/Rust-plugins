@@ -3,7 +3,7 @@ package com.makc.basedefense.engine
 import kotlin.math.abs
 import kotlin.math.min
 
-internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS, INTRO, WARDROBE, PASS }
+internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS, INTRO, WARDROBE, PASS, STORY }
 
 enum class Mode { CAMPAIGN, ENDLESS, DAILY, TUTORIAL, WEEKLY }
 
@@ -91,6 +91,7 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
     internal val play = PlayScreen(this)
     internal val menus = Menus(this)
     internal val intro = Intro(this)
+    internal val story = Story(this)
 
     private val lastPlayed = FloatArray(Sfx.entries.size) { -10f }
     private var track: Track? = null
@@ -268,6 +269,7 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
         when (screen) {
             Screen.PLAY -> play.update(step)
             Screen.INTRO -> intro.update(step)
+            Screen.STORY -> story.update(step)
             else -> menus.update(step)
         }
         for (t in toasts) t.life -= step
@@ -310,6 +312,7 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
             Screen.PASS -> menus.pass(g)
             Screen.PLAY -> play.render(g)
             Screen.INTRO -> intro.render(g)
+            Screen.STORY -> story.render(g)
         }
         drawToasts(g)
         if (nextScreen != null) {
@@ -360,6 +363,7 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
             Screen.MENU -> return false
             Screen.PLAY -> return play.back()
             Screen.INTRO -> intro.skip()
+            Screen.STORY -> story.skip()
             Screen.LEVELS -> if (!menus.back()) go(Screen.MENU)
             else -> go(menus.returnTo())
         }
@@ -372,6 +376,15 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
         track = null
         platform.music(null, 0f)
         platform.planReminders(Reminders.plan(profile, today, vip))
+    }
+
+    /** A new player hears the backstory once, after the intro. */
+    internal val storyDue: Boolean get() = !profile.storySeen && profile.totalStars == 0
+
+    /** Tells the backstory, then goes to [then]. */
+    internal fun tellStory(then: Screen) {
+        story.start(then)
+        go(Screen.STORY)
     }
 
     internal fun go(s: Screen) {

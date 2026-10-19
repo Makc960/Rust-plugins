@@ -8,8 +8,8 @@ import kotlin.math.sin
 
 /**
  * What plays while the game opens: a plane bombs the road, the title lands with
- * the blast, the commanders line up and a bar fills, then the main menu.
- * A tap or the back button skips it.
+ * the blast, the commanders line up and a bar fills, then the main menu, or for
+ * a new player the [Story] first. A tap or the back button skips it.
  */
 internal class Intro(private val game: Game) : WorldListener {
     private val ui get() = game.ui
@@ -71,7 +71,7 @@ internal class Intro(private val game: Game) : WorldListener {
     fun skip() {
         if (leaving) return
         leaving = true
-        game.go(Screen.MENU)
+        if (game.storyDue) game.tellStory(Screen.MENU) else game.go(Screen.MENU)
     }
 
     /** The first map of the world the player has reached, with a few squads dug in by the road. */
