@@ -353,6 +353,9 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         val tierBefore = profile.seasonTier(game.today)
         resultSeason = Season.xp(s.mode, won, score).let { if (it > 0) profile.addSeasonXp(game.today, it, s.vip) else 0 }
         resultTier = profile.seasonTier(game.today).takeIf { it > tierBefore } ?: 0
+        if (s.mode != Mode.TUTORIAL) {
+            for (o in profile.tally(game.today, Tally.of(wd, won, s.mode, resultStars))) game.toast(Tx.ORDER_DONE.f(o.text), Icon.CHECK)
+        }
         profile.save = null
         resultAchievements = profile.checkAchievements()
         if (resultAchievements.isNotEmpty()) game.sound(Sfx.ACHIEVEMENT, 0.8f)

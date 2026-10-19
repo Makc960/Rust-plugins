@@ -3,8 +3,11 @@ package com.makc.basedefense.engine
 import java.time.LocalDate
 import kotlin.math.min
 
-/** What a tier of the season pass gives: upgrade points, the battle commander's service, days of VIP or a camouflage. */
-enum class RewardKind { POINTS, SERVICE, VIP_DAYS, CAMO }
+/**
+ * What a tier of the season pass, an order or a day's supplies gives: upgrade points, the battle
+ * commander's service, days of VIP, a camouflage or season points.
+ */
+enum class RewardKind { POINTS, SERVICE, VIP_DAYS, CAMO, SEASON }
 
 class Reward(val kind: RewardKind, val amount: Int = 0) {
     /** The urban camouflage; a player who has it already gets points instead. */

@@ -31,6 +31,7 @@ class I18nTest {
             add(a.name to a.title)
             add(a.name to a.hint)
         }
+        for (o in OrderKind.entries) add(o.name to o.text)
         for (m in TargetMode.entries) add(m.name to m.title)
         for (d in Difficulty.entries) {
             add(d.name to d.title)

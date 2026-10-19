@@ -533,6 +533,8 @@ class ScreensTest {
         val platform = SilentPlatform()
         unlockAll(platform)
         platform.putInt("stat_WINS", 5)
+        // Today's supplies were offered already, so the menu's windows here are the update and the reminders.
+        platform.putInt("supply_offered", platform.day)
         platform.updateOut = true
         platform.remindersAllowed = false
         val g = game(tall, platform)
@@ -838,6 +840,41 @@ class ScreensTest {
         press(g2, tall, "ctab1", 0f)
         press(g2, tall, "entry${TowerType.RAIL.ordinal}", 0f)
         shot(g2, tall, "tall_b4_rail_codex")
+    }
+
+    @Test
+    fun ordersAndSupplies() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.putInt("stat_WINS", 1)
+        val g = game(tall, platform)
+        run(g, 2f)
+        // Once a day the menu offers the day's supplies.
+        assertTrue(has(g, tall, "popupGo"), "the supplies window")
+        shot(g, tall, "tall_c0_supply")
+        val points = g.profile.freePoints
+        press(g, tall, "popupGo")
+        assertTrue(!g.profile.supplyReady(platform.day))
+        assertEquals(1, g.profile.supplyDay)
+        assertTrue(g.profile.seasonXp(platform.day) > 0 || g.profile.freePoints > points)
+
+        // A battle carries out an order; its reward waits on the orders tab.
+        val orders = g.profile.orders(platform.day)
+        val all = Tally(10_000, IntArray(EnemyType.entries.size) { 10_000 }, true, true, 3, true, 1000, 10, 100, 10, true)
+        g.profile.tally(platform.day, all)
+        assertTrue(g.profile.ordersToTake(platform.day) > 0)
+        press(g, tall, "daily")
+        press(g, tall, "missions2", 0.2f)
+        shot(g, tall, "tall_c1_orders")
+        val i = orders.indices.first { g.profile.orderDone(platform.day, it) }
+        press(g, tall, "order$i", 0.2f)
+        assertTrue(g.profile.orderTaken(platform.day, i))
+        shot(g, tall, "tall_c2_order_taken")
+
+        // Not offered again the same day.
+        g.go(Screen.MENU)
+        run(g, 2f)
+        assertTrue(!has(g, tall, "popupGo"))
     }
 
     @Test

@@ -31,7 +31,7 @@ internal class Menus(private val game: Game) {
     private var commandersBottom = 0f
 
     /** A window over the main menu: the tutorial on the first visit, a new version, reminders once, VIP now and then. */
-    private enum class Popup { WELCOME, NEWS, UPDATE, REMINDERS, VIP, ENDED }
+    private enum class Popup { WELCOME, NEWS, UPDATE, REMINDERS, VIP, ENDED, SUPPLY }
 
     /** The new version is offered once a run of the game. */
     private var updateOffered = false
@@ -187,7 +187,8 @@ internal class Menus(private val game: Game) {
             icon = if (dailyOpen) Icon.CALENDAR else Icon.LOCK, sub = if (dailyOpen) null else Tx.DAILY_LOCKED.t,
         ) { open(Screen.DAILY) }
         val weekDue = profile.weeklyUnlocked && profile.weeklyMedal(Weekly.week(game.today)) == 0
-        if (dailyOpen && (!profile.dailyWon(game.today) || weekDue)) {
+        val ordersDue = profile.ordersToTake(game.today) > 0 || profile.supplyReady(game.today)
+        if (dailyOpen && (!profile.dailyWon(game.today) || weekDue || ordersDue)) {
             g.fillCircle(bx + bw - d(4f), y + d(4f), d(7f), Ui.EDGE)
             g.fillCircle(bx + bw - d(4f), y + d(4f), d(5f), Ui.RED)
         }
@@ -265,6 +266,11 @@ internal class Menus(private val game: Game) {
             updateOffered = true
             return Popup.UPDATE
         }
+        // Supplies are offered once a day; not taken, they wait on the orders tab.
+        if (profile.stat(Stat.WINS) >= 1 && profile.supplyReady(game.today) && profile.supplyOffered != game.today) {
+            profile.supplyOffered = game.today
+            return Popup.SUPPLY
+        }
         if (!profile.remindersAsked && profile.reminders && !game.remindersAllowed && profile.stat(Stat.WINS) >= 1) {
             profile.remindersAsked = true
             return Popup.REMINDERS
@@ -306,6 +312,7 @@ internal class Menus(private val game: Game) {
             Popup.UPDATE -> Tx.UPDATE_TEXT.t
             Popup.REMINDERS -> Tx.REMINDERS_TEXT.t
             Popup.ENDED -> Tx.ENDED_TEXT.t
+            Popup.SUPPLY -> Tx.SUPPLY_TEXT.t
             Popup.VIP, Popup.NEWS -> null
         }
         val textH = if (text != null) ui.lines(g, text, d(13.5f), tw).size * d(13.5f) * 1.3f else 0f
@@ -320,6 +327,7 @@ internal class Menus(private val game: Game) {
             Popup.REMINDERS -> Tx.REMINDERS_TITLE.t
             Popup.VIP -> Tx.VIP_TITLE.t
             Popup.ENDED -> Tx.ENDED_TITLE.t
+            Popup.SUPPLY -> Tx.SUPPLY_TITLE.t
         }
         val vipLike = p == Popup.VIP || p == Popup.ENDED
         val top = ui.panel(g, px, py, pw, ph, if (vipLike) Ui.GOLD else Ui.EDGE, title = title)
@@ -331,6 +339,8 @@ internal class Menus(private val game: Game) {
         } else if (p == Popup.NEWS) {
             ui.well(g, cx - d(40f), y, d(80f), d(80f), d(8f))
             renderer.drawEnemyIcon(g, EnemyType.TITAN, cx, y + d(40f), d(64f), clock)
+        } else if (p == Popup.SUPPLY) {
+            supplyRow(g, px + d(18f), y + d(6f), pw - d(36f), d(70f))
         } else {
             val icon = when (p) {
                 Popup.UPDATE -> Icon.DOWNLOAD
@@ -369,6 +379,10 @@ internal class Menus(private val game: Game) {
             Popup.REMINDERS -> ui.button(g, "popupGo", bx, by, bw, d(56f), Tx.REMINDERS_ON.t, Style.PRIMARY, size = 17f, icon = Icon.PHONE) {
                 popup = null
                 game.allowReminders {}
+            }
+            Popup.SUPPLY -> ui.button(g, "popupGo", bx, by, bw, d(56f), Tx.PASS_TAKE.t, Style.PRIMARY, size = 17f, icon = Icon.STAR) {
+                popup = null
+                takeSupply()
             }
             Popup.VIP, Popup.ENDED -> ui.button(
                 g, "popupGo", bx, by, bw, d(56f), if (p == Popup.VIP) Tx.PROMO_MORE.t else Tx.ENDED_RENEW.t, Style.PRIMARY, size = 17f, icon = Icon.CROWN, sub = price,
@@ -860,11 +874,131 @@ internal class Menus(private val game: Game) {
 
     fun daily(g: Gfx) {
         val header = ui.header(g, Tx.MISSIONS.t) { game.go(Screen.MENU) }
-        ui.segmented(g, "missions", d(14f), header, ui.w - d(28f), d(40f), listOf(Tx.TAB_DAY.t, Tx.TAB_WEEK.t), missionsTab, size = 13f) {
+        val tabs = listOf(Tx.TAB_DAY.t, Tx.TAB_WEEK.t, Tx.TAB_ORDERS.t)
+        ui.segmented(g, "missions", d(14f), header, ui.w - d(28f), d(40f), tabs, missionsTab, size = 13f) {
             missionsTab = it
         }
+        val due = profile.ordersToTake(game.today) > 0 || profile.supplyReady(game.today)
+        if (due) {
+            val tx = d(14f) + (ui.w - d(28f)) * 5f / 6f + g.textWidth(Tx.TAB_ORDERS.t, d(13f), Font.DISPLAY) / 2f + d(8f)
+            g.fillCircle(tx, header + d(10f), d(6f), Ui.EDGE)
+            g.fillCircle(tx, header + d(10f), d(4.5f), Ui.RED)
+        }
         val top = header + d(50f)
-        if (missionsTab == 1) weekly(g, top) else dailyTab(g, top)
+        when (missionsTab) {
+            1 -> weekly(g, top)
+            2 -> ordersTab(g, top)
+            else -> dailyTab(g, top)
+        }
+    }
+
+    /** Opens the missions screen on the orders. */
+    fun openOrders() {
+        missionsTab = 2
+        open(Screen.DAILY)
+    }
+
+    /** Today's supplies, then the three orders of the day and the bonus for all of them. */
+    private fun ordersTab(g: Gfx, top: Float) {
+        val day = game.today
+        val x = d(14f)
+        val w = ui.w - d(28f)
+        val viewH = ui.h - ui.bottom - top
+        val off = ui.beginScroll(g, "orders", 0f, top, ui.w, viewH, if (ordersBottom > 0f) ordersBottom else viewH)
+        var y = top - off + d(4f)
+
+        // Supplies.
+        val ready = profile.supplyReady(day)
+        val next = Supply.REWARDS[profile.supplyDay]
+        ui.plate(g, x, y, w, d(76f), Ui.PANEL)
+        ui.icon(g, rewardIcon(next.first()), x + d(28f), y + d(38f), d(26f), if (ready) Ui.GOLD else Ui.DIM)
+        ui.text(g, Tx.SUPPLY_TITLE.t, x + d(52f), y + d(24f), d(15f), Ui.TEXT, maxW = w - d(200f), font = Font.DISPLAY)
+        val what = next.joinToString(", ") { game.describe(it) }
+        ui.text(g, Tx.SUPPLY_DAY.f(profile.supplyDay + 1, Supply.DAYS), x + d(52f), y + d(43f), d(11.5f), Ui.ACCENT, maxW = w - d(200f))
+        ui.text(g, if (ready) what else Tx.SUPPLY_TOMORROW.f(what), x + d(52f), y + d(60f), d(11f), Ui.DIM, maxW = w - d(200f), font = Font.BODY)
+        if (ready) {
+            ui.button(g, "supplyTake", x + w - d(132f), y + d(16f), d(120f), d(44f), Tx.PASS_TAKE.t, Style.PRIMARY, size = 14f) { takeSupply() }
+        } else {
+            ui.icon(g, Icon.CHECK, x + w - d(30f), y + d(38f), d(22f), Ui.GREEN)
+        }
+        y += d(90f)
+
+        ui.text(g, Tx.ORDERS_TITLE.t, x + d(4f), y + d(16f), d(17f), Ui.GOLD, maxW = w, font = Font.DISPLAY)
+        y += d(26f)
+        y += ui.paragraph(g, Tx.ORDERS_SUB.t, x + d(4f), y, w - d(8f), d(11.5f), Ui.DIM) + d(10f)
+        val orders = profile.orders(day)
+        for ((i, o) in orders.withIndex()) {
+            val count = profile.orderCount(day, i)
+            val done = count >= o.goal
+            val taken = profile.orderTaken(day, i)
+            ui.plate(g, x, y, w, d(92f), if (done && !taken) Ui.PANEL_LIGHT else Ui.PANEL, if (done && !taken) Ui.GOLD else Ui.EDGE)
+            val textW = w - d(150f)
+            ui.paragraph(g, o.text, x + d(14f), y + d(8f), textW, d(14f), Ui.TEXT, spacing = 1.2f, font = Font.BOLD)
+            ui.bar(g, x + d(14f), y + d(64f), textW - d(50f), d(8f), count / o.goal.toFloat(), if (done) Ui.GREEN else Ui.ACCENT)
+            ui.text(g, "${min(count, o.goal)}/${o.goal}", x + d(14f) + textW - d(42f), y + d(72f), d(11.5f), Ui.DIM)
+            val rx = x + w - d(128f)
+            ui.icon(g, rewardIcon(o.reward), rx + d(12f), y + d(22f), d(18f), Ui.ACCENT)
+            ui.text(g, rewardValue(o.reward), rx + d(26f), y + d(27f), d(14f), Ui.TEXT, maxW = d(96f), font = Font.DISPLAY)
+            when {
+                taken -> {
+                    ui.icon(g, Icon.CHECK, rx + d(12f), y + d(62f), d(18f), Ui.GREEN)
+                    ui.text(g, Tx.ORDER_TAKEN.t, rx + d(26f), y + d(67f), d(11f), Ui.GREEN, maxW = d(96f))
+                }
+                done -> ui.button(g, "order$i", rx, y + d(44f), d(116f), d(38f), Tx.PASS_TAKE.t, Style.PRIMARY, size = 13f) { takeOrder(i) }
+                else -> ui.text(g, rewardCaption(o.reward), rx + d(2f), y + d(66f), d(10.5f), Ui.DIM, maxW = d(116f), font = Font.BODY)
+            }
+            y += d(100f)
+        }
+        val all = orders.indices.all { profile.orderDone(day, it) }
+        val bonusTaken = profile.bonusTaken(day)
+        ui.plate(g, x, y, w, d(62f), if (all && !bonusTaken) Ui.PANEL_LIGHT else Ui.PANEL, if (all && !bonusTaken) Ui.GOLD else Ui.EDGE)
+        ui.icon(g, Icon.STAR, x + d(26f), y + d(31f), d(22f), if (all) Ui.GOLD else Ui.DIM)
+        ui.text(g, Tx.ORDERS_BONUS.t, x + d(48f), y + d(27f), d(14f), Ui.TEXT, maxW = w - d(190f))
+        ui.text(g, game.describe(Reward(RewardKind.POINTS, Orders.BONUS_POINTS)), x + d(48f), y + d(45f), d(11.5f), Ui.ACCENT, maxW = w - d(190f))
+        when {
+            bonusTaken -> ui.icon(g, Icon.CHECK, x + w - d(30f), y + d(31f), d(22f), Ui.GREEN)
+            all -> ui.button(g, "orderBonus", x + w - d(128f), y + d(12f), d(116f), d(38f), Tx.PASS_TAKE.t, Style.PRIMARY, size = 13f) {
+                takeOrder(Orders.COUNT)
+            }
+        }
+        y += d(80f)
+        ordersBottom = y - (top - off)
+        ui.endScroll(g, "orders")
+    }
+
+    private var ordersBottom = 0f
+
+    private fun takeOrder(i: Int) {
+        if (!profile.takeOrder(game.today, i)) return
+        game.sound(Sfx.ACHIEVEMENT, 0.6f)
+        game.toast(Tx.PASS_CLAIMED.t, Icon.STAR)
+    }
+
+    private fun takeSupply() {
+        val got = profile.takeSupply(game.today) ?: return
+        game.sound(Sfx.ACHIEVEMENT, 0.7f)
+        game.toast(Tx.SUPPLY_GOT.f(got.joinToString(", ") { game.describe(it) }), rewardIcon(got.first()))
+    }
+
+    /** The week of supplies: a cell a day, today's lit, the ones taken ticked. */
+    private fun supplyRow(g: Gfx, x: Float, y: Float, w: Float, h: Float) {
+        val gap = d(4f)
+        val cw = (w - gap * (Supply.DAYS - 1)) / Supply.DAYS
+        val today = profile.supplyDay
+        val ready = profile.supplyReady(game.today)
+        for (k in 0 until Supply.DAYS) {
+            val cx = x + k * (cw + gap)
+            val now = k == today && ready
+            val past = k < today || (k == today && !ready)
+            val r = Supply.REWARDS[k].first()
+            ui.chamfer(g, cx, y, cw, h, d(5f), if (k == Supply.DAYS - 1) Ui.GOLD else Ui.EDGE)
+            ui.chamfer(g, cx + d(1.5f), y + d(1.5f), cw - d(3f), h - d(3f), d(4f), if (now) Ui.ACCENT else Ui.PANEL)
+            val ink = if (now) Ui.DARK_TEXT else if (past) Ui.DIM else Ui.TEXT
+            ui.textMid(g, "${k + 1}", cx + cw / 2f, y + d(11f), d(10f), ink, maxW = cw - d(4f))
+            ui.icon(g, rewardIcon(r), cx + cw / 2f, y + h / 2f + d(1f), min(cw * 0.5f, d(18f)), if (now) Ui.DARK_TEXT else if (past) Ui.FADED else Ui.ACCENT)
+            ui.textMid(g, rewardValue(r), cx + cw / 2f, y + h - d(10f), d(9.5f), ink, maxW = cw - d(4f))
+            if (past) ui.icon(g, Icon.CHECK, cx + cw - d(8f), y + d(8f), d(10f), Ui.GREEN)
+        }
     }
 
     private fun dailyTab(g: Gfx, top: Float) {
@@ -1298,6 +1432,28 @@ internal class Menus(private val game: Game) {
         ui.endScroll(g, Screen.PASS.name)
     }
 
+    private fun rewardIcon(r: Reward): Icon = when (r.kind) {
+        RewardKind.POINTS -> Icon.STAR
+        RewardKind.SERVICE -> Icon.COMMANDER
+        RewardKind.VIP_DAYS -> Icon.CROWN
+        RewardKind.CAMO -> Icon.BRUSH
+        RewardKind.SEASON -> Icon.DIAMOND
+    }
+
+    private fun rewardValue(r: Reward): String = when (r.kind) {
+        RewardKind.POINTS, RewardKind.SERVICE, RewardKind.SEASON -> "+${r.amount}"
+        RewardKind.VIP_DAYS -> Tx.VIP.t
+        RewardKind.CAMO -> Camo.URBAN.title.t
+    }
+
+    private fun rewardCaption(r: Reward): String = when (r.kind) {
+        RewardKind.POINTS -> Tx.REWARD_POINTS.t
+        RewardKind.SERVICE -> Tx.REWARD_SERVICE.t
+        RewardKind.VIP_DAYS -> Tx.REWARD_VIP.f(r.amount)
+        RewardKind.CAMO -> Tx.REWARD_CAMO.t
+        RewardKind.SEASON -> Tx.REWARD_SEASON.t
+    }
+
     /** One reward: what it is, and whether it can be taken, was taken or waits for its tier or for premium. */
     private fun rewardCell(g: Gfx, tier: Int, premium: Boolean, x: Float, y: Float, w: Float, h: Float) {
         val today = game.today
@@ -1328,24 +1484,9 @@ internal class Menus(private val game: Game) {
         ui.chamfer(g, x, y + sink, w, h, d(6f), Ui.EDGE)
         ui.chamfer(g, x + d(1.5f), y + d(1.5f) + sink, w - d(3f), h - d(3f), d(5f), Colors.alpha(face, if (reached || ready) 1f else 0.55f))
         val ink = if (ready) Ui.DARK_TEXT else if (reached) Ui.TEXT else Ui.DIM
-        val icon = when (reward.kind) {
-            RewardKind.POINTS -> Icon.STAR
-            RewardKind.SERVICE -> Icon.COMMANDER
-            RewardKind.VIP_DAYS -> Icon.CROWN
-            RewardKind.CAMO -> Icon.BRUSH
-        }
-        ui.icon(g, icon, x + d(18f), y + h / 2f + sink, d(18f), if (ready) Ui.DARK_TEXT else if (premium) Ui.GOLD else Ui.ACCENT)
-        val value = when (reward.kind) {
-            RewardKind.POINTS, RewardKind.SERVICE -> "+${reward.amount}"
-            RewardKind.VIP_DAYS -> Tx.VIP.t
-            RewardKind.CAMO -> Camo.URBAN.title.t
-        }
-        val caption = when (reward.kind) {
-            RewardKind.POINTS -> Tx.REWARD_POINTS.t
-            RewardKind.SERVICE -> Tx.REWARD_SERVICE.t
-            RewardKind.VIP_DAYS -> Tx.REWARD_VIP.f(reward.amount)
-            RewardKind.CAMO -> Tx.REWARD_CAMO.t
-        }
+        ui.icon(g, rewardIcon(reward), x + d(18f), y + h / 2f + sink, d(18f), if (ready) Ui.DARK_TEXT else if (premium) Ui.GOLD else Ui.ACCENT)
+        val value = rewardValue(reward)
+        val caption = rewardCaption(reward)
         val tx = x + d(34f)
         val tw = w - d(40f)
         ui.text(g, value, tx, y + h / 2f - d(1f) + sink, d(14f), ink, maxW = tw, font = Font.DISPLAY)

@@ -262,6 +262,9 @@ class World(
         private set
     var titanKills = 0
         private set
+
+    /** Kills of each kind of enemy, by [EnemyType.ordinal]. */
+    val killsOf = IntArray(EnemyType.entries.size)
     var built = 0
         private set
     var airstrikes = 0
@@ -1122,6 +1125,7 @@ class World(
         if (e.type.boss) bossKills++
         if (e.type == EnemyType.GHOST) ghostKills++
         if (e.type == EnemyType.TITAN) titanKills++
+        killsOf[e.type.ordinal]++
         if (source != null) source.kills++
         commander?.let {
             if (hero) {
@@ -2256,6 +2260,7 @@ class World(
         put("countdown", countdown)
         put("time", time, battleTime)
         put("stats", kills, leaked, bossKills, ghostKills, built, airstrikes, cleared, maxMoney, branchMask, typeMask, abilitiesUsed, titanKills)
+        put("killsof", *EnemyType.entries.filter { killsOf[it.ordinal] > 0 }.map { "${it.name}:${killsOf[it.ordinal]}" }.toTypedArray())
         put("cool", *cooldowns.toTypedArray())
         put("weather", weather, weatherWait, lavaWait)
         if (reserveUsed) put("reserve", 1)
@@ -2323,6 +2328,10 @@ class World(
                     typeMask = i(9)
                     abilitiesUsed = i(10)
                     titanKills = f.getOrNull(11)?.toIntOrNull() ?: 0
+                }
+                "killsof" -> for (pair in f) {
+                    val type = EnemyType.entries.firstOrNull { it.name == pair.substringBefore(':') } ?: continue
+                    killsOf[type.ordinal] = pair.substringAfter(':').toIntOrNull() ?: 0
                 }
                 "cool" -> for (k in cooldowns.indices) cooldowns[k] = f.getOrNull(k)?.toFloatOrNull() ?: 0f
                 "weather" -> {

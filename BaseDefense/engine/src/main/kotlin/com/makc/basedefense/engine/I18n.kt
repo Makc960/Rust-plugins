@@ -34,3 +34,15 @@ object Num {
 
     fun percent(v: Float): String = "${Math.round(v * 100f)}%"
 }
+
+/** The Russian noun that goes with [n]: [one] for 1 and 21, [few] for 2 to 4, [many] for the rest and for 11 to 14. */
+fun ruPlural(n: Int, one: String, few: String, many: String): String {
+    val tens = n % 100
+    val units = n % 10
+    return when {
+        tens in 11..14 -> many
+        units == 1 -> one
+        units in 2..4 -> few
+        else -> many
+    }
+}

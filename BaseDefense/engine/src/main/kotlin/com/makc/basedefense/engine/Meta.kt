@@ -120,6 +120,10 @@ enum class Stat {
 
     /** Upgrade points from watching adverts. */
     AD_POINTS,
+
+    /** Upgrade points from daily orders and supplies, and orders carried out. */
+    ORDER_POINTS,
+    ORDERS_DONE,
 }
 
 /** Rewarded adverts, offered only to players without VIP: what they give and how many a day. */

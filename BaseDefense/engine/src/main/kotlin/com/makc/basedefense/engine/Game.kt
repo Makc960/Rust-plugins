@@ -207,11 +207,17 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
         toast(if (on) Tx.ADMIN_ON.t else Tx.ADMIN_OFF.t, Icon.CROWN)
     }
 
-    private fun describe(r: Reward): String = when (r.kind) {
-        RewardKind.POINTS -> Tx.GIFT_POINTS.f(r.amount)
-        RewardKind.SERVICE -> Tx.GIFT_SERVICE.f(r.amount)
-        RewardKind.VIP_DAYS -> Tx.GIFT_VIP.f(r.amount)
-        RewardKind.CAMO -> Camo.URBAN.title.t
+    /** What a reward gives, in words that agree with its number. */
+    internal fun describe(r: Reward): String {
+        val n = r.amount
+        val ru = I18n.lang == Language.RU
+        return when (r.kind) {
+            RewardKind.POINTS -> if (ru) "+$n ${ruPlural(n, "очко", "очка", "очков")} улучшений" else "+$n upgrade point${if (n == 1) "" else "s"}"
+            RewardKind.SERVICE -> Tx.GIFT_SERVICE.f(n)
+            RewardKind.VIP_DAYS -> if (ru) "VIP на $n ${ruPlural(n, "день", "дня", "дней")}" else "VIP for $n day${if (n == 1) "" else "s"}"
+            RewardKind.CAMO -> Camo.URBAN.title.t
+            RewardKind.SEASON -> if (ru) "+$n ${ruPlural(n, "очко", "очка", "очков")} сезона" else "+$n season point${if (n == 1) "" else "s"}"
+        }
     }
 
     internal val supportUrl: String? get() = platform.supportUrl

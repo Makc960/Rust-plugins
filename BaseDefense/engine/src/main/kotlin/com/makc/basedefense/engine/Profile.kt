@@ -102,7 +102,8 @@ class Profile(private val p: Platform) {
     /** Stars, hard wins, medals and daily wins all count, VIP's gifts, points bought in the starter pack or given by codes. */
     val points: Int
         get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS) + stat(Stat.VIP_POINTS) + stat(Stat.WEEKLY_POINTS) +
-            stat(Stat.PASS_POINTS) + stat(Stat.AD_POINTS) + boughtPoints + giftPoints + (if (admin) Promo.ADMIN_POINTS else 0)
+            stat(Stat.PASS_POINTS) + stat(Stat.AD_POINTS) + stat(Stat.ORDER_POINTS) + boughtPoints + giftPoints +
+            (if (admin) Promo.ADMIN_POINTS else 0)
 
     /** Upgrade points from purchases; resetting progress keeps them. */
     val boughtPoints: Int get() = p.getInt("bought_points", 0)
@@ -370,7 +371,88 @@ class Profile(private val p: Platform) {
             RewardKind.SERVICE -> addService(battleCommander, reward.amount)
             RewardKind.VIP_DAYS -> grantVip(max(vipUntil, today - 1) + reward.amount)
             RewardKind.CAMO -> if (camoOpen(Camo.URBAN)) addPoints(Season.CAMO_POINTS) else grantCamo(Camo.URBAN)
+            RewardKind.SEASON -> addSeasonXp(today, reward.amount, vip = false)
         }
+    }
+
+    // --- daily orders and supplies --------------------------------------------------------
+
+    /** Today's orders, chosen for how far the player had got when the day began. */
+    fun orders(today: Int): List<Order> {
+        if (p.getInt("orders_day", -1) != today) {
+            p.putInt("orders_day", today)
+            p.putInt("orders_progress", progress)
+            for (i in 0 until Orders.COUNT) p.putInt("order_$i", 0)
+            p.putInt("orders_taken", 0)
+        }
+        return Orders.of(today, p.getInt("orders_progress", progress))
+    }
+
+    /** How far order [i] of today has got. */
+    fun orderCount(today: Int, i: Int): Int = if (p.getInt("orders_day", -1) == today) p.getInt("order_$i", 0) else 0
+
+    fun orderDone(today: Int, i: Int): Boolean = orderCount(today, i) >= orders(today)[i].goal
+
+    private fun taken(today: Int, bit: Int): Boolean = p.getInt("orders_day", -1) == today && p.getInt("orders_taken", 0) and (1 shl bit) != 0
+
+    fun orderTaken(today: Int, i: Int): Boolean = taken(today, i)
+
+    fun bonusTaken(today: Int): Boolean = taken(today, Orders.COUNT)
+
+    /** Counts a finished battle towards today's orders; gives the orders it carried out. */
+    fun tally(today: Int, t: Tally): List<Order> {
+        val list = orders(today)
+        val done = ArrayList<Order>()
+        for ((i, o) in list.withIndex()) {
+            val before = orderCount(today, i)
+            if (before >= o.goal) continue
+            val now = minOf(o.goal, before + o.kind.count(t))
+            p.putInt("order_$i", now)
+            if (now >= o.goal) {
+                done += o
+                addStat(Stat.ORDERS_DONE, 1)
+            }
+        }
+        return done
+    }
+
+    /** Takes the reward of order [i], or with [i] = [Orders.COUNT] the bonus for all three; false when it is not there. */
+    fun takeOrder(today: Int, i: Int): Boolean {
+        val list = orders(today)
+        val ready = if (i == Orders.COUNT) list.indices.all { orderDone(today, it) } else i in list.indices && orderDone(today, i)
+        if (!ready || taken(today, i)) return false
+        p.putInt("orders_taken", p.getInt("orders_taken", 0) or (1 shl i))
+        if (i == Orders.COUNT) addStat(Stat.ORDER_POINTS, Orders.BONUS_POINTS) else give(list[i].reward, today) { addStat(Stat.ORDER_POINTS, it) }
+        return true
+    }
+
+    /** Rewards of today's orders done and not yet taken, the bonus included. */
+    fun ordersToTake(today: Int): Int {
+        val list = orders(today)
+        val each = list.indices.count { orderDone(today, it) && !taken(today, it) }
+        val bonus = if (list.indices.all { orderDone(today, it) } && !bonusTaken(today)) 1 else 0
+        return each + bonus
+    }
+
+    /** The day supplies were last offered in a window. */
+    var supplyOffered: Int
+        get() = p.getInt("supply_offered", -1)
+        set(v) = p.putInt("supply_offered", v)
+
+    /** Which day of the week's supplies comes next, from 0. */
+    val supplyDay: Int get() = p.getInt("supply_count", 0) % Supply.DAYS
+
+    /** Today's supplies are there to take. */
+    fun supplyReady(today: Int): Boolean = p.getInt("supply_last", -1) < today
+
+    /** Takes today's supplies; gives what they were, or null when they were taken already. */
+    fun takeSupply(today: Int): List<Reward>? {
+        if (!supplyReady(today)) return null
+        val rewards = Supply.REWARDS[supplyDay]
+        p.putInt("supply_last", today)
+        p.putInt("supply_count", p.getInt("supply_count", 0) + 1)
+        for (r in rewards) give(r, today) { addStat(Stat.ORDER_POINTS, it) }
+        return rewards
     }
 
     /** Rewards reached and not yet taken, on both tracks. */
