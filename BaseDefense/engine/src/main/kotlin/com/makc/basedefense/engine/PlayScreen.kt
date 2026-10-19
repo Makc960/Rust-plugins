@@ -16,7 +16,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private val renderer get() = game.renderer
     private val clock get() = game.clock
 
-    private enum class Overlay { NONE, PAUSE, SETTINGS, RESULT, CARD }
+    private enum class Overlay { NONE, PAUSE, SETTINGS, RESULT, CARD, REVIVE }
 
     private var overlay = Overlay.NONE
     private var session: Session? = null
@@ -97,6 +97,9 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     private var resultSeason = 0
     private var resultTier = 0
 
+    /** The season points of this battle were doubled by an advert. */
+    private var seasonDoubled = false
+
     private class Card(val kind: L, val title: String, val text: String, val stats: List<String> = emptyList(), val icon: (Gfx, Float, Float, Float) -> Unit)
 
     private val cards = ArrayList<Card>()
@@ -165,6 +168,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         resultPoints = 0
         resultSeason = 0
         resultTier = 0
+        seasonDoubled = false
         reviewAt = -1f
         flushed = false
         cards.clear()
@@ -248,7 +252,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             reviewAt = -1f
             game.askReviewIfDue()
         }
-        if (wd.over && overlay != Overlay.RESULT) {
+        if (wd.over && overlay != Overlay.RESULT && overlay != Overlay.REVIVE) {
             placing = null
             selected = null
             heroPicked = false
@@ -257,7 +261,22 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             cards.clear()
             if (overlay == Overlay.CARD) overlay = Overlay.NONE
             endDelay += dt
-            if (endDelay > 1.2f) finish(wd)
+            if (endDelay > 1.2f) {
+                if (revivable(wd)) overlay = Overlay.REVIVE else finish(wd)
+            }
+        }
+    }
+
+    /** A lost battle an advert can still save: once a battle, never the training one. */
+    private fun revivable(wd: World): Boolean =
+        wd.phase == Phase.LOST && !wd.revived && session?.mode != Mode.TUTORIAL && game.adsOffered
+
+    private fun revive(wd: World) {
+        game.watchAd {
+            if (wd.revive()) {
+                overlay = Overlay.NONE
+                endDelay = 0f
+            }
         }
     }
 
@@ -339,10 +358,23 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         if (resultAchievements.isNotEmpty()) game.sound(Sfx.ACHIEVEMENT, 0.8f)
     }
 
+    /** The battle's season points once more, after an advert. */
+    private fun doubleSeason() {
+        val gained = resultSeason
+        game.watchAd {
+            if (seasonDoubled) return@watchAd
+            seasonDoubled = true
+            val tierBefore = profile.seasonTier(game.today)
+            resultSeason += profile.addSeasonXp(game.today, gained, vip = false)
+            profile.seasonTier(game.today).takeIf { it > tierBefore }?.let { resultTier = it }
+        }
+    }
+
     /** Back button inside the battle. */
     fun back(): Boolean {
         when (overlay) {
             Overlay.RESULT -> leave()
+            Overlay.REVIVE -> world?.let { finish(it) }
             Overlay.PAUSE -> overlay = Overlay.NONE
             Overlay.SETTINGS -> overlay = Overlay.PAUSE
             Overlay.CARD -> closeCard()
@@ -807,6 +839,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 Overlay.SETTINGS -> game.menus.settingsPanel(g) { overlay = Overlay.PAUSE }
                 Overlay.RESULT -> drawResult(g, wd)
                 Overlay.CARD -> drawCard(g)
+                Overlay.REVIVE -> drawRevive(g, wd)
                 Overlay.NONE -> Unit
             }
         }
@@ -1528,6 +1561,24 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         ui.button(g, "gotit", px + d(24f), py + ph - d(70f), pw - d(48f), d(50f), Tx.GOT_IT.t, Style.PRIMARY, size = 17f) { closeCard() }
     }
 
+    /** The base has fallen: an advert brings the reserves and the fight goes on, or the player gives up. */
+    private fun drawRevive(g: Gfx, wd: World) {
+        val (px, _, pw, top) = dialog(g, d(330f), Tx.LAST_CHANCE.t, 0xFF6B2219.toInt())
+        var y = top + d(14f)
+        ui.icon(g, Icon.VIDEO, ui.w / 2f, y + d(26f), d(44f), Ui.GOLD)
+        y += d(60f)
+        y += ui.paragraph(g, Tx.REVIVE_TEXT.f(Ads.REVIVE_LIVES), ui.w / 2f, y, pw - d(48f), d(13f), Ui.TEXT, Align.CENTER) + d(18f)
+        val bx = px + d(22f)
+        val bw = pw - d(44f)
+        val ready = game.adReady
+        ui.button(
+            g, "revive", bx, y, bw, d(56f), Tx.WATCH_AD.t, Style.PRIMARY, ready, size = 17f, icon = Icon.VIDEO,
+            sub = if (ready) Tx.REVIVE_SUB.f(Ads.REVIVE_LIVES) else Tx.AD_LOADING.t,
+        ) { revive(wd) }
+        y += d(68f)
+        ui.button(g, "giveUp", bx, y, bw, d(44f), Tx.GIVE_UP.t, Style.GHOST, icon = Icon.FLAG) { finish(wd) }
+    }
+
     private fun drawResult(g: Gfx, wd: World) {
         val s = session ?: return
         val won = wd.phase == Phase.WON
@@ -1580,10 +1631,12 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         if (resultTier > 0) lines += Tx.PASS_TIER.f(resultTier) to Ui.GOLD
         // After a defeat, what VIP's second chance would have done.
         val offerVip = !won && s.mode != Mode.TUTORIAL && game.shop != Shop.NONE && !s.vip
+        // The season points of this battle once more, for an advert.
+        val offerAd = resultSeason > 0 && !seasonDoubled && game.adsOffered
         val achievements = resultAchievements.take(3)
         val rowH = d(26f)
         val tutorialWon = s.mode == Mode.TUTORIAL && won
-        val buttonsH = (if (next != null || tutorialWon) d(172f) else d(118f)) + (if (offerVip) d(64f) else 0f)
+        val buttonsH = (if (next != null || tutorialWon) d(172f) else d(118f)) + (if (offerVip) d(64f) else 0f) + (if (offerAd) d(64f) else 0f)
         val headH = if (s.mode == Mode.ENDLESS || ((s.mode == Mode.CAMPAIGN || s.mode == Mode.WEEKLY) && won)) d(92f) else d(12f)
         val achH = if (achievements.isEmpty()) 0f else d(30f) + achievements.size * d(24f)
         val ph = d(56f) + headH + lines.size * rowH + achH + buttonsH + d(34f)
@@ -1645,6 +1698,14 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         y += d(18f)
         val bx = px + d(22f)
         val bw = pw - d(44f)
+        if (offerAd) {
+            val ready = game.adReady
+            ui.button(
+                g, "doubleSeason", bx, y, bw, d(52f), Tx.DOUBLE_SEASON.t, Style.NORMAL, ready, size = 16f, icon = Icon.VIDEO,
+                sub = if (ready) Tx.AD_REWARD.f(resultSeason) else Tx.AD_LOADING.t,
+            ) { doubleSeason() }
+            y += d(64f)
+        }
         if (offerVip) {
             ui.button(g, "defeatVip", bx, y, bw, d(52f), Tx.VIP.t, Style.NORMAL, size = 16f, icon = Icon.CROWN, sub = Tx.DEFEAT_VIP.f(Vip.RESERVE_LIVES)) {
                 game.checkPurchases()

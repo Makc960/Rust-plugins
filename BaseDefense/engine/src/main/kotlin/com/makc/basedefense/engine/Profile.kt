@@ -98,7 +98,7 @@ class Profile(private val p: Platform) {
     /** Stars, hard wins, medals and daily wins all count, VIP's gifts and points bought in the starter pack. */
     val points: Int
         get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS) + stat(Stat.VIP_POINTS) + stat(Stat.WEEKLY_POINTS) +
-            stat(Stat.PASS_POINTS) + boughtPoints
+            stat(Stat.PASS_POINTS) + stat(Stat.AD_POINTS) + boughtPoints
 
     /** Upgrade points from purchases; resetting progress keeps them. */
     val boughtPoints: Int get() = p.getInt("bought_points", 0)
@@ -252,6 +252,24 @@ class Profile(private val p: Platform) {
 
     /** Open for good: free, earned or bought. */
     fun commanderOwned(c: CommanderType): Boolean = totalStars >= c.stars || (c.product != null && owned(c.product))
+
+    /** Rewarded adverts watched on [today]. */
+    fun adsWatched(today: Int): Int = if (p.getInt("ads_day", -1) == today) p.getInt("ads_today", 0) else 0
+
+    fun countAd(today: Int) {
+        val n = adsWatched(today) + 1
+        p.putInt("ads_day", today)
+        p.putInt("ads_today", n)
+    }
+
+    /** The upgrade point an advert gives once a day. */
+    fun adPointTaken(today: Int): Boolean = p.getInt("ad_point_day", -1) == today
+
+    fun takeAdPoint(today: Int) {
+        if (adPointTaken(today)) return
+        p.putInt("ad_point_day", today)
+        addStat(Stat.AD_POINTS, Ads.DAILY_POINTS)
+    }
 
     /** VIP's present for the day; true when one was given just now. */
     fun vipGift(today: Int): Boolean {

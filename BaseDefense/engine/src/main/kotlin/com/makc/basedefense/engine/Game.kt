@@ -152,6 +152,26 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
         }
     }
 
+    /** Rewarded adverts are offered: this build plays them, the player has no VIP, and today's are not used up. */
+    internal val adsOffered: Boolean get() = platform.ads && !vip && profile.adsWatched(today) < Ads.PER_DAY
+
+    /** An advert can play right now. */
+    internal val adReady: Boolean get() = platform.adReady
+
+    /** Plays an advert when one is offered; [reward] runs only when the player watched it through. */
+    internal fun watchAd(reward: () -> Unit) {
+        if (!adsOffered || !platform.adReady) return
+        platform.showAd { watched ->
+            if (watched) {
+                profile.countAd(today)
+                reward()
+                sound(Sfx.ACHIEVEMENT, 0.7f)
+            } else {
+                toast(Tx.AD_NOT_WATCHED.t, Icon.VIDEO)
+            }
+        }
+    }
+
     internal val supportUrl: String? get() = platform.supportUrl
 
     internal fun startUpdate() = platform.startUpdate()

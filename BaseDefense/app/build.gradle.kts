@@ -17,6 +17,10 @@ val store = (findProperty("store") as String?) ?: "github"
 val rustoreAppId = (findProperty("rustoreAppId") as String?) ?: "2063772062"
 if (store == "rustore") require(rustoreAppId.isNotEmpty()) { "A RuStore build needs rustoreAppId in app/build.gradle.kts" }
 
+// The rewarded video unit from the Yandex Advertising Network (partner.yandex.ru), like R-M-1234567-1;
+// RuStore builds only. Empty, the default, shows no adverts; demo-rewarded-yandex plays Yandex's test videos.
+val rewardedAdUnit = if (store == "rustore") (findProperty("rewardedAdUnit") as String?).orEmpty().trim() else ""
+
 // The page where players can support the author; empty hides the button in the settings.
 val supportUrl = "https://pay.cloudtips.ru/p/5b9bb7e3"
 
@@ -38,6 +42,7 @@ android {
             else -> "ELSEWHERE"
         }
         buildConfigField("String", "SHOP", "\"$shop\"")
+        buildConfigField("String", "REWARDED_AD_UNIT", "\"$rewardedAdUnit\"")
         resValue("string", "rustore_app_id", rustoreAppId)
         // Payment apps open this scheme to come back to the game.
         manifestPlaceholders["payScheme"] = "com.makc.basedefense"
@@ -105,5 +110,6 @@ dependencies {
         implementation("ru.rustore.sdk:pay")
         implementation("ru.rustore.sdk:review")
         implementation("ru.rustore.sdk:appupdate")
+        implementation("com.yandex.android:mobileads:8.5.0")
     }
 }

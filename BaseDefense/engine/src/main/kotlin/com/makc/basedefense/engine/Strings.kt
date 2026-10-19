@@ -139,6 +139,20 @@ object Tx {
         "В метель отряды стреляют реже, а по льду враги бегут быстрее. Береги ледяные участки дороги.",
         "In a blizzard squads fire slower, and enemies run faster on ice. Guard the icy stretches.",
     )
+    val WATCH_AD = L("СМОТРЕТЬ РЕКЛАМУ", "WATCH A VIDEO")
+    val AD_LOADING = L("Реклама загружается…", "The video is loading…")
+    val AD_NOT_WATCHED = L("Награда — только за просмотр до конца", "The reward comes only after the whole video")
+    val AD_REWARD = L("+%d за рекламу", "+%d for a video")
+    val AD_POINT = L("+%d ЗА РЕКЛАМУ", "+%d FOR A VIDEO")
+    val AD_WAIT = L("ЗАГРУЗКА…", "LOADING…")
+    val LAST_CHANCE = L("ПОСЛЕДНИЙ ШАНС", "LAST CHANCE")
+    val REVIVE_TEXT = L(
+        "Посмотри короткую рекламу — резерв принесёт %d жизней, и бой продолжится. Такой шанс один на бой.",
+        "Watch a short video and the reserves bring %d lives, and the fight goes on. One such chance a battle.",
+    )
+    val REVIVE_SUB = L("+%d жизней, бой продолжится", "+%d lives, the fight goes on")
+    val GIVE_UP = L("СДАТЬСЯ", "GIVE UP")
+    val DOUBLE_SEASON = L("УДВОИТЬ ОЧКИ СЕЗОНА", "DOUBLE SEASON POINTS")
     val TIP_VOLCANO = L("Извержения", "Eruptions")
     val TIP_VOLCANO_TEXT = L(
         "Во время извержения падают лавовые бомбы: они жгут врагов, но иногда на минуту накрывают и отряд. Саламандр в огнеупорных костюмах огонь не берёт — против них нужны пули, ракеты и мороз.",

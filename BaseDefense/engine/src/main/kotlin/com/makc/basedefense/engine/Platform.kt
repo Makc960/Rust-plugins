@@ -67,6 +67,15 @@ interface Platform {
 
     /** Puts [reminders] in place of every reminder planned before. */
     fun planReminders(reminders: List<Reminder>) = Unit
+
+    /** Whether this build plays rewarded adverts at all. */
+    val ads: Boolean get() = false
+
+    /** A rewarded advert is loaded and can play right away. */
+    val adReady: Boolean get() = false
+
+    /** Plays a rewarded advert; [done] hears true when the player watched it to the reward. */
+    fun showAd(done: (Boolean) -> Unit) = done(false)
 }
 
 /** A notification for later: on [day] (days since 1970) at [minute] past midnight, phone time. */
@@ -98,6 +107,12 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
 
     /** What the phone answers when asked for notifications. */
     var allowsReminders = true
+
+    /** Adverts: whether the build has them, one is loaded, and the player watches it through. */
+    override var ads = false
+    override var adReady = true
+    var adWatched = true
+    var adsShown = 0
     var reminders: List<Reminder> = emptyList()
         private set
     var track: Track? = null
@@ -171,5 +186,10 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
 
     override fun planReminders(reminders: List<Reminder>) {
         this.reminders = reminders
+    }
+
+    override fun showAd(done: (Boolean) -> Unit) {
+        adsShown++
+        done(adWatched)
     }
 }

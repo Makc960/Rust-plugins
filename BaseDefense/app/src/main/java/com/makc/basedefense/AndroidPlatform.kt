@@ -30,13 +30,14 @@ import java.util.concurrent.atomic.AtomicIntegerArray
 
 /**
  * Sound through SoundPool and MediaPlayer (effects and music are synthesized once
- * into WAV files), vibration, saves, the date, the [Store] and the [Notices].
+ * into WAV files), vibration, saves, the date, the [Store], the [Notices] and the [Adverts].
  * [askNotifications] asks the player to allow notifications and hears the answer.
  */
 class AndroidPlatform(
     context: Context,
     private val store: Store,
     private val notices: Notices,
+    private val adverts: Adverts,
     private val askNotifications: ((Boolean) -> Unit) -> Unit,
 ) : Platform {
     private val app = context.applicationContext
@@ -192,6 +193,12 @@ class AndroidPlatform(
     override fun allowReminders(done: (Boolean) -> Unit) = askNotifications(done)
 
     override fun planReminders(reminders: List<Reminder>) = notices.plan(reminders)
+
+    override val ads: Boolean get() = adverts.enabled
+
+    override val adReady: Boolean get() = adverts.ready
+
+    override fun showAd(done: (Boolean) -> Unit) = adverts.show(done)
 
     override fun openUrl(url: String) {
         try {

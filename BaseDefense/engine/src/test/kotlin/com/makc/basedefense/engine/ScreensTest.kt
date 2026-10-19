@@ -542,6 +542,62 @@ class ScreensTest {
     }
 
     @Test
+    fun advertsSaveABattleAndBringRewards() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.ads = true
+        val g = game(tall, platform)
+        g.profile.tips = false
+        g.startCampaign(Levels.all[0], Difficulty.NORMAL, false)
+        run(g, 0.5f)
+        val w = g.play.world!!
+        w.callWave()
+        run(g, 2f)
+        w.lives = 0
+        runUntil(g, tall, 4f) { has(g, tall, "revive") }
+        shot(g, tall, "tall_a5_revive")
+        press(g, tall, "revive")
+        assertEquals(1, platform.adsShown)
+        assertEquals(Phase.RUNNING, w.phase, "the reserves came and the fight goes on")
+        assertEquals(Ads.REVIVE_LIVES, w.lives)
+        assertTrue(w.revived)
+
+        // The second fall is the end: the results offer the season points again instead.
+        w.lives = 0
+        runUntil(g, tall, 4f) { has(g, tall, "levels") }
+        assertTrue(!has(g, tall, "revive"))
+        val before = g.profile.seasonXp(platform.today())
+        shot(g, tall, "tall_a6_double_season")
+        press(g, tall, "doubleSeason")
+        assertEquals(2, platform.adsShown)
+        assertEquals(before + Season.xp(Mode.CAMPAIGN, false, 0), g.profile.seasonXp(platform.today()))
+        assertTrue(!has(g, tall, "doubleSeason"), "once a battle")
+
+        // An advert a day brings an upgrade point; a video not watched through brings nothing.
+        g.go(Screen.PERKS)
+        run(g, 1f)
+        val points = g.profile.freePoints
+        platform.adWatched = false
+        press(g, tall, "adPoint")
+        assertEquals(points, g.profile.freePoints)
+        platform.adWatched = true
+        shot(g, tall, "tall_a7_ad_point")
+        press(g, tall, "adPoint")
+        assertEquals(points + Ads.DAILY_POINTS, g.profile.freePoints)
+        assertTrue(!has(g, tall, "adPoint"), "once a day")
+        platform.day++
+        assertTrue(has(g, tall, "adPoint"), "and again the next day")
+
+        // VIP sees no adverts, and neither does anyone after a day's worth.
+        g.profile.grantVip(platform.today() + 30)
+        assertTrue(!has(g, tall, "adPoint"))
+        platform.day += 31
+        assertTrue(has(g, tall, "adPoint"), "VIP is over")
+        repeat(Ads.PER_DAY) { g.profile.countAd(platform.today()) }
+        assertTrue(!has(g, tall, "adPoint"))
+    }
+
+    @Test
     fun theWeeklyOperation() {
         val platform = SilentPlatform()
         unlockAll(platform)

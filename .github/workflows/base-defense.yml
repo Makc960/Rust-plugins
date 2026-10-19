@@ -59,9 +59,11 @@ jobs:
           UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
           UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
           UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+          # The rewarded video unit from the Yandex Advertising Network (a repository variable); unset, no adverts.
+          REWARDED_AD_UNIT: ${{ vars.YANDEX_REWARDED_AD_UNIT }}
         run: |
           echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
-          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore
+          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore -PrewardedAdUnit="$REWARDED_AD_UNIT"
           cp app/build/outputs/apk/release/app-release.apk BaseDefense-RuStore.apk
           rm "$RUNNER_TEMP/upload.jks"
           # RuStore keeps the first upload's certificate for good; show which one this APK carries.
@@ -122,5 +124,6 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # With Yandex's test unit, so the advert code is built the way a real unit builds it.
       - name: Build a RuStore APK
-        run: ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore
+        run: ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore -PrewardedAdUnit=demo-rewarded-yandex

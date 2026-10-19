@@ -651,7 +651,16 @@ internal class Menus(private val game: Game) {
         }
         ui.endScroll(g, Screen.PERKS.name)
         val by = ui.h - ui.bottom - bottomH + d(10f)
-        ui.button(g, "respec", x, by, w, d(44f), Tx.RESPEC.t, Style.GHOST, profile.spent > 0, size = 14f, icon = Icon.UNDO) { profile.resetPerks() }
+        // Once a day an advert brings a point, for players without VIP.
+        val adPoint = game.adsOffered && !profile.adPointTaken(game.today)
+        val rw = if (adPoint) (w - d(10f)) / 2f else w
+        ui.button(g, "respec", x, by, rw, d(44f), Tx.RESPEC.t, Style.GHOST, profile.spent > 0, size = 14f, icon = Icon.UNDO) { profile.resetPerks() }
+        if (adPoint) {
+            val label = if (game.adReady) Tx.AD_POINT.f(Ads.DAILY_POINTS) else Tx.AD_WAIT.t
+            ui.button(g, "adPoint", x + rw + d(10f), by, rw, d(44f), label, Style.PRIMARY, game.adReady, size = 14f, icon = Icon.VIDEO) {
+                game.watchAd { profile.takeAdPoint(game.today) }
+            }
+        }
     }
 
     // --- achievements ---------------------------------------------------------------------

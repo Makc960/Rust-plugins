@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
         store = Stores.create(this)
         // A payment app may have opened the game to say how a payment went.
         if (savedInstanceState == null) store.handleIntent(intent)
-        platform = AndroidPlatform(this, store, Notices(this), ::askNotifications)
+        platform = AndroidPlatform(this, store, Notices(this), Advertising.create(this), ::askNotifications)
         // The intro plays when the game opens, not when Android brings it back.
         game = Game(platform, showIntro = savedInstanceState == null)
         view = GameView(this, game)

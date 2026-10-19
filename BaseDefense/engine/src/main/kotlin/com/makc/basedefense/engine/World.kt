@@ -281,6 +281,10 @@ class World(
     var reserveUsed = false
         private set
 
+    /** An advert already brought the reserves back once this battle. */
+    var revived = false
+        private set
+
     val enemies = ArrayList<Enemy>()
     val towers = ArrayList<Tower>()
     val projectiles = ArrayList<Projectile>()
@@ -474,12 +478,25 @@ class World(
     /** VIP's second chance: the base holds with a few fresh lives. */
     private fun callReserve() {
         reserveUsed = true
-        lives = min(maxLives, Vip.RESERVE_LIVES)
+        reinforce(Vip.RESERVE_LIVES, L("Второй шанс VIP: +%d жизней", "VIP second chance: +%d lives"))
+    }
+
+    /** A lost battle goes on after an advert, with a few fresh lives; once a battle. */
+    fun revive(): Boolean {
+        if (phase != Phase.LOST || revived) return false
+        revived = true
+        phase = Phase.RUNNING
+        reinforce(Ads.REVIVE_LIVES, L("Второй шанс: +%d жизней", "Second chance: +%d lives"))
+        return true
+    }
+
+    private fun reinforce(fresh: Int, sub: L) {
+        lives = min(maxLives, fresh)
         val bx = map.baseCol + 0.5f
         val by = map.baseRow + 0.5f
         rings += Ring(bx, by, 1.8f, 0.9f, 0.9f, GOLD)
         texts += FloatText(bx, by - 0.4f, "+$lives", GOLD, 1.6f, 1.4f)
-        banner = Banner({ L("РЕЗЕРВ ВСТУПИЛ В БОЙ", "RESERVES ARRIVE").t }, { L("Второй шанс VIP: +%d жизней", "VIP second chance: +%d lives").f(Vip.RESERVE_LIVES) }, GOLD, 3f)
+        banner = Banner({ L("РЕЗЕРВ ВСТУПИЛ В БОЙ", "RESERVES ARRIVE").t }, { sub.f(fresh) }, GOLD, 3f)
         shake = max(shake, 0.3f)
         sound(Sfx.REPAIR, 1f)
     }
@@ -2189,6 +2206,7 @@ class World(
         put("cool", *cooldowns.toTypedArray())
         put("weather", weather, weatherWait, lavaWait)
         if (reserveUsed) put("reserve", 1)
+        if (revived) put("revived", 1)
         if (clearedCells.isNotEmpty()) put("cleared", *clearedCells.toTypedArray())
         for ((w, n) in remaining) put("remain", w, n)
         for (t in towers) {
@@ -2266,6 +2284,7 @@ class World(
                 }
                 "remain" -> remaining[i(0)] = i(1)
                 "reserve" -> reserveUsed = true
+                "revived" -> revived = true
                 "tower" -> {
                     val t = Tower(TowerType.valueOf(f[0]), i(1), i(2))
                     t.level = i(3)

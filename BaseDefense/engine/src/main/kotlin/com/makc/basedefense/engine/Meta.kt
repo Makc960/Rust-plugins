@@ -117,6 +117,20 @@ enum class Stat {
     PASS_POINTS,
 
     TITAN_KILLS,
+
+    /** Upgrade points from watching adverts. */
+    AD_POINTS,
+}
+
+/** Rewarded adverts, offered only to players without VIP: what they give and how many a day. */
+object Ads {
+    const val PER_DAY = 6
+
+    /** Lives the reserves bring when an advert saves a lost battle, once a battle. */
+    const val REVIVE_LIVES = Vip.RESERVE_LIVES
+
+    /** Upgrade points one advert a day gives. */
+    const val DAILY_POINTS = 1
 }
 
 /** What the VIP subscription gives; the rules and the comparison screen both read it here. */
