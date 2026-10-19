@@ -338,6 +338,28 @@ object Tx {
     val WEEKLY_MEDAL = L("Медаль: %s", "Medal: %s")
     val POINTS_GAINED = L("Очки улучшений: +%d", "Upgrade points: +%d")
 
+    // Season pass
+    val PASS = L("ПРОПУСК СЕЗОНА", "SEASON PASS")
+    val PASS_BADGE = L("СЕЗОН · %d", "SEASON · %d")
+    val PASS_SEASON = L("Сезон «%s»", "The %s season")
+    val PASS_DAYS = L("До конца сезона: %d дн.", "%d days left in the season")
+    val PASS_TIER_TAG = L("УРОВЕНЬ %d", "TIER %d")
+    val PASS_FREE = L("Бесплатно", "Free")
+    val PASS_PREMIUM = L("Премиум", "Premium")
+    val PASS_BUY = L("ОТКРЫТЬ ПРЕМИУМ", "GET PREMIUM")
+    val PASS_BUY_TEXT = L("Награда на каждом уровне: дни VIP, опыт командиров, городской камуфляж", "A reward on every tier: VIP days, commanders' service, the urban camouflage")
+    val PASS_ON = L("ПРЕМИУМ ОТКРЫТ", "PREMIUM ON")
+    val PASS_HOW = L("Очки сезона дают любые бои; у VIP их на 50% больше", "Every battle brings season points; VIP gets 50% more")
+    val PASS_TAKE = L("ЗАБРАТЬ", "TAKE")
+    val PASS_CLAIMED = L("Награда получена", "Reward received")
+    val REWARD_POINTS = L("очки улучшений", "upgrade points")
+    val REWARD_SERVICE = L("опыт командира", "commander's service")
+    val REWARD_VIP = L("на %d дн.", "for %d days")
+    val REWARD_CAMO = L("камуфляж", "camouflage")
+    val SEASON_XP = L("Очки сезона: +%d", "Season points: +%d")
+    val PASS_TIER = L("Уровень пропуска: %d", "Pass tier: %d")
+    val VIP_ROW_SEASON = L("Очки сезона", "Season points")
+
     // Looks
     val WARDROBE = L("ОБЛИКИ", "LOOKS")
     val WARDROBE_BTN = L("Облики", "Looks")

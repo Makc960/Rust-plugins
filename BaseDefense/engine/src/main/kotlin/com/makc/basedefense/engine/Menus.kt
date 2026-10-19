@@ -5,6 +5,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /** Every screen outside the battle. */
 internal class Menus(private val game: Game) {
@@ -156,6 +157,7 @@ internal class Menus(private val game: Game) {
         ui.tape(g, Tx.TITLE_2.t, cx, ty + big * 0.8f, ui.fit(g, Tx.TITLE_2.t, big * 0.9f, maxW - big, Font.DISPLAY), -3f)
         ui.textMid(g, Tx.TAGLINE.t.uppercase(), cx, ty + big * 1.82f, d(12f), Ui.DIM, maxW = maxW)
         if (game.shop != Shop.NONE || game.vip) vipBadge(g)
+        passBadge(g)
 
         val saved = savedBattle()
         val bottomRow = ui.h - ui.bottom - d(128f)
@@ -230,7 +232,7 @@ internal class Menus(private val game: Game) {
                     else -> open(Screen.SETTINGS)
                 }
             }
-            ui.textMid(g, item.second, x + iconW / 2f, bottomRow + d(70f), d(11f), Ui.DIM, maxW = iconW + gapX)
+            ui.textMid(g, item.second, x + iconW / 2f, bottomRow + d(70f), d(11f), Ui.DIM, maxW = iconW + d(2f))
         }
         val fy = ui.h - ui.bottom - d(24f)
         val record = if (profile.bestEndless > 0) Tx.BEST_WAVES.f(profile.bestEndless) else null
@@ -951,6 +953,7 @@ internal class Menus(private val game: Game) {
             Triple(Tx.VIP_ROW_DAILY.t, "1", "${Vip.DAILY_POINTS}"),
             Triple(Tx.VIP_ROW_GIFT.t, "—", "+${Vip.DAILY_GIFT}"),
             Triple(Tx.VIP_ROW_PARADE.t, "—", null),
+            Triple(Tx.VIP_ROW_SEASON.t, "—", "+${percent(Season.VIP_XP)}%"),
             Triple(Tx.VIP_ROW_CROWN.t, "—", null),
         )
     }
@@ -1158,6 +1161,155 @@ internal class Menus(private val game: Game) {
         return ph
     }
 
+    // --- season pass ----------------------------------------------------------------------
+
+    /** The season pass in the menu's left corner: its tier, and a light while a reward waits. */
+    private fun passBadge(g: Gfx) {
+        val today = game.today
+        val label = Tx.PASS_BADGE.f(profile.seasonTier(today))
+        val bh = d(32f)
+        val bw = d(44f) + g.textWidth(label, d(13f), Font.DISPLAY)
+        val bx = d(12f)
+        val top = ui.top + d(8f)
+        ui.area("pass", bx, top, bw, bh) { openPass() }
+        val by = top + if (ui.down("pass")) d(2f) else 0f
+        ui.chamfer(g, bx, by, bw, bh, d(7f), Ui.EDGE)
+        ui.chamfer(g, bx + d(1f), by + d(1f), bw - d(2f), bh - d(2f), d(7f), Ui.BAND)
+        ui.outline(g, bx + d(2.5f), by + d(2.5f), bw - d(5f), bh - d(5f), d(6f), Ui.ACCENT, d(1.5f))
+        ui.icon(g, Icon.DIAMOND, bx + d(19f), by + bh / 2f, d(16f), Ui.ACCENT)
+        ui.textMid(g, label, bx + d(32f), by + bh / 2f, d(13f), Ui.TEXT, Align.LEFT, font = Font.DISPLAY)
+        if (profile.unclaimed(today) > 0) {
+            g.fillCircle(bx + bw - d(3f), by + d(3f), d(7f), Ui.EDGE)
+            g.fillCircle(bx + bw - d(3f), by + d(3f), d(5f), Colors.mix(Ui.ACCENT, Ui.GOLD, 0.5f + 0.5f * sin(clock * 5f)))
+        }
+    }
+
+    private fun openPass() {
+        open(Screen.PASS)
+        ui.scrollTo(Screen.PASS.name, max(0, profile.seasonTier(game.today) - 2) * passRow)
+    }
+
+    fun pass(g: Gfx) {
+        val top = ui.header(g, Tx.PASS.t) { game.go(returnTo()) }
+        val today = game.today
+        val shop = game.shop
+        val busy = clock - vipBusyAt < VIP_WAIT
+        val premium = profile.passPremium(today)
+        val x = d(14f)
+        val w = ui.w - d(28f)
+        val cx = ui.w / 2f
+
+        // Above the list: the season, the tier reached and the premium track.
+        val buyH = if (!premium && shop != Shop.NONE) d(88f) else if (premium) d(34f) else 0f
+        val headH = d(112f) + buyH
+        ui.panel(g, x, top + d(2f), w, headH - d(8f), Ui.ACCENT)
+        var y = top + d(26f)
+        ui.textMid(g, Tx.PASS_SEASON.f(Season.name(Season.of(today)).t).uppercase(), cx, y, d(17f), Ui.ACCENT, maxW = w - d(24f), font = Font.DISPLAY)
+        y += d(20f)
+        ui.textMid(g, Tx.PASS_DAYS.f(Season.daysLeft(today)), cx, y, d(11.5f), Ui.DIM, maxW = w - d(24f))
+        y += d(22f)
+        val tier = profile.seasonTier(today)
+        val tagW = ui.tag(g, Tx.PASS_TIER_TAG.f(tier), x + d(16f), y + d(6f), d(12f), Ui.ACCENT)
+        val xp = profile.seasonXp(today)
+        val inTier = if (tier >= Season.TIERS) Season.XP_PER_TIER else xp - tier * Season.XP_PER_TIER
+        val count = "$inTier / ${Season.XP_PER_TIER}"
+        val countW = g.textWidth(count, d(11f))
+        val barX = x + d(16f) + tagW + d(10f)
+        ui.bar(g, barX, y + d(2f), x + w - d(16f) - countW - d(8f) - barX, d(9f), inTier / Season.XP_PER_TIER.toFloat(), Ui.ACCENT)
+        ui.textMid(g, count, x + w - d(16f), y + d(6f), d(11f), Ui.DIM, Align.RIGHT)
+        y += d(22f)
+        ui.textMid(g, Tx.PASS_HOW.t, cx, y, d(10.5f), Ui.DIM, maxW = w - d(24f), font = Font.BODY)
+        y += d(14f)
+        if (premium) {
+            ui.tag(g, Tx.PASS_ON.t, cx - (g.textWidth(Tx.PASS_ON.t, d(13f), Font.DISPLAY) + d(13f)) / 2f, y + d(12f), d(13f), Ui.GOLD)
+        } else if (shop != Shop.NONE) {
+            ui.paragraph(g, Tx.PASS_BUY_TEXT.t, cx, y, w - d(32f), d(10.5f), Ui.TEXT, Align.CENTER)
+            val sub = if (shop == Shop.HERE) Tx.PRICE.f(Product.PASS.rubles) else Tx.VIP_ELSEWHERE.t
+            ui.button(g, "passbuy", x + d(14f), y + d(30f), w - d(28f), d(46f), Tx.PASS_BUY.t, Style.PRIMARY, shop == Shop.HERE && !busy, size = 15f, icon = Icon.DIAMOND, sub = sub) {
+                buy(Product.PASS)
+            }
+        }
+
+        // The tiers, each with its free and premium rewards.
+        val listTop = top + headH
+        val viewH = ui.h - ui.bottom - listTop
+        val content = d(30f) + Season.TIERS * passRow + d(12f)
+        val off = ui.beginScroll(g, Screen.PASS.name, 0f, listTop, ui.w, viewH, content)
+        y = listTop - off
+        val tierW = d(40f)
+        val cellW = (w - tierW - d(8f)) / 2f
+        ui.caption(g, Tx.PASS_FREE.t, x + tierW + d(4f), y + d(18f))
+        ui.caption(g, Tx.PASS_PREMIUM.t, x + tierW + cellW + d(12f), y + d(18f), Ui.GOLD)
+        y += d(30f)
+        for (t in 1..Season.TIERS) {
+            val reached = t <= tier
+            g.fillCircle(x + tierW / 2f, y + passRow / 2f - d(4f), d(16f), if (reached) Ui.ACCENT else Ui.PANEL_DARK)
+            ui.textMid(g, "$t", x + tierW / 2f, y + passRow / 2f - d(4f), d(13f), if (reached) Ui.DARK_TEXT else Ui.DIM, font = Font.DISPLAY)
+            rewardCell(g, t, false, x + tierW + d(4f), y, cellW, passRow - d(8f))
+            rewardCell(g, t, true, x + tierW + cellW + d(8f), y, cellW, passRow - d(8f))
+            y += passRow
+        }
+        ui.endScroll(g, Screen.PASS.name)
+    }
+
+    /** One reward: what it is, and whether it can be taken, was taken or waits for its tier or for premium. */
+    private fun rewardCell(g: Gfx, tier: Int, premium: Boolean, x: Float, y: Float, w: Float, h: Float) {
+        val today = game.today
+        val reward = if (premium) Season.premium(tier) else Season.free(tier)
+        if (reward == null) {
+            ui.chamfer(g, x, y, w, h, d(6f), Colors.alpha(Ui.PANEL_DARK, 0.5f))
+            return
+        }
+        val ready = profile.claimable(today, tier, premium)
+        val taken = profile.claimed(today, tier, premium)
+        val reached = tier <= profile.seasonTier(today)
+        val locked = premium && !profile.passPremium(today)
+        val id = "claim${if (premium) "P" else "F"}$tier"
+        if (ready) {
+            ui.area(id, x, y, w, h) {
+                if (profile.claim(today, tier, premium)) {
+                    game.sound(Sfx.ACHIEVEMENT, 0.6f)
+                    game.toast(Tx.PASS_CLAIMED.t, Icon.DIAMOND)
+                }
+            }
+        }
+        val sink = if (ready && ui.down(id)) d(2f) else 0f
+        val face = when {
+            ready -> Ui.ACCENT
+            premium -> Ui.PANEL_LIGHT
+            else -> Ui.PANEL
+        }
+        ui.chamfer(g, x, y + sink, w, h, d(6f), Ui.EDGE)
+        ui.chamfer(g, x + d(1.5f), y + d(1.5f) + sink, w - d(3f), h - d(3f), d(5f), Colors.alpha(face, if (reached || ready) 1f else 0.55f))
+        val ink = if (ready) Ui.DARK_TEXT else if (reached) Ui.TEXT else Ui.DIM
+        val icon = when (reward.kind) {
+            RewardKind.POINTS -> Icon.STAR
+            RewardKind.SERVICE -> Icon.COMMANDER
+            RewardKind.VIP_DAYS -> Icon.CROWN
+            RewardKind.CAMO -> Icon.BRUSH
+        }
+        ui.icon(g, icon, x + d(18f), y + h / 2f + sink, d(18f), if (ready) Ui.DARK_TEXT else if (premium) Ui.GOLD else Ui.ACCENT)
+        val value = when (reward.kind) {
+            RewardKind.POINTS, RewardKind.SERVICE -> "+${reward.amount}"
+            RewardKind.VIP_DAYS -> Tx.VIP.t
+            RewardKind.CAMO -> Camo.URBAN.title.t
+        }
+        val caption = when (reward.kind) {
+            RewardKind.POINTS -> Tx.REWARD_POINTS.t
+            RewardKind.SERVICE -> Tx.REWARD_SERVICE.t
+            RewardKind.VIP_DAYS -> Tx.REWARD_VIP.f(reward.amount)
+            RewardKind.CAMO -> Tx.REWARD_CAMO.t
+        }
+        val tx = x + d(34f)
+        val tw = w - d(40f)
+        ui.text(g, value, tx, y + h / 2f - d(1f) + sink, d(14f), ink, maxW = tw, font = Font.DISPLAY)
+        ui.text(g, if (ready) Tx.PASS_TAKE.t else caption, tx, y + h / 2f + d(13f) + sink, d(9.5f), ink, maxW = tw, font = if (ready) Font.DISPLAY else Font.BODY)
+        when {
+            taken -> ui.icon(g, Icon.CHECK, x + w - d(13f), y + d(13f), d(14f), Ui.GREEN)
+            locked -> ui.lock(g, x + w - d(13f), y + d(13f), d(12f), Ui.DIM)
+        }
+    }
+
     // --- looks --------------------------------------------------------------------------
 
     private var wardrobeBottom = 0f
@@ -1294,6 +1446,8 @@ internal class Menus(private val game: Game) {
         }
         return d(48f)
     }
+
+    private val passRow: Float get() = d(62f)
 
     private companion object {
         /** Seconds the store gets to answer before the VIP buttons work again. */

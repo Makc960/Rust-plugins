@@ -93,6 +93,10 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     /** Upgrade points a weekly operation's medals brought. */
     private var resultPoints = 0
 
+    /** Season points the battle brought, and the pass's new tier if it went up. */
+    private var resultSeason = 0
+    private var resultTier = 0
+
     private class Card(val kind: L, val title: String, val text: String, val stats: List<String> = emptyList(), val icon: (Gfx, Float, Float, Float) -> Unit)
 
     private val cards = ArrayList<Card>()
@@ -159,6 +163,8 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         resultService = 0
         resultRankUp = 0
         resultPoints = 0
+        resultSeason = 0
+        resultTier = 0
         reviewAt = -1f
         flushed = false
         cards.clear()
@@ -318,6 +324,14 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             resultService = Ranks.earned(hero, won)
             resultRankUp = profile.addService(hero.type, resultService)
         }
+        val score = when (s.mode) {
+            Mode.CAMPAIGN, Mode.WEEKLY -> resultStars
+            Mode.ENDLESS -> max(0, wd.wavesStarted - 1)
+            else -> 0
+        }
+        val tierBefore = profile.seasonTier(game.today)
+        resultSeason = Season.xp(s.mode, won, score).let { if (it > 0) profile.addSeasonXp(game.today, it, s.vip) else 0 }
+        resultTier = profile.seasonTier(game.today).takeIf { it > tierBefore } ?: 0
         profile.save = null
         resultAchievements = profile.checkAchievements()
         if (resultAchievements.isNotEmpty()) game.sound(Sfx.ACHIEVEMENT, 0.8f)
@@ -1560,6 +1574,8 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             lines += Tx.RANK_UP.f(resultRankUp) to Ui.GOLD
             RankPerk.at(resultRankUp)?.let { lines += it.text(hero.type) to Ui.GOLD }
         }
+        if (resultSeason > 0) lines += Tx.SEASON_XP.f(resultSeason) to Ui.TEXT
+        if (resultTier > 0) lines += Tx.PASS_TIER.f(resultTier) to Ui.GOLD
         // After a defeat, what VIP's second chance would have done.
         val offerVip = !won && s.mode != Mode.TUTORIAL && game.shop != Shop.NONE && !s.vip
         val achievements = resultAchievements.take(3)

@@ -72,7 +72,7 @@ private class RuStore(private val app: Context) : Store {
         }
     }
 
-    /** Asks for the subscription, then for what was bought once, and answers with both. */
+    /** Asks for the subscription, then for what was bought once, then for season passes, and answers with all. */
     override fun check(done: (Purchases?) -> Unit) {
         try {
             client.getPurchaseInteractor()
@@ -81,7 +81,13 @@ private class RuStore(private val app: Context) : Store {
                     val until = subscriptions.filterIsInstance<SubscriptionPurchase>()
                         .filter { it.productId.value == Product.VIP_MONTH.id && it.status == SubscriptionPurchaseStatus.ACTIVE }
                         .maxOfOrNull { lastDay(it.expirationDate) }
-                    owned { bought -> main.post { done(if (bought == null) null else Purchases(until, bought)) } }
+                    owned { bought ->
+                        if (bought == null) {
+                            main.post { done(null) }
+                        } else {
+                            passes { days -> main.post { done(Purchases(until, bought, days)) } }
+                        }
+                    }
                 }
                 .addOnFailureListener { main.post { done(null) } }
         } catch (e: RuntimeException) {
@@ -104,6 +110,25 @@ private class RuStore(private val app: Context) : Store {
                 .addOnFailureListener { done(null) }
         } catch (e: RuntimeException) {
             done(null)
+        }
+    }
+
+    /** The days season passes were bought on; the game counts the one of this month. */
+    private fun passes(done: (List<Int>) -> Unit) {
+        try {
+            client.getPurchaseInteractor()
+                .getPurchases(ProductType.CONSUMABLE_PRODUCT)
+                .addOnSuccessListener { purchases ->
+                    done(
+                        purchases.filterIsInstance<ProductPurchase>()
+                            .filter { it.productId.value == Product.PASS.id }
+                            .filter { it.status == ProductPurchaseStatus.CONFIRMED || it.status == ProductPurchaseStatus.PAID }
+                            .mapNotNull { p -> p.purchaseTime?.let { day(it) } },
+                    )
+                }
+                .addOnFailureListener { done(emptyList()) }
+        } catch (e: RuntimeException) {
+            done(emptyList())
         }
     }
 
@@ -171,6 +196,7 @@ private class RuStore(private val app: Context) : Store {
     private fun today(): Int = LocalDate.now().toEpochDay().toInt()
 
     /** The day [date] falls on here, or a month from now when the store does not say. */
-    private fun lastDay(date: Date?): Int =
-        date?.toInstant()?.atZone(ZoneId.systemDefault())?.toLocalDate()?.toEpochDay()?.toInt() ?: (today() + Vip.DAYS)
+    private fun lastDay(date: Date?): Int = date?.let { day(it) } ?: (today() + Vip.DAYS)
+
+    private fun day(date: Date): Int = date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay().toInt()
 }

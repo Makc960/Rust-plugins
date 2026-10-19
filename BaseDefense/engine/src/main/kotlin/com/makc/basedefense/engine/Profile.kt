@@ -1,6 +1,7 @@
 package com.makc.basedefense.engine
 
 import kotlin.math.max
+import kotlin.math.min
 
 /** The player's settings and progress, kept in the phone's preferences. */
 class Profile(private val p: Platform) {
@@ -95,7 +96,9 @@ class Profile(private val p: Platform) {
     val perks: Perks get() = Perks.decode(Perk.entries.joinToString(".") { perk(it).toString() })
 
     /** Stars, hard wins, medals and daily wins all count, VIP's gifts and points bought in the starter pack. */
-    val points: Int get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS) + stat(Stat.VIP_POINTS) + stat(Stat.WEEKLY_POINTS) + boughtPoints
+    val points: Int
+        get() = totalStars + hardWins + medals + stat(Stat.DAILY_WINS) + stat(Stat.VIP_POINTS) + stat(Stat.WEEKLY_POINTS) +
+            stat(Stat.PASS_POINTS) + boughtPoints
 
     /** Upgrade points from purchases; resetting progress keeps them. */
     val boughtPoints: Int get() = p.getInt("bought_points", 0)
@@ -228,6 +231,10 @@ class Profile(private val p: Platform) {
 
     /** Hands over what [product] gives, once; buying the subscription goes through [grantVip] instead. */
     fun grant(product: Product) {
+        if (product == Product.PASS) {
+            p.putInt("pass_season", Season.of(p.today()))
+            return
+        }
         if (product.subscription || owned(product)) return
         p.putInt("own_${product.id}", 1)
         when (product) {
@@ -290,6 +297,54 @@ class Profile(private val p: Platform) {
     val battleCamo: Camo get() = camo.takeIf { camoOpen(it) } ?: Camo.FIELD
 
     fun battleOutfit(commander: CommanderType): Camo = outfit(commander).takeIf { outfitOpen(commander, it) } ?: Camo.FIELD
+
+    // --- season pass ----------------------------------------------------------------------
+
+    /** Season points earned this month. */
+    fun seasonXp(today: Int): Int = if (p.getInt("pass_xp_season", -1) == Season.of(today)) p.getInt("pass_xp", 0) else 0
+
+    fun seasonTier(today: Int): Int = min(Season.TIERS, seasonXp(today) / Season.XP_PER_TIER)
+
+    /** Adds a battle's season points, half again with VIP; gives how many were added. */
+    fun addSeasonXp(today: Int, xp: Int, vip: Boolean): Int {
+        val add = if (vip) (xp * Season.VIP_XP).toInt() else xp
+        p.putInt("pass_xp", seasonXp(today) + add)
+        p.putInt("pass_xp_season", Season.of(today))
+        return add
+    }
+
+    /** The premium track is bought for this month. */
+    fun passPremium(today: Int): Boolean = p.getInt("pass_season", -1) == Season.of(today)
+
+    private fun claimKey(today: Int, premium: Boolean) = "pass_${if (premium) "paid" else "free"}_${Season.of(today)}"
+
+    fun claimed(today: Int, tier: Int, premium: Boolean): Boolean = p.getInt(claimKey(today, premium), 0) and (1 shl (tier - 1)) != 0
+
+    /** Whether [tier]'s reward on that track is there to take now. */
+    fun claimable(today: Int, tier: Int, premium: Boolean): Boolean {
+        val reward = if (premium) Season.premium(tier) else Season.free(tier)
+        return reward != null && tier <= seasonTier(today) && !claimed(today, tier, premium) && (!premium || passPremium(today))
+    }
+
+    /** Hands over a reached tier's reward, once; false when it is not there to take. */
+    fun claim(today: Int, tier: Int, premium: Boolean): Boolean {
+        if (!claimable(today, tier, premium)) return false
+        val reward = (if (premium) Season.premium(tier) else Season.free(tier)) ?: return false
+        val key = claimKey(today, premium)
+        p.putInt(key, p.getInt(key, 0) or (1 shl (tier - 1)))
+        when (reward.kind) {
+            RewardKind.POINTS -> addStat(Stat.PASS_POINTS, reward.amount)
+            RewardKind.SERVICE -> addService(battleCommander, reward.amount)
+            RewardKind.VIP_DAYS -> grantVip(max(vipUntil, today - 1) + reward.amount)
+            RewardKind.CAMO -> if (camoOpen(Camo.URBAN)) addStat(Stat.PASS_POINTS, Season.CAMO_POINTS) else grantCamo(Camo.URBAN)
+        }
+        return true
+    }
+
+    /** Rewards reached and not yet taken, on both tracks. */
+    fun unclaimed(today: Int): Int = (1..Season.TIERS).sumOf { t ->
+        (if (claimable(today, t, false)) 1 else 0) + (if (claimable(today, t, true)) 1 else 0)
+    }
 
     // --- pop-ups --------------------------------------------------------------------------
 

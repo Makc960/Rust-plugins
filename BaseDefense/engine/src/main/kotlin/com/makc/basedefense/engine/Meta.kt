@@ -112,6 +112,9 @@ enum class Stat {
     /** Upgrade points from weekly operations' medals, and gold medals won. */
     WEEKLY_POINTS,
     WEEKLY_GOLD,
+
+    /** Upgrade points from season pass rewards. */
+    PASS_POINTS,
 }
 
 /** What the VIP subscription gives; the rules and the comparison screen both read it here. */

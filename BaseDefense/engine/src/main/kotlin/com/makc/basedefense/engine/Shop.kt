@@ -15,8 +15,11 @@ enum class Shop {
 /** How a purchase ended. */
 enum class Payment { PAID, CANCELLED, FAILED }
 
-/** Everything on sale, by its product ID in the RuStore Console; all but VIP are bought once and kept. */
-enum class Product(val id: String, val rubles: Int, val subscription: Boolean = false) {
+/**
+ * Everything on sale, by its product ID in the RuStore Console. VIP by the month is a
+ * subscription, the season pass is bought anew every month, the rest are bought once and kept.
+ */
+enum class Product(val id: String, val rubles: Int, val subscription: Boolean = false, val consumable: Boolean = false) {
     VIP_MONTH("vip_month", 50, subscription = true),
     VIP_FOREVER("vip_forever", 399),
 
@@ -28,6 +31,9 @@ enum class Product(val id: String, val rubles: Int, val subscription: Boolean = 
     /** Camouflage sets: every commander's uniform and the squads' sandbags. */
     SKIN_NIGHT("skin_night", 99),
     SKIN_PARADE("skin_parade", 149),
+
+    /** The premium track of the current month's season pass. */
+    PASS("season_pass", 149, consumable = true),
     ;
 
     companion object {
@@ -42,4 +48,6 @@ class Purchases(
     /** The last day the VIP subscription is paid for (days since 1970), or null. */
     val vipUntil: Int?,
     val owned: Set<Product>,
+    /** Days the season pass was bought on. */
+    val passDays: List<Int> = emptyList(),
 )

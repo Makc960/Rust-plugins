@@ -575,6 +575,31 @@ class ScreensTest {
     }
 
     @Test
+    fun theSeasonPass() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.shop = Shop.HERE
+        platform.putInt("promo_day", platform.today())
+        val g = game(tall, platform)
+        g.profile.addSeasonXp(platform.today(), Season.XP_PER_TIER * 4 + 120, vip = false)
+        run(g, 2f)
+        shot(g, tall, "tall_a7_menu_season")
+        press(g, tall, "pass")
+        assertEquals(Screen.PASS, g.screen)
+        g.ui.scrollTo(Screen.PASS.name, 0f)
+        run(g, 0.1f)
+        shot(g, tall, "tall_a8_pass")
+        press(g, tall, "claimF2")
+        assertTrue(g.profile.claimed(platform.today(), 2, premium = false))
+        press(g, tall, "passbuy", 0.5f)
+        assertTrue(g.profile.passPremium(platform.today()))
+        g.ui.scrollTo(Screen.PASS.name, 0f)
+        run(g, 0.1f)
+        press(g, tall, "claimP1")
+        shot(g, tall, "tall_a9_pass_premium")
+    }
+
+    @Test
     fun commandersInMenusAndBattle() {
         val platform = SilentPlatform()
         for (l in Levels.all) if (l.id <= 8) platform.putInt("stars_${l.id}", 3)

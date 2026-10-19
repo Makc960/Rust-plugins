@@ -3,7 +3,7 @@ package com.makc.basedefense.engine
 import kotlin.math.abs
 import kotlin.math.min
 
-internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS, INTRO, WARDROBE }
+internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS, INTRO, WARDROBE, PASS }
 
 enum class Mode { CAMPAIGN, ENDLESS, DAILY, TUTORIAL, WEEKLY }
 
@@ -124,11 +124,13 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
     /** Asks the store what was paid for, maybe on another phone or after a renewal; [onDone] hears whether it found anything. */
     internal fun checkPurchases(onDone: ((Boolean) -> Unit)? = null) {
         platform.checkPurchases { found ->
+            val pass = found != null && found.passDays.any { Season.of(it) == Season.of(today) }
             if (found != null) {
                 found.vipUntil?.let { profile.grantVip(it) }
                 for (p in found.owned) profile.grant(p)
+                if (pass) profile.grant(Product.PASS)
             }
-            onDone?.invoke(found != null && ((found.vipUntil ?: -1) >= today || found.owned.isNotEmpty()))
+            onDone?.invoke(found != null && ((found.vipUntil ?: -1) >= today || found.owned.isNotEmpty() || pass))
         }
     }
 
@@ -243,6 +245,7 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
             Screen.VIP -> menus.vip(g)
             Screen.COMMANDERS -> menus.commanders(g)
             Screen.WARDROBE -> menus.wardrobe(g)
+            Screen.PASS -> menus.pass(g)
             Screen.PLAY -> play.render(g)
             Screen.INTRO -> intro.render(g)
         }

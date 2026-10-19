@@ -87,6 +87,7 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
     var payment = Payment.PAID
     var vipPaidUntil: Int? = null
     val owned = HashSet<Product>()
+    val passDays = ArrayList<Int>()
 
     /** False makes the store unreachable. */
     var storeAnswers = true
@@ -143,11 +144,15 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
 
     override fun buy(product: Product, done: (Payment, Int) -> Unit) {
         if (payment != Payment.PAID) return done(payment, 0)
-        if (product.subscription) vipPaidUntil = day + 30 else owned += product
+        when {
+            product.subscription -> vipPaidUntil = day + 30
+            product.consumable -> passDays += day
+            else -> owned += product
+        }
         done(payment, if (product.subscription) day + 30 else 0)
     }
 
-    override fun checkPurchases(done: (Purchases?) -> Unit) = done(if (storeAnswers) Purchases(vipPaidUntil, owned.toSet()) else null)
+    override fun checkPurchases(done: (Purchases?) -> Unit) = done(if (storeAnswers) Purchases(vipPaidUntil, owned.toSet(), passDays.toList()) else null)
 
     override fun askReview() {
         reviewsAsked++
