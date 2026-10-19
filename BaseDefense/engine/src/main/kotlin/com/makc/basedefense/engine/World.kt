@@ -108,9 +108,10 @@ class Tower(val type: TowerType, val col: Int, val row: Int) {
     var armed = true
     var timer2 = 0f
 
-    /** Bonuses from radars nearby, worked out every step. */
+    /** Bonuses from radars nearby, worked out every step; [haste] is the engineer's overcharge. */
     var aura = 0f
     var rangeBonus = 0f
+    var haste = 0f
 
     val stats: TowerLevel get() = branch?.stats ?: type.levels[level]
     val canUpgrade: Boolean get() = branch == null && level < type.levels.size - 1
@@ -289,6 +290,7 @@ class World(
     var commander: Commander? = rules.commander?.let { startCommander(it) }
         private set
     val sentries = ArrayList<Sentry>()
+    val traps = ArrayList<Trap>()
 
     var baseFlash = 0f
         private set
@@ -415,6 +417,7 @@ class World(
             for (t in towers) updateTower(t, dt)
             commander?.let { updateCommander(it, dt) }
             updateSentries(dt)
+            updateTraps(dt)
             updateProjectiles(dt)
             updatePatches(dt)
             updateBombs(dt)
@@ -750,6 +753,7 @@ class World(
         for (t in towers) {
             t.aura = 0f
             t.rangeBonus = 0f
+            t.haste = 0f
             if (t.type == TowerType.RADAR && t.jammed <= 0f) radars += t
         }
         if (radars.isEmpty()) {
@@ -776,12 +780,13 @@ class World(
                 e.revealed = seenNow
             }
         }
-        // The commander's rally adds to whatever a radar gives.
+        // The commander's rally adds to whatever a radar gives; the engineer's overcharge speeds them up.
         val c = commander ?: return
-        if (c.rally <= 0f) return
+        if (c.rally <= 0f && c.overcharge <= 0f) return
         for (t in towers) {
             if (t.type.role == Role.SUPPORT || t.type.role == Role.ECONOMY) continue
-            if (near(t.x, t.y, c.x, c.y, RALLY_RADIUS)) t.aura += RALLY_BONUS
+            if (c.rally > 0f && near(t.x, t.y, c.x, c.y, RALLY_RADIUS)) t.aura += RALLY_BONUS
+            if (c.overcharge > 0f && near(t.x, t.y, c.x, c.y, OVERCHARGE_RADIUS)) t.haste = OVERCHARGE_BONUS
         }
     }
 
@@ -1032,7 +1037,7 @@ class World(
         return r
     }
 
-    private fun rateOf(t: Tower): Float = t.stats.rate * (if (blizzard) BLIZZARD_RATE else 1f)
+    private fun rateOf(t: Tower): Float = t.stats.rate * (if (blizzard) BLIZZARD_RATE else 1f) * (1f + t.haste)
 
     fun damageOf(t: Tower): Float = t.stats.damage * rules.damageMul * (1f + t.aura)
 
@@ -1432,24 +1437,27 @@ class World(
     }
 
     fun commanderRange(c: Commander): Float {
-        var r = c.stats.range * rules.rangeMul
+        var r = c.stats.range * rules.rangeMul * rules.heroRangeMul
         if (sandstorm) r *= STORM_RANGE
         return r
     }
 
-    fun commanderDamage(c: Commander): Float = c.stats.damage * rules.damageMul
+    fun commanderDamage(c: Commander): Float = c.stats.damage * rules.damageMul * rules.heroDamageMul
 
-    fun skillCooldown(s: Skill): Float = s.cooldown * rules.cooldownMul
+    fun skillCooldown(s: Skill): Float = s.cooldown * rules.cooldownMul * rules.heroCooldownMul
 
     /** Skills count as abilities: a challenge or a day without abilities switches them off too. */
     val skillsAllowed: Boolean get() = rules.abilitiesAllowed
 
+    /** The third skill needs rank [Ranks.THIRD_SKILL]. */
+    fun skillOpen(k: Int): Boolean = k < rules.heroSkills
+
     fun skillReady(k: Int): Boolean {
         val c = commander ?: return false
-        return skillsAllowed && phase == Phase.RUNNING && c.jammed <= 0f && c.skillCooldowns[k] <= 0f
+        return skillOpen(k) && skillsAllowed && phase == Phase.RUNNING && c.jammed <= 0f && c.skillCooldowns[k] <= 0f
     }
 
-    /** What skill [s] gives at the commander's level: damage, or seconds for the rally and the stun. */
+    /** What skill [s] gives at the commander's level: damage, or seconds for the rally, the stun, the suppression and the overcharge. */
     fun skillPower(c: Commander, s: Skill): Float = when (s) {
         Skill.GRENADE -> GRENADE_DAMAGE * c.power * rules.damageMul
         Skill.RALLY -> RALLY_TIME * c.power
@@ -1457,6 +1465,9 @@ class World(
         Skill.EMP -> EMP_STUN + 0.3f * c.level
         Skill.PIERCE -> PIERCE_DAMAGE * c.power * rules.damageMul
         Skill.BARRAGE -> BARRAGE_DAMAGE * c.power * rules.damageMul
+        Skill.SUPPRESS -> SUPPRESS_TIME * c.power
+        Skill.OVERCHARGE -> OVERCHARGE_TIME * c.power
+        Skill.MINE -> TRAP_DAMAGE * c.power * rules.damageMul
     }
 
     /** Fires the commander's skill [k]; false when it is not ready or has nothing to hit. */
@@ -1471,6 +1482,9 @@ class World(
             Skill.EMP -> emp(c)
             Skill.PIERCE -> pierce(c)
             Skill.BARRAGE -> barrage(c)
+            Skill.SUPPRESS -> suppress(c)
+            Skill.OVERCHARGE -> overcharge(c)
+            Skill.MINE -> mine(c)
         }
         if (done) c.skillCooldowns[k] = skillCooldown(skill)
         return done
@@ -1495,6 +1509,7 @@ class World(
     private fun gainXp(c: Commander, amount: Float, dealt: Boolean = true) {
         if (dealt) c.damageDealt += amount
         c.xp += amount * rules.xpMul
+        c.earned += amount * rules.xpMul
         while (c.level < Commander.MAX_LEVEL && c.xp >= Commander.XP[c.level + 1]) {
             c.level++
             c.promoted = PROMOTED_GLOW
@@ -1509,6 +1524,7 @@ class World(
         if (c.flash > 0f) c.flash -= dt
         if (c.promoted > 0f) c.promoted -= dt
         if (c.rally > 0f) c.rally -= dt
+        if (c.overcharge > 0f) c.overcharge -= dt
         for (k in c.skillCooldowns.indices) if (c.skillCooldowns[k] > 0f) c.skillCooldowns[k] = max(0f, c.skillCooldowns[k] - dt)
         walk(c, dt)
         if (c.jammed > 0f) {
@@ -1726,6 +1742,89 @@ class World(
         return true
     }
 
+    /** Pins down everyone around: slowed for a moment, marked for longer, so every squad hits harder. */
+    private fun suppress(c: Commander): Boolean {
+        val mark = skillPower(c, Skill.SUPPRESS)
+        var hit = 0
+        for (e in enemies) {
+            if (!e.alive || !e.visible || !onMap(e) || !near(e.x, e.y, c.x, c.y, SUPPRESS_RADIUS)) continue
+            e.markTimer = max(e.markTimer, mark)
+            slow(e, SUPPRESS_SLOW * bossK(e), SUPPRESS_SLOW_TIME)
+            if (hit < SUPPRESS_TRACERS) tracers += Tracer(c.x, c.y, e.x, e.y, 0.12f, 1)
+            hit++
+        }
+        if (hit == 0) return false
+        rings += Ring(c.x, c.y, SUPPRESS_RADIUS, 0.5f, 0.5f, RED)
+        texts += FloatText(c.x, c.y - 0.5f, Skill.SUPPRESS.title.t, RED, 1.2f, 1.2f)
+        c.flash = 0.2f
+        sound(Sfx.SHOTGUN, 0.8f)
+        return true
+    }
+
+    private fun overcharge(c: Commander): Boolean {
+        c.overcharge = skillPower(c, Skill.OVERCHARGE)
+        rings += Ring(c.x, c.y, OVERCHARGE_RADIUS, 0.6f, 0.6f, BOLT)
+        for (t in towers) {
+            if (t.type.role == Role.SUPPORT || t.type.role == Role.ECONOMY || !near(t.x, t.y, c.x, c.y, OVERCHARGE_RADIUS)) continue
+            bolt(listOf(c.x, t.x), listOf(c.y, t.y), 0.3f, BOLT)
+        }
+        texts += FloatText(c.x, c.y - 0.5f, Skill.OVERCHARGE.title.t, BOLT, 1.2f, 1.2f)
+        sound(Sfx.ZAP, 0.8f)
+        return true
+    }
+
+    /** On the road nearest to him, within reach; two at most, the older one goes. */
+    private fun mine(c: Commander): Boolean {
+        val reach = commanderRange(c) * TRAP_REACH
+        val p = FloatArray(4)
+        var bx = 0f
+        var by = 0f
+        var best = Float.MAX_VALUE
+        for (path in map.paths) {
+            var d = 0f
+            while (d <= path.length) {
+                path.pointAt(d, p)
+                d += 0.2f
+                if (p[0] < 0.3f || p[1] < 0.3f || p[0] > COLS - 0.3f || p[1] > ROWS - 0.3f) continue
+                val dd = sqrt((p[0] - c.x) * (p[0] - c.x) + (p[1] - c.y) * (p[1] - c.y))
+                if (dd < best) {
+                    best = dd
+                    bx = p[0]
+                    by = p[1]
+                }
+            }
+        }
+        if (best > reach) return false
+        if (traps.size >= MAX_TRAPS) traps.removeAt(0)
+        traps += Trap(bx, by, skillPower(c, Skill.MINE), TRAP_LIFE)
+        c.angle = Math.toDegrees(atan2(by - c.y, bx - c.x).toDouble()).toFloat()
+        puff(bx, by, if (lite) 3 else 6, 0xFFB9A98A.toInt())
+        sound(Sfx.BUILD, 0.6f)
+        return true
+    }
+
+    private fun updateTraps(dt: Float) {
+        if (traps.isEmpty()) return
+        val iter = traps.iterator()
+        while (iter.hasNext()) {
+            val t = iter.next()
+            t.life -= dt
+            if (t.arming > 0f) t.arming -= dt
+            if (t.life <= 0f) {
+                puff(t.x, t.y, 4, 0xFF8A8A8A.toInt())
+                iter.remove()
+                continue
+            }
+            if (t.arming > 0f) continue
+            if (enemies.none { it.alive && !it.type.air && near(it.x, it.y, t.x, t.y, TRAP_TRIGGER + it.type.radius) }) continue
+            iter.remove()
+            explosion(t.x, t.y, TRAP_RADIUS)
+            splash(t.x, t.y, TRAP_RADIUS, t.damage, null, TRAP_BOSS, hero = true)
+            shake = max(shake, 0.35f)
+            sound(Sfx.MINE, 0.9f)
+        }
+    }
+
     // --- projectiles ----------------------------------------------------------------------
 
     private fun updateProjectiles(dt: Float) {
@@ -1936,6 +2035,10 @@ class World(
         phase = Phase.RUNNING
     }
 
+    internal fun winForTest() {
+        phase = Phase.WON
+    }
+
     /** Puts an enemy [dist] cells along a road right away. */
     internal fun spawnForTest(type: EnemyType, dist: Float, path: Int = 0, hpMul: Float = 1f): Enemy {
         val e = spawnEnemy(type, path, hpMul, 0, dist)
@@ -1986,10 +2089,11 @@ class World(
         commander?.let {
             put(
                 "hero", it.type.name, it.x, it.y, it.tx, it.ty, it.level, it.xp, it.cooldown, it.kills, it.damageDealt,
-                it.rally, it.skillCooldowns[0], it.skillCooldowns[1], it.jammed,
+                it.rally, it.skillCooldowns[0], it.skillCooldowns[1], it.jammed, it.overcharge, it.skillCooldowns[2], it.earned,
             )
         }
         for (s in sentries) put("sentry", s.x, s.y, s.life, s.damage, s.cooldown)
+        for (t in traps) put("trap", t.x, t.y, t.damage, t.life, t.arming)
         return sb.toString()
     }
 
@@ -2093,9 +2197,14 @@ class World(
                     c.skillCooldowns[0] = x(11)
                     c.skillCooldowns[1] = x(12)
                     c.jammed = x(13)
+                    // Saved before ranks came along: no overcharge, third skill or service yet.
+                    c.overcharge = f.getOrNull(14)?.toFloatOrNull() ?: 0f
+                    c.skillCooldowns[2] = f.getOrNull(15)?.toFloatOrNull() ?: 0f
+                    c.earned = f.getOrNull(16)?.toFloatOrNull() ?: 0f
                     commander = c
                 }
                 "sentry" -> sentries += Sentry(x(0), x(1), x(2), x(3)).also { it.cooldown = x(4) }
+                "trap" -> traps += Trap(x(0), x(1), x(2), x(3)).also { it.arming = x(4) }
             }
         }
     }
@@ -2191,6 +2300,21 @@ class World(
         const val BARRAGE_DAMAGE = 90f
         const val BARRAGE_BLAST = 0.8f
         const val BARRAGE_REACH = 1.2f
+        const val SUPPRESS_RADIUS = 2.6f
+        const val SUPPRESS_TIME = 5f
+        const val SUPPRESS_SLOW = 0.35f
+        const val SUPPRESS_SLOW_TIME = 2.5f
+        const val SUPPRESS_TRACERS = 6
+        const val OVERCHARGE_RADIUS = 2.5f
+        const val OVERCHARGE_TIME = 6f
+        const val OVERCHARGE_BONUS = 0.5f
+        const val TRAP_DAMAGE = 420f
+        const val TRAP_BOSS = 2f
+        const val TRAP_RADIUS = 1.2f
+        const val TRAP_TRIGGER = 0.45f
+        const val TRAP_LIFE = 40f
+        const val TRAP_REACH = 1.2f
+        const val MAX_TRAPS = 2
 
         val GOLD = 0xFFFFD54A.toInt()
         val RED = 0xFFFF4B4B.toInt()

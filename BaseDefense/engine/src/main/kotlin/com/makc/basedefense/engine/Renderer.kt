@@ -60,6 +60,7 @@ class Renderer {
         if (a != null) for (b in w.blasts) if (b.ground) drawScorch(g, a, b)
         for (p in w.patches) drawPatch(g, p, time)
         for (c in w.corpses) drawCorpse(g, c)
+        for (t in w.traps) drawTrap(g, t, time)
         drawBase(g, w.map, time, w.baseFlash)
         for (t in w.towers) if (t.type.role == Role.ROAD) drawTower(g, t, time)
         for (t in w.towers) if (t.type.role != Role.ROAD) drawTower(g, t, time)
@@ -563,6 +564,8 @@ class Renderer {
         g.save()
         g.translate(t.x, t.y)
         g.scale(pop)
+        // Overcharged by the engineer: a crackling ring under the squad.
+        if (t.haste > 0f) g.strokeCircle(0f, 0f, 0.47f, Colors.alpha(World.BOLT, 0.45f + 0.3f * sin(time * 14f + t.x)), 0.04f)
         drawTowerShape(g, t.type, t.level, t.branch, 0f, 0f, t.angle, t.flash, t.burning, time, t.spinAngle, t.armed, t.shots)
         if (t.jammed > 0f) {
             g.fillCircle(0f, 0f, 0.44f, Colors.alpha(0xFF000000.toInt(), 0.35f))
@@ -1029,6 +1032,11 @@ class Renderer {
             g.fillCircle(c.x, c.y, World.RALLY_RADIUS, Colors.alpha(GOLD, 0.06f * k))
             g.strokeCircle(c.x, c.y, World.RALLY_RADIUS, Colors.alpha(GOLD, (0.35f + 0.15f * sin(time * 6f)) * k), 0.04f)
         }
+        if (c.overcharge > 0f) {
+            val k = min(1f, c.overcharge / 0.5f)
+            g.fillCircle(c.x, c.y, World.OVERCHARGE_RADIUS, Colors.alpha(World.BOLT, 0.05f * k))
+            g.strokeCircle(c.x, c.y, World.OVERCHARGE_RADIUS, Colors.alpha(World.BOLT, (0.35f + 0.2f * sin(time * 11f)) * k), 0.035f)
+        }
         val glow = (c.promoted / World.PROMOTED_GLOW).coerceIn(0f, 1f)
         if (glow > 0f) g.glow(c.x, c.y, 0.55f + 0.35f * glow, Colors.alpha(GOLD, 0.6f * glow))
         g.fillCircle(c.x + 0.04f, c.y + 0.07f, 0.3f, SHADOW)
@@ -1080,6 +1088,19 @@ class Renderer {
     }
 
     /** The engineer's machine gun on its tripod, with a bar of the time it has left. */
+    /** Grom's charge on the road; its light blinks once it is armed. */
+    private fun drawTrap(g: Gfx, t: Trap, time: Float) {
+        val a = art(g)
+        val ready = t.arming <= 0f
+        if (a != null) {
+            g.put(a.mineBig, t.x, t.y, 0.75f, 0f, if (ready) 1f else 0.6f)
+        } else {
+            g.fillCircle(t.x, t.y, 0.24f, 0xFF3A3F33.toInt())
+            g.strokeCircle(t.x, t.y, 0.24f, 0xFF1C1F18.toInt(), 0.05f)
+        }
+        if (ready && sin(time * 9f) > 0f) g.fillCircle(t.x, t.y - 0.02f, 0.06f, World.RED)
+    }
+
     fun drawSentry(g: Gfx, s: Sentry) {
         g.fillCircle(s.x + 0.03f, s.y + 0.05f, 0.22f, SHADOW)
         val a = art(g)

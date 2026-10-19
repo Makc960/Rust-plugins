@@ -501,6 +501,23 @@ class ScreensTest {
     }
 
     @Test
+    fun aWonBattleRaisesTheCommandersRank() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.putInt("service_SERGEANT", Ranks.SERVICE[Ranks.THIRD_SKILL] - 100)
+        val g = game(tall, platform)
+        g.profile.tips = false
+        g.startCampaign(Levels.all[0], Difficulty.NORMAL, false)
+        run(g, 0.5f)
+        val w = g.play.world!!
+        w.commander!!.earned = 4000f
+        w.winForTest()
+        run(g, 4f)
+        shot(g, tall, "tall_a2_rank_up")
+        assertEquals(Ranks.THIRD_SKILL, g.profile.rank(CommanderType.SERGEANT))
+    }
+
+    @Test
     fun commandersInMenusAndBattle() {
         val platform = SilentPlatform()
         for (l in Levels.all) if (l.id <= 8) platform.putInt("stars_${l.id}", 3)
@@ -508,6 +525,9 @@ class ScreensTest {
         platform.putInt("seen_${Tips.COMMANDER}", 1)
         platform.shop = Shop.HERE
         platform.putInt("promo_day", platform.today())
+        // A sergeant with some service, Grom with his third skill.
+        platform.putInt("service_SERGEANT", 1100)
+        platform.putInt("service_GROM", Ranks.SERVICE[Ranks.THIRD_SKILL])
         val g = game(tall, platform)
         run(g, 2f)
         shot(g, tall, "tall_87_menu_commanders")

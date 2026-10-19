@@ -276,6 +276,20 @@ class Profile(private val p: Platform) {
     /** Who goes into battle: the one picked, or the sergeant while the pick is closed. */
     val battleCommander: CommanderType get() = commander.takeIf { commanderOpen(it) } ?: CommanderType.SERGEANT
 
+    /** Service [c] earned in the battles he led; it decides his rank. */
+    fun service(c: CommanderType): Int = p.getInt("service_${c.name}", 0)
+
+    fun rank(c: CommanderType): Int = Ranks.of(service(c))
+
+    /** Adds [n] to [c]'s service; gives his new rank when it went up, else 0. */
+    fun addService(c: CommanderType, n: Int): Int {
+        val before = rank(c)
+        p.putInt("service_${c.name}", service(c) + n)
+        val after = rank(c)
+        if (after > before) maxStat(Stat.BEST_RANK, after)
+        return if (after > before) after else 0
+    }
+
     // --- the game in progress -------------------------------------------------------------
 
     var save: String?
@@ -299,6 +313,7 @@ class Profile(private val p: Platform) {
         p.putInt("daily_best", 0)
         p.putInt("daily_won", -10)
         p.putInt("daily_streak", 0)
+        for (c in CommanderType.entries) p.putInt("service_${c.name}", 0)
         p.putString("save", null)
     }
 

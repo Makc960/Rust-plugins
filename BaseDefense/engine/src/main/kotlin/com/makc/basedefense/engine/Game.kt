@@ -18,15 +18,17 @@ internal class Session(
     val perks: Perks,
     val vip: Boolean,
     val commander: CommanderType?,
+    /** The commander's rank when the battle began. */
+    val rank: Int,
     listener: WorldListener,
 ) {
     val mods: List<Mod> = if (mode == Mode.DAILY) Mod.forDay(day) else emptyList()
-    val rules = Rules(difficulty, if (challenge) level.challenge else null, perks, mods, progress, vip, commander)
+    val rules = Rules(difficulty, if (challenge) level.challenge else null, perks, mods, progress, vip, commander, rank)
     val world = World(level, rules, listener)
 
     fun save(): String =
         "game=2\nmode=${mode.name}\nlevel=${level.id}\ndifficulty=${difficulty.name}\nchallenge=${if (challenge) 1 else 0}\n" +
-            "day=$day\nprogress=$progress\nperks=${perks.encode()}\nvip=${if (vip) 1 else 0}\ncommander=${commander?.name ?: "-"}\n" +
+            "day=$day\nprogress=$progress\nperks=${perks.encode()}\nvip=${if (vip) 1 else 0}\ncommander=${commander?.name ?: "-"}\nrank=$rank\n" +
             world.save()
 
     companion object {
@@ -53,7 +55,7 @@ internal class Session(
                 val commander = CommanderType.entries.firstOrNull { it.name == head["commander"] }
                 val s = Session(
                     mode, level, Difficulty.valueOf(head.getValue("difficulty")), head["challenge"] == "1", day, progress,
-                    Perks.decode(head["perks"] ?: ""), head["vip"] == "1", commander, listener,
+                    Perks.decode(head["perks"] ?: ""), head["vip"] == "1", commander, head["rank"]?.toIntOrNull() ?: 1, listener,
                 )
                 s.world.restore(text)
                 if (s.world.over) null else s
@@ -344,29 +346,31 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
 
     private val commander: CommanderType get() = profile.battleCommander
 
+    private val rank: Int get() = profile.rank(commander)
+
     internal fun startCampaign(level: LevelDef, difficulty: Difficulty, challenge: Boolean) {
-        begin(Session(Mode.CAMPAIGN, level, difficulty, challenge, today, profile.progress, profile.perks, vip, commander, play))
+        begin(Session(Mode.CAMPAIGN, level, difficulty, challenge, today, profile.progress, profile.perks, vip, commander, rank, play))
     }
 
     internal fun startEndless() {
-        begin(Session(Mode.ENDLESS, Levels.endless(profile.progress), Difficulty.NORMAL, false, today, profile.progress, profile.perks, vip, commander, play))
+        begin(Session(Mode.ENDLESS, Levels.endless(profile.progress), Difficulty.NORMAL, false, today, profile.progress, profile.perks, vip, commander, rank, play))
     }
 
     internal fun startDaily() {
         val day = today
-        begin(Session(Mode.DAILY, Levels.daily(day, profile.progress), Difficulty.NORMAL, false, day, profile.progress, profile.perks, vip, commander, play))
+        begin(Session(Mode.DAILY, Levels.daily(day, profile.progress), Difficulty.NORMAL, false, day, profile.progress, profile.perks, vip, commander, rank, play))
     }
 
     /** The training battle, the same for everyone: the sergeant, no VIP, the first squads. */
     internal fun startTutorial() {
-        begin(Session(Mode.TUTORIAL, Levels.tutorial(), Difficulty.EASY, false, today, TUTORIAL_PROGRESS, Perks.NONE, false, CommanderType.SERGEANT, play))
+        begin(Session(Mode.TUTORIAL, Levels.tutorial(), Difficulty.EASY, false, today, TUTORIAL_PROGRESS, Perks.NONE, false, CommanderType.SERGEANT, 1, play))
     }
 
     internal fun restart() {
         val s = session ?: return
         play.flushStats()
         if (s.mode == Mode.TUTORIAL) return startTutorial()
-        begin(Session(s.mode, s.level, s.difficulty, s.challenge, s.day, s.progress, profile.perks, vip, commander, play))
+        begin(Session(s.mode, s.level, s.difficulty, s.challenge, s.day, s.progress, profile.perks, vip, commander, rank, play))
     }
 
     /** The saved battle, if there is one that still loads. */

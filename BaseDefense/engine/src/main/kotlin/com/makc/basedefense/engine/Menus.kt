@@ -1031,7 +1031,8 @@ internal class Menus(private val game: Game) {
         val textW = w - d(108f)
         val roleH = ui.lines(g, c.role.t, d(11.5f), textW).size * d(11.5f) * 1.15f
         val skillH = d(36f)
-        val ph = d(62f) + roleH + d(26f) + skillH * 2 + d(64f) + (if (lent) d(18f) else 0f)
+        val rankH = d(48f)
+        val ph = d(62f) + roleH + d(26f) + rankH + skillH * c.skills.size + d(64f) + (if (lent) d(18f) else 0f)
         ui.panel(g, x, y, w, ph, if (picked) Ui.GOLD else Ui.EDGE)
         ui.well(g, x + d(14f), y + d(16f), d(70f), d(70f), d(6f))
         renderer.drawCommanderIcon(g, c, x + d(49f), y + d(51f), d(58f))
@@ -1044,12 +1045,16 @@ internal class Menus(private val game: Game) {
         val reach = if (c.hitsAir) Tx.GROUND_AIR.t else Tx.GROUND_ONLY.t
         ui.chips(g, listOf(c.weapon.t, Tx.DMG.f(Num.int(gun.damage)), Tx.PER_SECOND.f(Num.one(gun.rate)), reach), textX, ty + d(6f), textW, size = d(10f))
         var sy = max(ty + d(30f), y + d(96f))
+        sy += rankRow(g, c, x + d(16f), sy, w - d(32f))
         ui.caption(g, Tx.SKILLS.t, x + d(16f), sy + d(4f))
         sy += d(12f)
-        for (skill in c.skills) {
+        val rank = profile.rank(c)
+        for ((k, skill) in c.skills.withIndex()) {
+            val locked = k >= 2 && rank < Ranks.THIRD_SKILL
             ui.well(g, x + d(14f), sy, d(30f), d(30f), d(5f))
-            ui.icon(g, skillIcon(skill), x + d(29f), sy + d(15f), d(18f), Ui.ACCENT)
-            ui.text(g, skill.title.t, x + d(54f), sy + d(13f), d(13f), Ui.TEXT, maxW = w - d(66f))
+            ui.icon(g, if (locked) Icon.LOCK else skill.icon, x + d(29f), sy + d(15f), d(18f), if (locked) Ui.DIM else Ui.ACCENT)
+            val title = if (locked) "${skill.title.t} · ${Tx.SKILL_FROM_RANK.f(Ranks.THIRD_SKILL)}" else skill.title.t
+            ui.text(g, title, x + d(54f), sy + d(13f), d(13f), if (locked) Ui.DIM else Ui.TEXT, maxW = w - d(66f))
             ui.text(g, skill.hint.t, x + d(54f), sy + d(27f), d(10.5f), Ui.DIM, maxW = w - d(66f), font = Font.BODY)
             sy += skillH
         }
@@ -1085,13 +1090,27 @@ internal class Menus(private val game: Game) {
         return ph
     }
 
-    private fun skillIcon(s: Skill): Icon = when (s) {
-        Skill.GRENADE -> Icon.GRENADE
-        Skill.RALLY -> Icon.FIST
-        Skill.SENTRY -> Icon.WRENCH
-        Skill.EMP -> Icon.BOLT
-        Skill.PIERCE -> Icon.TARGET
-        Skill.BARRAGE -> Icon.BLAST
+    /** [c]'s rank, how far he is to the next and what it brings; returns its height. */
+    private fun rankRow(g: Gfx, c: CommanderType, x: Float, y: Float, w: Float): Float {
+        val rank = profile.rank(c)
+        val service = profile.service(c)
+        val top = rank >= Ranks.MAX
+        val tagW = ui.tag(g, Tx.RANK.f(rank), x, y + d(9f), d(11f), if (top) Ui.GOLD else Ui.ACCENT)
+        val barX = x + tagW + d(10f)
+        val need = Ranks.SERVICE.getOrNull(rank + 1)
+        if (need == null) {
+            ui.textMid(g, Tx.RANK_TOP.t, barX, y + d(9f), d(12f), Ui.GOLD, Align.LEFT, font = Font.DISPLAY)
+            ui.text(g, RankPerk.PARADE.text(c), x, y + d(34f), d(10.5f), Ui.GOLD, maxW = w, font = Font.BODY)
+        } else {
+            val from = Ranks.SERVICE[rank]
+            val count = "$service / $need"
+            val countW = g.textWidth(count, d(10.5f))
+            ui.bar(g, barX, y + d(5f), w - (barX - x) - countW - d(10f), d(8f), (service - from) / (need - from).toFloat(), Ui.GOLD)
+            ui.textMid(g, count, x + w, y + d(9f), d(10.5f), Ui.DIM, Align.RIGHT)
+            val perk = RankPerk.at(rank + 1)?.text(c) ?: ""
+            ui.text(g, Tx.RANK_NEXT.f(rank + 1, perk), x, y + d(34f), d(10.5f), Ui.DIM, maxW = w, font = Font.BODY)
+        }
+        return d(48f)
     }
 
     private companion object {

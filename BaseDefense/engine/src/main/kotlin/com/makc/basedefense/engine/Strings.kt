@@ -308,6 +308,13 @@ object Tx {
     val NO_TARGET = L("Рядом некого бить", "No one within reach")
     val SKILLS_OFF = L("Навыки отключены", "Skills are off")
     val SECONDS = L("%s с", "%s s")
+    val SERVICE = L("Опыт командира: +%d", "Commander's service: +%d")
+    val RANK_UP = L("Новый ранг: %d", "New rank: %d")
+    val RANK = L("РАНГ %d", "RANK %d")
+    val RANK_SHORT = L("РАНГ %d", "RANK %d")
+    val RANK_NEXT = L("Ранг %d: %s", "Rank %d: %s")
+    val RANK_TOP = L("Высший ранг", "Top rank")
+    val SKILL_FROM_RANK = L("с %d ранга", "from rank %d")
     val STUN_FOR = L("оглушение %s с", "stun %s s")
 
     // Reminders, rating and updates

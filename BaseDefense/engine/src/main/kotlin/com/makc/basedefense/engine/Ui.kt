@@ -21,6 +21,20 @@ internal enum class Icon {
     val sprite = "icon." + name.lowercase()
 }
 
+/** The picture on a commander's skill button. */
+internal val Skill.icon: Icon
+    get() = when (this) {
+        Skill.GRENADE -> Icon.GRENADE
+        Skill.RALLY -> Icon.FIST
+        Skill.SENTRY -> Icon.WRENCH
+        Skill.EMP -> Icon.BOLT
+        Skill.PIERCE -> Icon.TARGET
+        Skill.BARRAGE -> Icon.BLAST
+        Skill.SUPPRESS -> Icon.SKULL
+        Skill.OVERCHARGE -> Icon.SPEED
+        Skill.MINE -> Icon.WARNING
+    }
+
 /**
  * A tiny immediate-mode toolkit: every frame the screens draw their buttons,
  * sliders and scroll lists again, and touches are matched against what was drawn.

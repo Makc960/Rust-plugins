@@ -101,6 +101,9 @@ enum class Stat {
 
     /** Extra upgrade points from daily wins with VIP. */
     VIP_POINTS,
+
+    /** The highest rank any commander reached. */
+    BEST_RANK,
 }
 
 /** What the VIP subscription gives; the rules and the comparison screen both read it here. */
@@ -155,6 +158,8 @@ enum class Achievement(val title: L, val hint: L, val goal: Int, val progress: (
     DAILY_3(L("Привычка", "Habit"), L("Задание дня 3 дня подряд", "Win the daily 3 days in a row"), 3, { it.stat(Stat.DAILY_STREAK) }),
     DAILY_7(L("Неделя в строю", "A week on duty"), L("Задание дня 7 дней подряд", "Win the daily 7 days in a row"), 7, { it.stat(Stat.DAILY_STREAK) }),
     CLEARING(L("Расчистка", "Land clearing"), L("Убери 20 камней, деревьев или кактусов", "Clear 20 rocks, trees or cacti"), 20, { it.stat(Stat.OBSTACLES) }),
+    RANK_5(L("Бывалый", "Seasoned"), L("Доведи командира до 5 ранга", "Raise a commander to rank 5"), 5, { it.stat(Stat.BEST_RANK) }),
+    RANK_10(L("Ветеран", "Veteran"), L("Доведи командира до 10 ранга", "Raise a commander to rank 10"), 10, { it.stat(Stat.BEST_RANK) }),
     ;
 
     val key: String get() = "ach_$name"
@@ -171,6 +176,8 @@ class Rules(
     val vip: Boolean = false,
     /** Who leads the squads; null is nobody. */
     val commander: CommanderType? = null,
+    /** His rank, 1 to [Ranks.MAX], from the battles he led before. */
+    val rank: Int = 1,
 ) {
     val towers: List<TowerType> = TowerType.entries.filter {
         it.unlock <= progress && (challenge?.kind != ChallengeKind.ONLY || it in challenge.types)
@@ -211,8 +218,14 @@ class Rules(
     val cooldownMul: Float = max(0.4f, 1f - 0.12f * perks[Perk.COOLDOWN]) * (if (vip) Vip.COOLDOWN else 1f)
     val maxSpeed: Int = if (vip) Vip.MAX_SPEED else 3
     val undoTime: Float = if (vip) Vip.UNDO_TIME else 4f
-    val commanderLevel: Int = if (vip) Vip.COMMANDER_LEVEL else 0
-    val xpMul: Float = if (vip) Vip.XP else 1f
+    val commanderLevel: Int = (if (vip) Vip.COMMANDER_LEVEL else 0) + (if (rank >= RankPerk.START.rank) 1 else 0)
+    val xpMul: Float = (if (vip) Vip.XP else 1f) * (if (rank >= RankPerk.XP.rank) 1.25f else 1f)
+
+    /** What the commander's rank adds to his weapon and skills. */
+    val heroDamageMul: Float = 1f + 0.1f * listOf(RankPerk.DAMAGE, RankPerk.DAMAGE_MORE).count { rank >= it.rank }
+    val heroCooldownMul: Float = 1f - 0.1f * listOf(RankPerk.COOLDOWN, RankPerk.COOLDOWN_MORE).count { rank >= it.rank }
+    val heroRangeMul: Float = if (rank >= RankPerk.RANGE.rank) 1.1f else 1f
+    val heroSkills: Int = if (rank >= Ranks.THIRD_SKILL) 3 else 2
 
     /** A second chance: reserves arrive once when the base falls. */
     val reserve: Boolean = vip

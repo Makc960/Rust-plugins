@@ -58,6 +58,7 @@ class I18nTest {
             add(c.name to c.role)
             add(c.name to c.weapon)
         }
+        for (r in RankPerk.entries) add(r.name to r.text)
         for (l in Levels.all) add("level ${l.id}" to l.name)
     }
 

@@ -86,6 +86,10 @@ internal class PlayScreen(private val game: Game) : WorldListener {
     /** When the store's rating window may open over the results of a won battle. */
     private var reviewAt = -1f
 
+    /** Service the commander earned in the battle, and his new rank if it went up. */
+    private var resultService = 0
+    private var resultRankUp = 0
+
     private class Card(val kind: L, val title: String, val text: String, val stats: List<String> = emptyList(), val icon: (Gfx, Float, Float, Float) -> Unit)
 
     private val cards = ArrayList<Card>()
@@ -149,6 +153,8 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         resultMedal = false
         resultRecord = false
         resultAchievements = emptyList()
+        resultService = 0
+        resultRankUp = 0
         reviewAt = -1f
         flushed = false
         cards.clear()
@@ -297,6 +303,11 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 lesson = null
                 if (won) profile.tutorialDone = true
             }
+        }
+        val hero = wd.commander
+        if (hero != null && s.mode != Mode.TUTORIAL) {
+            resultService = Ranks.earned(hero, won)
+            resultRankUp = profile.addService(hero.type, resultService)
         }
         profile.save = null
         resultAchievements = profile.checkAchievements()
@@ -1130,20 +1141,11 @@ internal class PlayScreen(private val game: Game) : WorldListener {
             ui.bar(g, x + d(7f), y + ch - d(18f), bw, d(7f), (c.xp - from) / (next - from), Ui.GOLD)
         }
         ui.tag(g, Tx.LEVEL_SHORT.f(c.level + 1), x + d(4f), y + d(10f), d(7f), Ui.GOLD, Ui.DARK_TEXT)
-        val ready = (0 until 2).any { wd.skillReady(it) }
+        val ready = c.type.skills.indices.any { wd.skillReady(it) }
         if (ready) {
             g.fillCircle(x + cw - d(8f), y + d(9f), d(6f), Ui.EDGE)
             g.fillCircle(x + cw - d(8f), y + d(9f), d(4.5f), Colors.mix(Ui.ACCENT, Ui.GOLD, 0.5f + 0.5f * sin(clock * 5f)))
         }
-    }
-
-    private fun skillIcon(s: Skill): Icon = when (s) {
-        Skill.GRENADE -> Icon.GRENADE
-        Skill.RALLY -> Icon.FIST
-        Skill.SENTRY -> Icon.WRENCH
-        Skill.EMP -> Icon.BOLT
-        Skill.PIERCE -> Icon.TARGET
-        Skill.BARRAGE -> Icon.BLAST
     }
 
     /** What the commander's gun does now, as short pieces. */
@@ -1189,14 +1191,21 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         val bh = d(32f)
         val gap = d(6f)
         val closeW = d(42f)
-        val sw = (ui.w - d(24f) - closeW - gap * 2) / 2f
+        val count = c.type.skills.size
+        val sw = (ui.w - d(24f) - closeW - gap * count) / count
         var x = d(12f)
-        for (k in 0 until 2) {
+        for (k in 0 until count) {
             val skill = c.type.skills[k]
+            if (!wd.skillOpen(k)) {
+                // Comes with a higher rank: shown so the player knows what is ahead.
+                ui.button(g, "skill$k", x, by, sw, bh, Tx.RANK_SHORT.f(Ranks.THIRD_SKILL), Style.NORMAL, false, size = 11f, icon = Icon.LOCK) {}
+                x += sw + gap
+                continue
+            }
             val left = c.skillCooldowns[k]
             val usable = wd.skillsAllowed && wd.phase == Phase.RUNNING && c.jammed <= 0f && left <= 0f
             val label = if (left > 0f && wd.skillsAllowed) "${skill.title.t.uppercase()} ${ceil(left).toInt()}" else skill.title.t.uppercase()
-            ui.button(g, "skill$k", x, by, sw, bh, label, if (usable) Style.PRIMARY else Style.NORMAL, usable, size = 12f, icon = skillIcon(skill)) {
+            ui.button(g, "skill$k", x, by, sw, bh, label, if (usable) Style.PRIMARY else Style.NORMAL, usable, size = if (count > 2) 11f else 12f, icon = skill.icon) {
                 useSkill(k)
             }
             if (left > 0f && wd.skillsAllowed) {
@@ -1523,6 +1532,12 @@ internal class PlayScreen(private val game: Game) : WorldListener {
                 if (won) lines += Tx.TUT_DONE_TEXT.t to Ui.GOLD
                 lines += Tx.KILLED.f(wd.kills) to Ui.TEXT
             }
+        }
+        val hero = wd.commander
+        if (hero != null && resultService > 0) lines += Tx.SERVICE.f(resultService) to Ui.TEXT
+        if (hero != null && resultRankUp > 0) {
+            lines += Tx.RANK_UP.f(resultRankUp) to Ui.GOLD
+            RankPerk.at(resultRankUp)?.let { lines += it.text(hero.type) to Ui.GOLD }
         }
         // After a defeat, what VIP's second chance would have done.
         val offerVip = !won && s.mode != Mode.TUTORIAL && game.shop != Shop.NONE && !s.vip
