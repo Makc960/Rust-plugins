@@ -27,6 +27,7 @@ enum class Product(val id: String, val rubles: Int, val subscription: Boolean = 
     STARTER("starter_pack", 99),
     ENGINEER("commander_engineer", 149),
     GROM("commander_grom", 149),
+    SOKOLOVA("commander_sokolova", 149),
 
     /** Camouflage sets: every commander's uniform and the squads' sandbags. */
     SKIN_NIGHT("skin_night", 99),

@@ -220,8 +220,10 @@ internal class Intro(private val game: Game) : WorldListener {
         val since = time - crewAt
         if (since <= 0f) return
         val cy = crewY
-        val slot = min((ui.w - d(24f)) / 3f, d(124f))
-        val left = ui.w / 2f - slot * 1.5f
+        val n = CommanderType.entries.size
+        val slot = min((ui.w - d(24f)) / n, d(124f))
+        val left = ui.w / 2f - slot * n / 2f
+        val r = min(d(37f), slot * 0.42f)
         val head = min(1f, since / RISE)
         ui.textMid(g, Tx.INTRO_COMMANDERS.t.uppercase(), ui.w / 2f, cy - d(58f), d(11f), Colors.alpha(Ui.GOLD, head), maxW = ui.w - d(32f))
         for ((i, c) in CommanderType.entries.withIndex()) {
@@ -230,10 +232,10 @@ internal class Intro(private val game: Game) : WorldListener {
             val e = 1f - (1f - k) * (1f - k)
             val x = left + slot * (i + 0.5f)
             val y = cy + d(22f) * (1f - e)
-            g.fillCircle(x, y, d(37f), Colors.alpha(Ui.EDGE, e))
-            g.fillCircle(x, y, d(34f), Colors.alpha(Ui.PANEL_DARK, e))
-            g.strokeCircle(x, y, d(34f), Colors.alpha(renderer.heroColor(c), e), d(2f))
-            renderer.drawCommanderIcon(g, c, x, y, d(54f), e)
+            g.fillCircle(x, y, r, Colors.alpha(Ui.EDGE, e))
+            g.fillCircle(x, y, r - d(3f), Colors.alpha(Ui.PANEL_DARK, e))
+            g.strokeCircle(x, y, r - d(3f), Colors.alpha(renderer.heroColor(c), e), d(2f))
+            renderer.drawCommanderIcon(g, c, x, y, r * 1.46f, e)
             val words = c.title.t.split(' ', limit = 2)
             ui.textMid(g, words[0].uppercase(), x, y + d(50f), d(9.5f), Colors.alpha(Ui.DIM, e), maxW = slot - d(8f))
             ui.textMid(g, words.getOrElse(1) { "" }, x, y + d(66f), d(14f), Colors.alpha(Ui.TEXT, e), maxW = slot - d(8f), font = Font.DISPLAY)

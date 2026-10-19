@@ -1262,6 +1262,7 @@ internal class PlayScreen(private val game: Game) : WorldListener {
         when (c.type) {
             CommanderType.ENGINEER -> add(Tx.CHAIN.f(World.ZAP_JUMPS))
             CommanderType.GROM -> add(Tx.BLAST.f(Num.one(World.GROM_BLAST)))
+            CommanderType.SOKOLOVA -> add(Tx.HALF_ARMOR.t)
             CommanderType.SERGEANT -> Unit
         }
     }

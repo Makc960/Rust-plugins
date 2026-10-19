@@ -14,6 +14,9 @@ enum class Skill(val title: L, val hint: L, val cooldown: Float) {
     SUPPRESS(L("Подавление", "Suppression"), L("Враги вокруг замедлены и получают на 30% больше урона", "Enemies around are slowed and take 30% more damage"), 30f),
     OVERCHARGE(L("Перегрузка", "Overcharge"), L("Отряды рядом стреляют на 50% чаще", "Nearby squads fire 50% faster"), 34f),
     MINE(L("Фугас", "Land mine"), L("Заряд на дороге взрывается под врагом, по боссам ×2", "A charge on the road blows under an enemy, ×2 against bosses"), 26f),
+    AID(L("Перевязка", "First aid"), L("Жизни базе и снова в строю отряды рядом, оглушённые сапёрами и топотом", "Lives for the base, and nearby squads knocked out by sappers or stomps back in the fight"), 40f),
+    SMOKE(L("Дым", "Smoke"), L("Дымовая завеса сильно замедляет всех, кто в ней", "A smoke screen slows everyone inside it hard"), 24f),
+    HEADSHOT(L("В голову", "Headshot"), L("Сразу убивает самого крепкого врага в прицеле, боссу — тяжёлый урон", "Kills the toughest enemy in sight at once, a heavy hit to a boss"), 30f),
     ;
 
     val key: String get() = "s:$name"
@@ -57,6 +60,12 @@ enum class CommanderType(
         L("Гранатомёт", "Grenade launcher"), true, false, 1.8f,
         listOf(CommanderLevel(40f, 0.78f, 3.0f), CommanderLevel(49f, 0.8f, 3.1f), CommanderLevel(60f, 0.82f, 3.2f), CommanderLevel(73f, 0.85f, 3.3f), CommanderLevel(90f, 0.88f, 3.4f)),
         listOf(Skill.PIERCE, Skill.BARRAGE, Skill.MINE), 50, Product.GROM,
+    ),
+    SOKOLOVA(
+        L("Лейтенант Соколова", "Lieutenant Sokolova"), L("Снайпер и медик: бьёт далеко по самым крепким, лечит базу, ставит дым", "Sniper and medic: picks off the toughest from afar, heals the base, lays smoke"),
+        L("Снайперская винтовка", "Sniper rifle"), true, true, 2.3f,
+        listOf(CommanderLevel(48f, 0.6f, 3.5f), CommanderLevel(59f, 0.62f, 3.6f), CommanderLevel(73f, 0.64f, 3.75f), CommanderLevel(90f, 0.66f, 3.9f), CommanderLevel(112f, 0.68f, 4f)),
+        listOf(Skill.AID, Skill.SMOKE, Skill.HEADSHOT), 75, Product.SOKOLOVA,
     ),
     ;
 
@@ -161,6 +170,11 @@ class Sentry(val x: Float, val y: Float, var life: Float, val damage: Float) {
     var cooldown = 0f
     var angle = -90f
     var flash = 0f
+}
+
+/** Sokolova's smoke screen: whoever walks or flies in it is slowed until it thins away. */
+class Smoke(val x: Float, val y: Float, var life: Float) {
+    val maxLife = life
 }
 
 /** Grom's charge on the road: waits a moment to arm, then blows under the first walker. */

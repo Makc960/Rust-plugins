@@ -83,6 +83,7 @@ object Tx {
     val REARM = L("перезарядка %sс", "rearm %ss")
     val PIERCE = L("пробивает %d", "pierces %d")
     val THROUGH = L("насквозь", "pierces all")
+    val HALF_ARMOR = L("броня ½", "armor ½")
     val MISSILES = L("ракет %d", "%d missiles")
     val ROCK = L("Камень", "Rock")
     val TREE = L("Дерево", "Tree")

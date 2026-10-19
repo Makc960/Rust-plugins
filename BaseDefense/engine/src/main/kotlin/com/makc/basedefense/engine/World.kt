@@ -309,6 +309,7 @@ class World(
         private set
     val sentries = ArrayList<Sentry>()
     val traps = ArrayList<Trap>()
+    val smokes = ArrayList<Smoke>()
 
     var baseFlash = 0f
         private set
@@ -438,6 +439,7 @@ class World(
             commander?.let { updateCommander(it, dt) }
             updateSentries(dt)
             updateTraps(dt)
+            updateSmoke(dt)
             updateProjectiles(dt)
             updatePatches(dt)
             updateBombs(dt)
@@ -1653,6 +1655,9 @@ class World(
         Skill.SUPPRESS -> SUPPRESS_TIME * c.power
         Skill.OVERCHARGE -> OVERCHARGE_TIME * c.power
         Skill.MINE -> TRAP_DAMAGE * c.power * rules.damageMul
+        Skill.AID -> AID_LIVES + c.level / 2f
+        Skill.SMOKE -> SMOKE_TIME * c.power
+        Skill.HEADSHOT -> HEADSHOT_DAMAGE * c.power * rules.damageMul
     }
 
     /** Fires the commander's skill [k]; false when it is not ready or has nothing to hit. */
@@ -1670,6 +1675,9 @@ class World(
             Skill.SUPPRESS -> suppress(c)
             Skill.OVERCHARGE -> overcharge(c)
             Skill.MINE -> mine(c)
+            Skill.AID -> aid(c)
+            Skill.SMOKE -> smoke(c)
+            Skill.HEADSHOT -> headshot(c)
         }
         if (done) c.skillCooldowns[k] = skillCooldown(skill)
         return done
@@ -1718,7 +1726,8 @@ class World(
         }
         if (c.cooldown > 0f) c.cooldown -= dt
         if (c.moving) return
-        val target = heroTarget(c, commanderRange(c)) ?: return
+        // The sniper picks the toughest; the others the one nearest the base.
+        val target = heroTarget(c, commanderRange(c), toughest = c.type == CommanderType.SOKOLOVA) ?: return
         val aim = atan2(target.y - c.y, target.x - c.x)
         c.angle = Math.toDegrees(aim.toDouble()).toFloat()
         if (c.cooldown > 0f) return
@@ -1744,6 +1753,12 @@ class World(
                 projectiles += p
                 c.flash = 0.1f
                 sound(Sfx.ROCKET, 0.4f)
+            }
+            CommanderType.SOKOLOVA -> {
+                damage(target, dmg, null, armorPierce = SNIPER_PIERCE, hero = true)
+                tracers += Tracer(mx, my, target.x, target.y, 0.16f, 2)
+                c.flash = 0.12f
+                sound(Sfx.SNIPER, 0.45f)
             }
         }
         c.shots++
@@ -1985,6 +2000,85 @@ class World(
         c.angle = Math.toDegrees(atan2(by - c.y, bx - c.x).toDouble()).toFloat()
         puff(bx, by, if (lite) 3 else 6, 0xFFB9A98A.toInt())
         sound(Sfx.BUILD, 0.6f)
+        return true
+    }
+
+    /** Lives for the base and the jammed squads around her back in the fight; nothing to do, nothing spent. */
+    private fun aid(c: Commander): Boolean {
+        val heal = min(maxLives - lives, skillPower(c, Skill.AID).toInt())
+        val dazed = towers.filter { it.jammed > 0f && near(it.x, it.y, c.x, c.y, AID_RADIUS) }
+        if (heal <= 0 && dazed.isEmpty() && c.jammed <= 0f) return false
+        if (heal > 0) {
+            lives += heal
+            val bx = map.baseCol + 0.5f
+            val by = map.baseRow + 0.5f
+            rings += Ring(bx, by, 1.2f, 0.6f, 0.6f, HEAL)
+            texts += FloatText(bx, by - 0.4f, "+$heal", HEAL, 1.4f, 1.3f)
+        }
+        for (t in dazed) {
+            t.jammed = 0f
+            rings += Ring(t.x, t.y, 0.6f, 0.4f, 0.4f, HEAL)
+        }
+        c.jammed = 0f
+        rings += Ring(c.x, c.y, AID_RADIUS, 0.6f, 0.6f, Colors.alpha(HEAL, 0.8f))
+        texts += FloatText(c.x, c.y - 0.5f, Skill.AID.title.t, HEAL, 1.2f, 1.2f)
+        sound(Sfx.REPAIR, 0.8f)
+        return true
+    }
+
+    /** Where the enemies are thickest within her reach, ground or air. */
+    private fun smoke(c: Commander): Boolean {
+        val reach = commanderRange(c) + SMOKE_REACH
+        var best: Enemy? = null
+        var most = 0
+        for (e in enemies) {
+            if (!e.alive || !e.visible || !onMap(e) || !near(e.x, e.y, c.x, c.y, reach)) continue
+            val n = enemies.count { it.alive && near(it.x, it.y, e.x, e.y, SMOKE_RADIUS) }
+            if (n > most) {
+                most = n
+                best = e
+            }
+        }
+        val t = best ?: return false
+        // A little ahead of them, so they walk into it.
+        val x = t.x + t.dirX * speedOf(t) * 0.6f
+        val y = t.y + t.dirY * speedOf(t) * 0.6f
+        if (smokes.size >= MAX_SMOKES) smokes.removeAt(0)
+        smokes += Smoke(x, y, skillPower(c, Skill.SMOKE))
+        c.angle = Math.toDegrees(atan2(y - c.y, x - c.x).toDouble()).toFloat()
+        puff(x, y, if (lite) 6 else 14, SMOKE_GREY)
+        sound(Sfx.FREEZE, 0.5f)
+        return true
+    }
+
+    private fun updateSmoke(dt: Float) {
+        if (smokes.isEmpty()) return
+        val iter = smokes.iterator()
+        while (iter.hasNext()) {
+            val s = iter.next()
+            s.life -= dt
+            if (s.life <= 0f) {
+                iter.remove()
+                continue
+            }
+            for (e in enemies) {
+                if (e.alive && !e.underground && near(e.x, e.y, s.x, s.y, SMOKE_RADIUS + e.type.radius * 0.5f)) slow(e, SMOKE_SLOW * bossK(e), 0.25f)
+            }
+        }
+    }
+
+    /** At the toughest enemy within long reach: a walker or flier falls at once, a boss takes a heavy hit. */
+    private fun headshot(c: Commander): Boolean {
+        val t = heroTarget(c, commanderRange(c) * HEADSHOT_REACH, toughest = true, any = true) ?: return false
+        val aim = atan2(t.y - c.y, t.x - c.x)
+        c.angle = Math.toDegrees(aim.toDouble()).toFloat()
+        val dmg = if (t.type.boss) skillPower(c, Skill.HEADSHOT) else (t.hp + t.shield) * 2f + 1f
+        tracers += Tracer(c.x + cos(aim) * 0.3f, c.y + sin(aim) * 0.3f, t.x, t.y, 0.25f, 2)
+        damage(t, dmg, null, pierce = true, hero = true)
+        texts += FloatText(t.x, t.y - 0.5f, Skill.HEADSHOT.title.t, RED, 1.1f, 1.1f)
+        c.flash = 0.15f
+        shake = max(shake, 0.15f)
+        sound(Sfx.SNIPER, 1f)
         return true
     }
 
@@ -2293,6 +2387,7 @@ class World(
         }
         for (s in sentries) put("sentry", s.x, s.y, s.life, s.damage, s.cooldown)
         for (t in traps) put("trap", t.x, t.y, t.damage, t.life, t.arming)
+        for (s in smokes) put("smoke", s.x, s.y, s.life)
         return sb.toString()
     }
 
@@ -2415,6 +2510,7 @@ class World(
                 }
                 "sentry" -> sentries += Sentry(x(0), x(1), x(2), x(3)).also { it.cooldown = x(4) }
                 "trap" -> traps += Trap(x(0), x(1), x(2), x(3)).also { it.arming = x(4) }
+                "smoke" -> smokes += Smoke(x(0), x(1), x(2))
             }
         }
     }
@@ -2550,6 +2646,19 @@ class World(
         const val TRAP_LIFE = 40f
         const val TRAP_REACH = 1.2f
         const val MAX_TRAPS = 2
+
+        // Sokolova: her rifle's armor piercing, the first aid, the smoke screen and the headshot.
+        const val SNIPER_PIERCE = 0.5f
+        const val AID_LIVES = 2f
+        const val AID_RADIUS = 2.5f
+        const val SMOKE_TIME = 4f
+        const val SMOKE_RADIUS = 1.3f
+        const val SMOKE_SLOW = 0.6f
+        const val SMOKE_REACH = 1f
+        const val MAX_SMOKES = 2
+        const val HEADSHOT_DAMAGE = 700f
+        const val HEADSHOT_REACH = 1.4f
+        val SMOKE_GREY = 0xFFB8BDB6.toInt()
 
         val GOLD = 0xFFFFD54A.toInt()
         val RED = 0xFFFF4B4B.toInt()

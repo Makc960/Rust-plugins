@@ -76,6 +76,7 @@ class Renderer {
         }
         for (s in w.sentries) drawSentry(g, s)
         w.commander?.let { drawCommander(g, it, time) }
+        for (s in w.smokes) drawSmoke(g, s, time)
         for (b in w.bombs) drawBomb(g, b)
         for (b in w.lava) drawLavaBomb(g, b, time)
         for (p in w.projectiles) drawProjectile(g, p)
@@ -1121,6 +1122,7 @@ class Renderer {
                     CommanderType.ENGINEER -> g.glow(mx, my, 0.18f, Colors.alpha(BOLT, 0.9f))
                     CommanderType.GROM -> g.put(a.flashBig, mx, my, 0.7f, c.angle, min(1f, c.flash / 0.05f))
                     CommanderType.SERGEANT -> g.put(a.flash, mx, my, 0.55f, c.angle, min(1f, c.flash / 0.05f))
+                    CommanderType.SOKOLOVA -> g.put(a.flashBig, mx, my, 0.6f, c.angle, min(1f, c.flash / 0.05f))
                 }
             }
         } else {
@@ -1208,6 +1210,19 @@ class Renderer {
         CommanderType.SERGEANT -> 0xFF5E7A3A.toInt()
         CommanderType.ENGINEER -> 0xFFD9822B.toInt()
         CommanderType.GROM -> 0xFF3E4654.toInt()
+        CommanderType.SOKOLOVA -> 0xFF3F6B5E.toInt()
+    }
+
+    /** Sokolova's smoke screen: grey puffs rolling about, thickening at first and thinning at the end. */
+    private fun drawSmoke(g: Gfx, s: Smoke, time: Float) {
+        val k = min(1f, (s.maxLife - s.life) / 0.3f) * min(1f, s.life)
+        val r = World.SMOKE_RADIUS
+        for (i in 0 until 7) {
+            val a = i * 0.9f + time * 0.25f + s.x
+            val d = r * (0.3f + 0.04f * ((i * 37) % 10))
+            g.fillCircle(s.x + cos(a) * d, s.y + sin(a) * d * 0.85f, r * (0.45f + 0.08f * sin(time * 1.3f + i)), Colors.alpha(SMOKE, 0.26f * k))
+        }
+        g.fillCircle(s.x, s.y, r * 0.55f, Colors.alpha(SMOKE, 0.32f * k))
     }
 
     private fun drawShadow(g: Gfx, e: Enemy) {
@@ -1886,6 +1901,7 @@ class Renderer {
         val SHADOW = 0x55000000
         val PLATE = 0xFF3B4148.toInt()
         val PLATE_ELITE = 0xFF464035.toInt()
+        val SMOKE = 0xFFC9CEC6.toInt()
         val RAIL_BODY = 0xFF2A2D33.toInt()
         val COIL = 0xFFD9A93A.toInt()
         val PLATE_EDGE = 0xFF262B30.toInt()

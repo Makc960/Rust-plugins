@@ -1278,10 +1278,29 @@ S['quarry.bit'] = drill_bit()
 S['quarry.bank'] = scale(tanks('crateMetal'), 1.45)
 S['quarry.dial'] = vault_dial()
 
+def field_cap(colour):
+    """A medic's field cap with a red cross on a white patch."""
+    def front(d, c):
+        d.ellipse((c - 38, c - 36, c + 30, c + 32), fill=darker(colour))
+        d.ellipse((c - 33, c - 31, c + 25, c + 27), fill=colour)
+        d.rounded_rectangle((c - 9, c - 30, c - 3, c + 26), radius=3, fill=lighter(colour, 0.14))
+        dot(d, c, -6, -2, 13, WHITE, w=3, edge=(150, 154, 150, 255))
+        d.rectangle((c - 9, c - 10, c - 3, c + 6), fill=RED)
+        d.rectangle((c - 14, c - 5, c + 2, c + 1), fill=RED)
+    return front
+
+
+def medic_bag(d, c):
+    rr(d, c, -100, -32, -30, 32, WHITE, r=8, edge=(150, 154, 150, 255))
+    d.rectangle((c - 71, c - 18, c - 59, c + 18), fill=RED)
+    d.rectangle((c - 83, c - 6, c - 47, c + 6), fill=RED)
+
+
 # Commanders: their own uniforms, headgear and weapons.
 S['commander.sergeant'] = trooper('soldier1_machine', rgba(0x4C6B32), beret(rgba(0xB3302B)))
 S['commander.engineer'] = trooper('womanGreen_hold', rgba(0xD9822B), both(tesla_gun((255, 227, 107, 255)), hard_hat(rgba(0xF2C230))), tool_pack)
 S['commander.grom'] = trooper('soldier1_hold', rgba(0x3E4654), both(grenade_launcher, beret(rgba(0x22262C))), ammo_pack)
+S['commander.sokolova'] = trooper('womanGreen_hold', rgba(0x3F6B5E), both(sniper_rifle(), field_cap(rgba(0x587F72))), medic_bag)
 
 
 def epaulettes(d, c):
@@ -1292,11 +1311,11 @@ def epaulettes(d, c):
 
 # Each commander in every camouflage: uniform and headgear colours.
 OUTFITS = {
-    'desert': {'sergeant': (0xC2A26A, 0x8C5A2B), 'engineer': (0xCDB07A, 0xE8D7A0), 'grom': (0xA88D5E, 0x6B5536)},
-    'winter': {'sergeant': (0xE2E6EA, 0x8E9BA8), 'engineer': (0xE8ECEF, 0xF4F6F8), 'grom': (0xD8DDE2, 0x56626D)},
-    'night': {'sergeant': (0x30343B, 0x15171A), 'engineer': (0x3A3F47, 0x23262B), 'grom': (0x26292E, 0x0F1012)},
-    'urban': {'sergeant': (0x6C7A89, 0x3D4D5E), 'engineer': (0x7A8796, 0xB7C0CA), 'grom': (0x5A6673, 0x2C3540)},
-    'parade': {'sergeant': (0x23452B, 0xD9B342), 'engineer': (0x23452B, 0xD9B342), 'grom': (0x23452B, 0xD9B342)},
+    'desert': {'sergeant': (0xC2A26A, 0x8C5A2B), 'engineer': (0xCDB07A, 0xE8D7A0), 'grom': (0xA88D5E, 0x6B5536), 'sokolova': (0xBFA470, 0xD9C795)},
+    'winter': {'sergeant': (0xE2E6EA, 0x8E9BA8), 'engineer': (0xE8ECEF, 0xF4F6F8), 'grom': (0xD8DDE2, 0x56626D), 'sokolova': (0xE6EAEE, 0xC9D1D8)},
+    'night': {'sergeant': (0x30343B, 0x15171A), 'engineer': (0x3A3F47, 0x23262B), 'grom': (0x26292E, 0x0F1012), 'sokolova': (0x2E333A, 0x1A1D21)},
+    'urban': {'sergeant': (0x6C7A89, 0x3D4D5E), 'engineer': (0x7A8796, 0xB7C0CA), 'grom': (0x5A6673, 0x2C3540), 'sokolova': (0x6E7C8A, 0x4A5866)},
+    'parade': {'sergeant': (0x23452B, 0xD9B342), 'engineer': (0x23452B, 0xD9B342), 'grom': (0x23452B, 0xD9B342), 'sokolova': (0x23452B, 0xD9B342)},
 }
 for camo, kit in OUTFITS.items():
     extra = epaulettes if camo == 'parade' else None
@@ -1307,6 +1326,9 @@ for camo, kit in OUTFITS.items():
         'womanGreen_hold', rgba(u), both(*(f for f in (tesla_gun((255, 227, 107, 255)), hard_hat(rgba(h)), extra) if f)), tool_pack)
     u, h = kit['grom']
     S['commander.grom.' + camo] = trooper('soldier1_hold', rgba(u), both(*(f for f in (grenade_launcher, beret(rgba(h)), extra) if f)), ammo_pack)
+    u, h = kit['sokolova']
+    S['commander.sokolova.' + camo] = trooper(
+        'womanGreen_hold', rgba(u), both(*(f for f in (sniper_rifle(), field_cap(rgba(h)), extra) if f)), medic_bag)
 S['sentry'] = sentry_gun()
 
 # Enemies, facing right and centred on the body.
@@ -1508,6 +1530,18 @@ def blast_icon(d, k):
     d.ellipse(ib(k, 40, 40, 60, 60), fill=0)
 
 
+def smoke_icon(d, k):
+    for (x, y, r) in ((32, 58, 20), (66, 60, 18), (50, 38, 22), (50, 66, 16)):
+        d.ellipse(ib(k, x - r, y - r, x + r, y + r), fill=255)
+
+
+def scope_icon(d, k):
+    d.ellipse(ib(k, 16, 16, 84, 84), outline=255, width=int(9 * k))
+    for (x0, y0, x1, y1) in ((50, 6, 50, 38), (50, 62, 50, 94), (6, 50, 38, 50), (62, 50, 94, 50)):
+        d.line([(x0 * k, y0 * k), (x1 * k, y1 * k)], fill=255, width=int(8 * k))
+    d.ellipse(ib(k, 45, 45, 55, 55), fill=255)
+
+
 for name, src in {
     'back': 'arrowLeft', 'gear': 'gear', 'trophy': 'trophy', 'play': 'right', 'pause': 'pause', 'cross': 'cross',
     'undo': 'return', 'lock': 'locked', 'star': 'star', 'medal': 'medal1', 'speed': 'fastForward',
@@ -1535,6 +1569,8 @@ S['icon.phone'] = kicon('phone')
 S['icon.video'] = kicon('video')
 S['icon.diamond'] = kicon('diamond', MORE_ICONS)
 S['icon.brush'] = kicon('toolBrush', MORE_ICONS)
+S['icon.smoke'] = glyph(smoke_icon)
+S['icon.scope'] = glyph(scope_icon)
 
 
 # --- packing -----------------------------------------------------------------------------

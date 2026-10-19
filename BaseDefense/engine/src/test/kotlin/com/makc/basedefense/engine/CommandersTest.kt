@@ -196,6 +196,66 @@ class CommandersTest {
     }
 
     @Test
+    fun sokolovaSnipesTheToughestFromAfar() {
+        val w = world(CommanderType.SOKOLOVA)
+        val c = w.commander!!
+        assertTrue(w.commanderRange(c) > CommanderType.SERGEANT.levels[0].range + 0.8f, "she reaches far")
+        val bandit = nextTo(w, EnemyType.BANDIT, hpMul = 20f)
+        val brute = nextTo(w, EnemyType.BRUTE, hpMul = 20f, ahead = -0.5f)
+        run(w, 0.1f)
+        assertEquals(bandit.maxHp, bandit.hp, "she leaves the small fry")
+        val hit = w.commanderDamage(c) - EnemyType.BRUTE.armor * World.SNIPER_PIERCE
+        assertEquals(brute.maxHp - hit, brute.hp, 1f, "and hits the toughest, through half its armor")
+        assertTrue(w.tracers.any { it.kind == 2 })
+    }
+
+    @Test
+    fun sokolovaHealsSmokesAndHeadshots() {
+        val w = World(Levels.all[0], Rules(progress = 10, commander = CommanderType.SOKOLOVA, rank = Ranks.THIRD_SKILL))
+        w.beginForTest()
+        val c = w.commander!!
+        // First aid: lives back for the base and a dazed squad near her back in the fight.
+        assertFalse(w.useSkill(0), "nothing to heal, nothing spent")
+        w.lives -= 5
+        w.money = 5000
+        val spot = (0 until ROWS).flatMap { r -> (0 until COLS).map { c2 -> c2 to r } }
+            .filter { (c2, r) -> w.canPlace(TowerType.TURRET, c2, r) }
+            .minBy { (c2, r) -> hypot(c2 + 0.5f - c.x, r + 0.5f - c.y) }
+        val squad = w.build(TowerType.TURRET, spot.first, spot.second)!!
+        squad.jammed = 3f
+        val lives = w.lives
+        assertTrue(w.useSkill(0))
+        assertEquals(lives + w.skillPower(c, Skill.AID).toInt(), w.lives)
+        assertTrue(hypot(squad.x - c.x, squad.y - c.y) <= World.AID_RADIUS)
+        assertEquals(0f, squad.jammed, "the dazed squad is back in the fight")
+
+        // Smoke: whoever is in it is slowed hard, until it thins away.
+        val a = nextTo(w, EnemyType.BANDIT, hpMul = 50f)
+        val b = nextTo(w, EnemyType.RUNNER, hpMul = 50f, ahead = 0.3f)
+        assertTrue(w.useSkill(1))
+        assertEquals(1, w.smokes.size)
+        run(w, 0.1f)
+        assertTrue(a.slowTimer > 0f && a.slowAmount >= World.SMOKE_SLOW - 0.01f)
+        assertTrue(b.slowTimer > 0f)
+        val saved = World(Levels.all[0], Rules(progress = 10, commander = CommanderType.SOKOLOVA, rank = Ranks.THIRD_SKILL))
+        saved.restore(w.save())
+        assertEquals(1, saved.smokes.size, "the smoke is kept in a save")
+        run(w, World.SMOKE_TIME * 2.5f)
+        assertTrue(w.smokes.isEmpty())
+
+        // Headshot: the toughest walker falls at once; a boss takes a heavy hit.
+        val brute = nextTo(w, EnemyType.BRUTE, hpMul = 30f)
+        assertTrue(w.useSkill(2))
+        assertFalse(brute.alive, "one shot")
+        val boss = nextTo(w, EnemyType.APC, hpMul = 10f)
+        c.skillCooldowns[2] = 0f
+        val power = w.skillPower(c, Skill.HEADSHOT)
+        assertTrue(w.useSkill(2))
+        assertTrue(boss.alive)
+        assertEquals(boss.maxHp - power, boss.hp, power * 0.35f)
+    }
+
+    @Test
     fun skillsNeedTheBattleAndCountAsAbilities() {
         val ready = World(Levels.all[0], Rules(commander = CommanderType.SERGEANT))
         assertFalse(ready.skillReady(1), "not before the first wave")

@@ -15,7 +15,7 @@ internal enum class Icon {
     BACK, GEAR, TROPHY, BOOK, RANKS, CALENDAR, INFINITY, PLAY, PAUSE, CROSS, UNDO, LOCK, STAR, MEDAL,
     SPEED, FLAG, TARGET, SOUND, MUSIC, WARNING, HOME, CHECK, INFO, HEART, SKULL, CROWN,
     COMMANDER, GRENADE, FIST, WRENCH, BOLT, BLAST, CART,
-    DOWNLOAD, PHONE, VIDEO, DIAMOND, BRUSH,
+    DOWNLOAD, PHONE, VIDEO, DIAMOND, BRUSH, SMOKE, SCOPE,
     ;
 
     val sprite = "icon." + name.lowercase()
@@ -33,6 +33,9 @@ internal val Skill.icon: Icon
         Skill.SUPPRESS -> Icon.SKULL
         Skill.OVERCHARGE -> Icon.SPEED
         Skill.MINE -> Icon.WARNING
+        Skill.AID -> Icon.HEART
+        Skill.SMOKE -> Icon.SMOKE
+        Skill.HEADSHOT -> Icon.SCOPE
     }
 
 /**
@@ -1007,6 +1010,16 @@ internal class Ui(private val sound: (Sfx) -> Unit) {
             Icon.TARGET -> {
                 g.strokeCircle(cx, cy, s * 0.36f, color, s * 0.12f)
                 g.fillCircle(cx, cy, s * 0.12f, color)
+            }
+            Icon.SCOPE -> {
+                g.strokeCircle(cx, cy, s * 0.34f, color, s * 0.08f)
+                g.line(cx - s * 0.46f, cy, cx + s * 0.46f, cy, color, s * 0.07f)
+                g.line(cx, cy - s * 0.46f, cx, cy + s * 0.46f, color, s * 0.07f)
+            }
+            Icon.SMOKE -> {
+                g.fillCircle(cx - s * 0.18f, cy + s * 0.08f, s * 0.24f, color)
+                g.fillCircle(cx + s * 0.16f, cy + s * 0.1f, s * 0.22f, color)
+                g.fillCircle(cx, cy - s * 0.14f, s * 0.24f, color)
             }
             Icon.SOUND, Icon.MUSIC -> {
                 g.fillRect(cx - s * 0.36f, cy - s * 0.14f, s * 0.2f, s * 0.28f, color)
