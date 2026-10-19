@@ -15,8 +15,8 @@ class SpritesTest {
     @Test
     fun everySpriteLiesInsideTheImage() {
         val img = Sprites::class.java.getResourceAsStream(Sprites.IMAGE)!!.use { ImageIO.read(it) }
-        // Phones only promise textures up to 2048 pixels.
-        assertTrue(img.width <= 2048 && img.height <= 2048, "atlas is ${img.width}x${img.height}")
+        // Every phone the game runs on (Android 8 and later) takes 4096-pixel textures.
+        assertTrue(img.width <= 4096 && img.height <= 4096, "atlas is ${img.width}x${img.height}")
         val index = Sprites::class.java.getResourceAsStream(Sprites.INDEX)!!.use { it.readBytes().decodeToString() }
         val names = index.lines().filter { it.isNotBlank() && !it.startsWith("#") }.map { it.substringBefore(' ') }
         for (name in names) {

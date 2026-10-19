@@ -204,21 +204,23 @@ internal class Menus(private val game: Game) {
             open(Screen.COMMANDERS)
         }
 
-        // The tutorial, codex, achievements and settings along the bottom.
-        val gapX = d(10f)
-        val iconW = min(d(88f), (ui.w - d(40f) - gapX * 3) / 4f)
-        val rowX = (ui.w - iconW * 4 - gapX * 3) / 2f
+        // The tutorial, looks, codex, achievements and settings along the bottom.
         val icons = listOf(
             Triple("tutorial", Tx.TUTORIAL.t, Icon.INFO),
+            Triple("wardrobe", Tx.WARDROBE_BTN.t, Icon.BRUSH),
             Triple("codex", Tx.CODEX.t, Icon.BOOK),
             Triple("ach", Tx.ACHIEVEMENTS.t, Icon.TROPHY),
             Triple("settings", Tx.SETTINGS.t, Icon.GEAR),
         )
+        val gapX = d(8f)
+        val iconW = min(d(80f), (ui.w - d(28f) - gapX * (icons.size - 1)) / icons.size)
+        val rowX = (ui.w - iconW * icons.size - gapX * (icons.size - 1)) / 2f
         for ((i, item) in icons.withIndex()) {
             val x = rowX + i * (iconW + gapX)
             ui.button(g, item.first, x, bottomRow, iconW, d(52f), "", icon = item.third) {
                 when (item.first) {
                     "tutorial" -> game.startTutorial()
+                    "wardrobe" -> open(Screen.WARDROBE)
                     "codex" -> {
                         codexPick = -1
                         open(Screen.CODEX)
@@ -227,7 +229,7 @@ internal class Menus(private val game: Game) {
                     else -> open(Screen.SETTINGS)
                 }
             }
-            ui.textMid(g, item.second, x + iconW / 2f, bottomRow + d(70f), d(11.5f), Ui.DIM, maxW = iconW + d(10f))
+            ui.textMid(g, item.second, x + iconW / 2f, bottomRow + d(70f), d(11f), Ui.DIM, maxW = iconW + gapX)
         }
         val fy = ui.h - ui.bottom - d(24f)
         val record = if (profile.bestEndless > 0) Tx.BEST_WAVES.f(profile.bestEndless) else null
@@ -889,6 +891,7 @@ internal class Menus(private val game: Game) {
             Triple(Tx.VIP_ROW_UNDO.t, Tx.VIP_SECONDS.f(free.undoTime.toInt()), Tx.VIP_SECONDS.f(vip.undoTime.toInt())),
             Triple(Tx.VIP_ROW_DAILY.t, "1", "${Vip.DAILY_POINTS}"),
             Triple(Tx.VIP_ROW_GIFT.t, "—", "+${Vip.DAILY_GIFT}"),
+            Triple(Tx.VIP_ROW_PARADE.t, "—", null),
             Triple(Tx.VIP_ROW_CROWN.t, "—", null),
         )
     }
@@ -1011,6 +1014,12 @@ internal class Menus(private val game: Game) {
             y += ph + d(12f)
         }
 
+        ui.button(g, "looks", x, y, w, d(48f), Tx.WARDROBE.t, Style.NORMAL, size = 15f, icon = Icon.BRUSH) {
+            cameFrom = Screen.COMMANDERS
+            ui.resetScroll(Screen.WARDROBE.name)
+            game.go(Screen.WARDROBE)
+        }
+        y += d(60f)
         for (c in CommanderType.entries) {
             y += commanderCard(g, c, x, y, w, shop, busy) + d(12f)
         }
@@ -1088,6 +1097,120 @@ internal class Menus(private val game: Game) {
             }
         }
         return ph
+    }
+
+    // --- looks --------------------------------------------------------------------------
+
+    private var wardrobeBottom = 0f
+
+    fun wardrobe(g: Gfx) {
+        val top = ui.header(g, Tx.WARDROBE.t) { game.go(returnTo()) }
+        val shop = game.shop
+        val busy = clock - vipBusyAt < VIP_WAIT
+        val x = d(14f)
+        val w = ui.w - d(28f)
+        val viewH = ui.h - ui.bottom - top
+        val off = ui.beginScroll(g, Screen.WARDROBE.name, 0f, top, ui.w, viewH, if (wardrobeBottom > 0f) wardrobeBottom else viewH)
+        var y = top - off + d(4f)
+        ui.caption(g, Tx.CAMO_SQUADS.t, x + d(4f), y + d(12f))
+        y += d(22f)
+        val gap = d(10f)
+        val cw = (w - gap) / 2f
+        val ch = d(196f)
+        for ((i, c) in Camo.entries.withIndex()) {
+            camoCard(g, c, x + (i % 2) * (cw + gap), y + (i / 2) * (ch + gap), cw, ch, shop, busy)
+        }
+        y += (Camo.entries.size + 1) / 2 * (ch + gap) + d(6f)
+        ui.caption(g, Tx.CAMO_COMMANDERS.t, x + d(4f), y + d(12f))
+        y += d(22f)
+        for (c in CommanderType.entries) y += outfitRow(g, c, x, y, w) + d(10f)
+        if (shop == Shop.HERE) {
+            restoreButton(g, x, y, w, busy)
+            y += d(56f)
+        }
+        wardrobeBottom = y + d(12f) - (top - off)
+        ui.endScroll(g, Screen.WARDROBE.name)
+    }
+
+    /** One camouflage for the squads: a squad wearing it, and how to get it. */
+    private fun camoCard(g: Gfx, c: Camo, x: Float, y: Float, w: Float, h: Float, shop: Shop, busy: Boolean) {
+        val open = profile.camoOpen(c)
+        val worn = profile.battleCamo == c
+        ui.panel(g, x, y, w, h, if (worn) Ui.GOLD else Ui.EDGE)
+        val ps = d(84f)
+        ui.well(g, x + (w - ps) / 2f, y + d(12f), ps, ps, d(8f))
+        val was = renderer.camo
+        renderer.camo = c
+        renderer.drawTowerIcon(g, TowerType.TURRET, 1, x + w / 2f, y + d(12f) + ps / 2f, ps * 0.92f, clock)
+        renderer.camo = was
+        if (!open) ui.lock(g, x + w / 2f + ps / 2f - d(4f), y + d(18f), d(15f), Ui.ACCENT)
+        ui.textMid(g, c.title.t, x + w / 2f, y + d(114f), d(15f), if (worn) Ui.GOLD else Ui.TEXT, maxW = w - d(16f), font = Font.DISPLAY)
+        val by = y + h - d(52f)
+        val bx = x + d(10f)
+        val bw = w - d(20f)
+        val product = c.product
+        val world = c.world
+        when {
+            worn -> ui.tag(g, Tx.CAMO_PICKED.t, x + w / 2f - (g.textWidth(Tx.CAMO_PICKED.t, d(13f), Font.DISPLAY) + d(13f)) / 2f, by + d(20f), d(13f), Ui.GOLD)
+            open -> ui.button(g, "camo${c.name}", bx, by, bw, d(40f), Tx.CAMO_PICK.t, Style.PRIMARY, size = 14f) {
+                profile.camo = c
+                game.sound(Sfx.UPGRADE, 0.6f)
+            }
+            world != null -> ui.paragraph(
+                g, Tx.CAMO_WORLD.f(Biome.entries[world].title.t, profile.worldWins(world), Levels.PER_WORLD),
+                x + w / 2f, by + d(4f), bw, d(11f), Ui.DIM, Align.CENTER,
+            )
+            product != null && shop != Shop.NONE -> {
+                if (c == Camo.PARADE) ui.textMid(g, Tx.CAMO_VIP.t, x + w / 2f, by - d(10f), d(10.5f), Ui.GOLD, maxW = bw)
+                val sub = if (shop == Shop.HERE) Tx.PRICE.f(product.rubles) else Tx.VIP_ELSEWHERE.t
+                ui.button(g, "camo${c.name}", bx, by, bw, d(42f), Tx.BUY.t, Style.PRIMARY, shop == Shop.HERE && !busy, size = 14f, icon = Icon.CART, sub = sub) {
+                    buy(product)
+                }
+            }
+            else -> ui.paragraph(g, if (c == Camo.URBAN) Tx.CAMO_PASS.t else Tx.CAMO_PARADE.t, x + w / 2f, by + d(4f), bw, d(11f), Ui.DIM, Align.CENTER)
+        }
+    }
+
+    /** One commander in every uniform, the worn one framed in gold; returns its height. */
+    private fun outfitRow(g: Gfx, c: CommanderType, x: Float, y: Float, w: Float): Float {
+        val h = d(124f)
+        ui.panel(g, x, y, w, h)
+        ui.text(g, c.title.t, x + d(16f), y + d(26f), d(15f), Ui.TEXT, maxW = w - d(32f), font = Font.DISPLAY)
+        val n = Camo.entries.size
+        val gap = d(6f)
+        val sw = min(d(56f), (w - d(24f) - gap * (n - 1)) / n)
+        var sx = x + (w - sw * n - gap * (n - 1)) / 2f
+        val sy = y + d(40f)
+        val worn = profile.battleOutfit(c)
+        for (o in Camo.entries) {
+            val open = profile.outfitOpen(c, o)
+            ui.area("outfit${c.name}${o.name}", sx, sy, sw, sw + d(18f)) {
+                if (open) {
+                    profile.setOutfit(c, o)
+                    game.sound(Sfx.UPGRADE, 0.5f)
+                } else {
+                    game.toast(outfitHint(o), Icon.LOCK)
+                }
+            }
+            ui.well(g, sx, sy, sw, sw, d(6f))
+            if (o == worn) ui.outline(g, sx - d(2f), sy - d(2f), sw + d(4f), sw + d(4f), d(7f), Ui.GOLD, d(2.5f))
+            renderer.drawCommanderIcon(g, c, sx + sw / 2f, sy + sw / 2f, sw * 0.82f, if (open) 1f else 0.45f, o)
+            if (!open) ui.lock(g, sx + sw - d(9f), sy + d(9f), d(12f), Ui.ACCENT)
+            ui.textMid(g, o.title.t, sx + sw / 2f, sy + sw + d(11f), d(9.5f), if (o == worn) Ui.GOLD else Ui.DIM, maxW = sw + gap)
+            sx += sw + gap
+        }
+        return h
+    }
+
+    /** How to get a uniform that is still closed. */
+    private fun outfitHint(o: Camo): String {
+        val world = o.world
+        return when {
+            world != null -> Tx.CAMO_WORLD.f(Biome.entries[world].title.t, profile.worldWins(world), Levels.PER_WORLD)
+            o == Camo.PARADE -> Tx.CAMO_PARADE.t
+            o.product != null -> Tx.CAMO_SET.f(o.title.t)
+            else -> Tx.CAMO_PASS.t
+        }
     }
 
     /** [c]'s rank, how far he is to the next and what it brings; returns its height. */

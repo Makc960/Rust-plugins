@@ -49,12 +49,18 @@ internal class Art private constructor() {
     val planeShadow = need("shadow.plane")
     val rocket = need("rocket")
     val rocketBig = need("rocket.big")
-    private val commanders = CommanderType.entries.map { need("commander." + it.name.lowercase()) }
+    /** Every commander in every camouflage, by commander and then by set. */
+    private val commanders = CommanderType.entries.map { c -> Camo.entries.map { need("commander." + c.name.lowercase() + it.suffix) } }
+
+    /** The sandbags of each camouflage but the field one, plain and elite. */
+    private val camoBags = Camo.entries.map { if (it == Camo.FIELD) null else need("camo" + it.suffix) to need("camo" + it.suffix + ".elite") }
     val sentry = need("sentry")
 
     fun trooper(type: TowerType): Sprite = towerTroopers[type.ordinal]
 
-    fun commander(type: CommanderType): Sprite = commanders[type.ordinal]
+    fun commander(type: CommanderType, outfit: Camo = Camo.FIELD): Sprite = commanders[type.ordinal][outfit.ordinal]
+
+    fun camo(c: Camo, elite: Boolean): Sprite? = camoBags[c.ordinal]?.let { if (elite) it.second else it.first }
 
     fun trooper(branch: Branch): Sprite = branchTroopers[branch.ordinal]
 

@@ -104,4 +104,38 @@ class ShopTest {
         assertEquals(listOf(Product.VIP_MONTH), Product.entries.filter { it.subscription })
         for (c in CommanderType.entries) assertTrue(c.stars == 0 || c.product != null, "$c can be bought as well as earned")
     }
+
+    @Test
+    fun camouflageOpensByWorldsPurchasesVipAndRank() {
+        val platform = SilentPlatform()
+        platform.shop = Shop.HERE
+        val game = Game(platform)
+        val p = game.profile
+        assertTrue(p.camoOpen(Camo.FIELD))
+        assertFalse(p.camoOpen(Camo.DESERT))
+        for (id in Levels.PER_WORLD + 1..Levels.PER_WORLD * 2) platform.putInt("stars_$id", 1)
+        assertTrue(p.camoOpen(Camo.DESERT), "every desert level won")
+        assertFalse(p.camoOpen(Camo.WINTER))
+
+        p.camo = Camo.NIGHT
+        assertEquals(Camo.FIELD, p.battleCamo, "a closed pick shows the field set")
+        game.buy(Product.SKIN_NIGHT) {}
+        assertTrue(p.camoOpen(Camo.NIGHT))
+        assertEquals(Camo.NIGHT, p.battleCamo)
+
+        assertFalse(p.camoOpen(Camo.PARADE))
+        p.grantVip(platform.day + 5)
+        assertTrue(p.camoOpen(Camo.PARADE), "VIP lends the parade set")
+        platform.day += 10
+        assertFalse(p.camoOpen(Camo.PARADE))
+        p.addService(CommanderType.GROM, 100_000)
+        assertTrue(p.outfitOpen(CommanderType.GROM, Camo.PARADE), "the top rank brings his parade uniform")
+        assertFalse(p.outfitOpen(CommanderType.SERGEANT, Camo.PARADE))
+        p.setOutfit(CommanderType.GROM, Camo.PARADE)
+        assertEquals(Camo.PARADE, p.battleOutfit(CommanderType.GROM))
+
+        assertFalse(p.camoOpen(Camo.URBAN))
+        p.grantCamo(Camo.URBAN)
+        assertTrue(p.camoOpen(Camo.URBAN))
+    }
 }

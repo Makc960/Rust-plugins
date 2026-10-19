@@ -237,6 +237,43 @@ class Profile(private val p: Platform) {
         return true
     }
 
+    // --- camouflage -----------------------------------------------------------------------
+
+    /** Every level of campaign world [w] (0 is the first) is won. */
+    fun worldWon(w: Int): Boolean = (1..Levels.PER_WORLD).all { stars(w * Levels.PER_WORLD + it) > 0 }
+
+    /** Levels of world [w] won so far. */
+    fun worldWins(w: Int): Int = (1..Levels.PER_WORLD).count { stars(w * Levels.PER_WORLD + it) > 0 }
+
+    /** Given by a reward, like the season pass's. */
+    fun grantCamo(c: Camo) = p.putInt("own_${c.key}", 1)
+
+    fun camoOpen(c: Camo): Boolean = when {
+        c == Camo.FIELD -> true
+        c.world?.let { worldWon(it) } == true -> true
+        c.product?.let { owned(it) } == true -> true
+        c == Camo.PARADE && vip(p.today()) -> true
+        else -> p.getInt("own_${c.key}", 0) != 0
+    }
+
+    /** A commander of the top rank wears his parade uniform whatever else he has. */
+    fun outfitOpen(commander: CommanderType, c: Camo): Boolean = camoOpen(c) || (c == Camo.PARADE && rank(commander) >= Ranks.MAX)
+
+    /** The squads' camouflage the player picked, whether open or not. */
+    var camo: Camo
+        get() = p.getString("camo")?.let { name -> Camo.entries.firstOrNull { it.name == name } } ?: Camo.FIELD
+        set(v) = p.putString("camo", v.name)
+
+    fun outfit(commander: CommanderType): Camo =
+        p.getString("outfit_${commander.name}")?.let { name -> Camo.entries.firstOrNull { it.name == name } } ?: Camo.FIELD
+
+    fun setOutfit(commander: CommanderType, c: Camo) = p.putString("outfit_${commander.name}", c.name)
+
+    /** What shows on the map: the pick, or the field set while the pick is closed. */
+    val battleCamo: Camo get() = camo.takeIf { camoOpen(it) } ?: Camo.FIELD
+
+    fun battleOutfit(commander: CommanderType): Camo = outfit(commander).takeIf { outfitOpen(commander, it) } ?: Camo.FIELD
+
     // --- pop-ups --------------------------------------------------------------------------
 
     /** The day the VIP offer last popped up. */

@@ -317,6 +317,20 @@ object Tx {
     val SKILL_FROM_RANK = L("с %d ранга", "from rank %d")
     val STUN_FOR = L("оглушение %s с", "stun %s s")
 
+    // Looks
+    val WARDROBE = L("ОБЛИКИ", "LOOKS")
+    val WARDROBE_BTN = L("Облики", "Looks")
+    val CAMO_SQUADS = L("Маскировка отрядов", "Squads' camouflage")
+    val CAMO_COMMANDERS = L("Форма командиров", "Commanders' uniforms")
+    val CAMO_PICKED = L("ВЫБРАНА", "ON")
+    val CAMO_PICK = L("ВЫБРАТЬ", "WEAR")
+    val CAMO_WORLD = L("Пройди все уровни мира «%s»: %d из %d", "Win every level of %s: %d of %d")
+    val CAMO_PASS = L("Награда пропуска сезона", "A season pass reward")
+    val CAMO_VIP = L("или бесплатно с VIP", "or free with VIP")
+    val CAMO_SET = L("Набор «%s»: форма всех командиров и маскировка отрядов", "The %s set: every commander's uniform and the squads' camouflage")
+    val CAMO_PARADE = L("Парадная: набор, VIP или 10 ранг командира", "Parade: the set, VIP or the commander's rank 10")
+    val VIP_ROW_PARADE = L("Парадная форма и маскировка", "Parade uniform and camouflage")
+
     // Reminders, rating and updates
     val REMINDERS = L("Напоминания", "Reminders")
     val REMINDERS_TITLE = L("НАПОМИНАНИЯ", "REMINDERS")

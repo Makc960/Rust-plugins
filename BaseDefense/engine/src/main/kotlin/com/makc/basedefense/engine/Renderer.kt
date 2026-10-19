@@ -22,6 +22,10 @@ class Renderer {
     /** The world drawn last; pits and icons take its ground. */
     private var biome = Biome.GREEN
 
+    /** The player's camouflage: the squads' sandbags and each commander's uniform. */
+    var camo = Camo.FIELD
+    val outfits = Array(CommanderType.entries.size) { Camo.FIELD }
+
     private fun art(g: Gfx): Art? = if (g.sprites) art else null
 
     /** Draws [s] at its own size times [k]. */
@@ -777,6 +781,7 @@ class Renderer {
             return
         }
         g.put(if (branch != null) a.pitElite[biome.ordinal] else a.pit[biome.ordinal], x, y)
+        a.camo(camo, branch != null)?.let { g.put(it, x, y) }
         val props = type == TowerType.RADAR || type == TowerType.QUARRY
         if (props) drawProps(g, a, type, branch, x, y, time)
         val n = if (branch != null) 3 else level + 1
@@ -1045,7 +1050,7 @@ class Renderer {
         val bob = if (c.moving) sin(c.walked * 14f) * 0.025f else 0f
         val a = art(g)
         if (a != null) {
-            val s = a.commander(c.type)
+            val s = a.commander(c.type, outfits[c.type.ordinal])
             g.put(s, c.x, c.y + bob, HERO_SCALE, c.angle)
             if (c.flash > 0f) {
                 val rad = Math.toRadians(c.angle.toDouble())
@@ -1126,12 +1131,12 @@ class Renderer {
     }
 
     /** A commander facing up, fitted into [size]: his portrait in menus and panels. */
-    fun drawCommanderIcon(g: Gfx, type: CommanderType, cx: Float, cy: Float, size: Float, alpha: Float = 1f) {
+    fun drawCommanderIcon(g: Gfx, type: CommanderType, cx: Float, cy: Float, size: Float, alpha: Float = 1f, outfit: Camo = outfits[type.ordinal]) {
         val a = art(g)
         g.save()
         g.translate(cx, cy)
         if (a != null) {
-            val s = a.commander(type)
+            val s = a.commander(type, outfit)
             g.scale(size / max(s.shownW, s.shownH))
             g.put(s, -s.shownDy, s.shownDx, 1f, -90f, alpha)
         } else {

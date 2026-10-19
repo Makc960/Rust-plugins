@@ -3,7 +3,7 @@ package com.makc.basedefense.engine
 import kotlin.math.abs
 import kotlin.math.min
 
-internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS, INTRO }
+internal enum class Screen { MENU, LEVELS, PLAY, SETTINGS, PERKS, ACHIEVEMENTS, CODEX, DAILY, VIP, COMMANDERS, INTRO, WARDROBE }
 
 enum class Mode { CAMPAIGN, ENDLESS, DAILY, TUTORIAL }
 
@@ -221,6 +221,8 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
     }
 
     fun render(g: Gfx) {
+        renderer.camo = profile.battleCamo
+        for (c in CommanderType.entries) renderer.outfits[c.ordinal] = profile.battleOutfit(c)
         ui.begin()
         g.fillRect(0f, 0f, ui.w, ui.h, Ui.BG)
         if (ui.w <= 0f || ui.h <= 0f) return
@@ -235,6 +237,7 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
             Screen.DAILY -> menus.daily(g)
             Screen.VIP -> menus.vip(g)
             Screen.COMMANDERS -> menus.commanders(g)
+            Screen.WARDROBE -> menus.wardrobe(g)
             Screen.PLAY -> play.render(g)
             Screen.INTRO -> intro.render(g)
         }

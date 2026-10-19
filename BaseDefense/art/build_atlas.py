@@ -1107,6 +1107,53 @@ S['trooper.bank'] = trooper('soldier1_hold', SQUAD['quarry'], money_bag)
 for biome in ('green', 'desert', 'winter'):
     S['pit.%s' % biome] = pit(biome, False)
     S['pit.%s.elite' % biome] = pit(biome, True)
+
+
+# Camouflage for the squads: the pit's sandbags in the set's colours, drawn over the pit.
+CAMO_BAGS = {
+    'desert': (0xD9B978, 0xA9874F), 'winter': (0xEEF1F4, 0xB7C2CC), 'night': (0x4A4F57, 0x2C2F35),
+    'urban': (0x8E99A6, 0x5E6977), 'parade': (0xB73A33, 0x86241F),
+}
+
+
+def tinted(im, colour):
+    """[im] in [colour], keeping its light and shade."""
+    a = np.asarray(im).astype(np.float32)
+    light = (0.30 * a[..., 0] + 0.59 * a[..., 1] + 0.11 * a[..., 2]) / 255.0
+    k = np.clip(0.45 + 0.75 * light, 0, 1.25)[..., None]
+    rgb = np.clip(np.array(colour[:3], dtype=np.float32) * k, 0, 255)
+    out = np.concatenate([rgb, a[..., 3:4]], axis=2).astype(np.uint8)
+    return Image.fromarray(out, 'RGBA')
+
+
+def camo_pit(name, elite):
+    """The ring of bags alone, laid out as in pit(), so it covers the pit's own bags."""
+    n = int(PX * 1.1)
+    im = Image.new('RGBA', (n, n))
+    d = ImageDraw.Draw(im)
+    c = n / 2
+    bag = tinted(tanks('sandbagBeige'), rgba(CAMO_BAGS[name][1 if elite else 0]))
+    count = 10
+    for i in range(count):
+        a = i * 360 / count + 9
+        b = scale(bag.rotate(-a - 90, expand=True, resample=Image.BICUBIC), 0.58)
+        x = c + math.cos(math.radians(a)) * 0.43 * PX - b.width / 2
+        y = c + math.sin(math.radians(a)) * 0.43 * PX - b.height / 2
+        im.alpha_composite(b, (int(x), int(y)))
+    if name == 'parade':
+        r = 0.43 * PX
+        d.ellipse((c - r, c - r, c + r, c + r), outline=GOLD, width=4)
+    if name == 'night':
+        y0 = c - 0.43 * PX
+        d.ellipse((c - 5, y0 - 5, c + 5, y0 + 5), fill=(255, 64, 48, 255), outline=(110, 20, 14, 255), width=2)
+    if name == 'winter':
+        im = snow_on(im, -3, -4)
+    return shadowed(im, 2, 3, 2, 0.3)
+
+
+for name in CAMO_BAGS:
+    S['camo.' + name] = camo_pit(name, False)
+    S['camo.%s.elite' % name] = camo_pit(name, True)
 S['prop.dish'] = scale(radar_dish(), 0.7)
 S['prop.table'] = map_table()
 S['prop.jammer'] = scale(jammer(), 0.62)
@@ -1123,6 +1170,31 @@ S['quarry.dial'] = vault_dial()
 S['commander.sergeant'] = trooper('soldier1_machine', rgba(0x4C6B32), beret(rgba(0xB3302B)))
 S['commander.engineer'] = trooper('womanGreen_hold', rgba(0xD9822B), both(tesla_gun((255, 227, 107, 255)), hard_hat(rgba(0xF2C230))), tool_pack)
 S['commander.grom'] = trooper('soldier1_hold', rgba(0x3E4654), both(grenade_launcher, beret(rgba(0x22262C))), ammo_pack)
+
+
+def epaulettes(d, c):
+    """Gold shoulder boards for the parade uniform."""
+    for y in (-52, 40):
+        rr(d, c, -26, y, 6, y + 12, GOLD, w=3, r=4, edge=(150, 104, 16, 255))
+
+
+# Each commander in every camouflage: uniform and headgear colours.
+OUTFITS = {
+    'desert': {'sergeant': (0xC2A26A, 0x8C5A2B), 'engineer': (0xCDB07A, 0xE8D7A0), 'grom': (0xA88D5E, 0x6B5536)},
+    'winter': {'sergeant': (0xE2E6EA, 0x8E9BA8), 'engineer': (0xE8ECEF, 0xF4F6F8), 'grom': (0xD8DDE2, 0x56626D)},
+    'night': {'sergeant': (0x30343B, 0x15171A), 'engineer': (0x3A3F47, 0x23262B), 'grom': (0x26292E, 0x0F1012)},
+    'urban': {'sergeant': (0x6C7A89, 0x3D4D5E), 'engineer': (0x7A8796, 0xB7C0CA), 'grom': (0x5A6673, 0x2C3540)},
+    'parade': {'sergeant': (0x23452B, 0xD9B342), 'engineer': (0x23452B, 0xD9B342), 'grom': (0x23452B, 0xD9B342)},
+}
+for camo, kit in OUTFITS.items():
+    extra = epaulettes if camo == 'parade' else None
+    u, h = kit['sergeant']
+    S['commander.sergeant.' + camo] = trooper('soldier1_machine', rgba(u), both(*(f for f in (beret(rgba(h)), extra) if f)))
+    u, h = kit['engineer']
+    S['commander.engineer.' + camo] = trooper(
+        'womanGreen_hold', rgba(u), both(*(f for f in (tesla_gun((255, 227, 107, 255)), hard_hat(rgba(h)), extra) if f)), tool_pack)
+    u, h = kit['grom']
+    S['commander.grom.' + camo] = trooper('soldier1_hold', rgba(u), both(*(f for f in (grenade_launcher, beret(rgba(h)), extra) if f)), ammo_pack)
 S['sentry'] = sentry_gun()
 
 # Enemies, facing right and centred on the body.
@@ -1326,7 +1398,8 @@ for name, im in items:
     x += w
     shelf = max(shelf, h)
 height = (y + shelf + 3) // 4 * 4
-if height > 2048:
+# Every phone the game runs on (Android 8 and later) takes 4096-pixel textures.
+if height > 4096:
     sys.exit('atlas too tall: %d' % height)
 atlas = Image.new('RGBA', (width, height))
 lines = []

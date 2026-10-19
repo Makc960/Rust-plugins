@@ -374,6 +374,7 @@ class ScreensTest {
         press(g, tall, "vip")
         assertEquals(Screen.VIP, g.screen)
         shot(g, tall, "tall_81_vip")
+        g.ui.scrollTo(Screen.VIP.name, 10_000f)
         press(g, tall, "vipbuy", 0.5f)
         assertTrue(g.vip, "paying turns VIP on")
         assertTrue(!has(g, tall, "vipbuy"), "nothing to buy while VIP is on")
@@ -515,6 +516,29 @@ class ScreensTest {
         run(g, 4f)
         shot(g, tall, "tall_a2_rank_up")
         assertEquals(Ranks.THIRD_SKILL, g.profile.rank(CommanderType.SERGEANT))
+    }
+
+    @Test
+    fun looksForSquadsAndCommanders() {
+        val platform = SilentPlatform()
+        unlockAll(platform)
+        platform.shop = Shop.HERE
+        platform.putInt("promo_day", platform.today())
+        val g = game(tall, platform)
+        run(g, 2f)
+        press(g, tall, "wardrobe")
+        assertEquals(Screen.WARDROBE, g.screen)
+        press(g, tall, "camoDESERT")
+        assertEquals(Camo.DESERT, g.profile.battleCamo)
+        press(g, tall, "camoNIGHT")
+        assertTrue(g.profile.camoOpen(Camo.NIGHT), "bought")
+        shot(g, tall, "tall_a3_looks")
+        g.ui.scrollTo(Screen.WARDROBE.name, 10_000f)
+        press(g, tall, "outfitSERGEANTNIGHT", 0f)
+        assertEquals(Camo.NIGHT, g.profile.battleOutfit(CommanderType.SERGEANT))
+        press(g, tall, "outfitGROMURBAN", 0f)
+        assertEquals(Camo.FIELD, g.profile.battleOutfit(CommanderType.GROM), "a closed uniform is not worn")
+        shot(g, tall, "tall_a4_uniforms")
     }
 
     @Test
