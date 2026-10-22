@@ -107,12 +107,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
+          # The RuStore build, signed with the upload key, goes up too, for loading into RuStore Console by hand.
+          FILES="BaseDefense.apk"
+          [ -f BaseDefense-RuStore.apk ] && FILES="$FILES BaseDefense-RuStore.apk"
           gh release delete base-defense --yes --cleanup-tag || true
-          gh release create base-defense BaseDefense.apk \
+          gh release create base-defense $FILES \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "Оборона базы $VERSION" \
-            --notes "Сборка из ${GITHUB_SHA::7}. Скачай BaseDefense.apk на телефон и установи поверх старой версии (прогресс сохранится). Поддержать автора: https://pay.cloudtips.ru/p/5b9bb7e3"
+            --notes "Сборка из ${GITHUB_SHA::7}. Скачай BaseDefense.apk на телефон и установи поверх старой версии (прогресс сохранится). BaseDefense-RuStore.apk — сборка для загрузки в RuStore. Поддержать автора: https://pay.cloudtips.ru/p/5b9bb7e3"
 
   # RuStore builds pull in RuStore's Pay SDK; this checks they still compile against it,
   # even without the upload key secrets (the APK is signed with the shared key and thrown away).
