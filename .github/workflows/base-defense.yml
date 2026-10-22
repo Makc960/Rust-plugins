@@ -106,11 +106,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          VERSION=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
           gh release delete base-defense --yes --cleanup-tag || true
           gh release create base-defense BaseDefense.apk \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "Оборона базы 3.0" \
+            --title "Оборона базы $VERSION" \
             --notes "Сборка из ${GITHUB_SHA::7}. Скачай BaseDefense.apk на телефон и установи поверх старой версии (прогресс сохранится). Поддержать автора: https://pay.cloudtips.ru/p/5b9bb7e3"
 
   # RuStore builds pull in RuStore's Pay SDK; this checks they still compile against it,
