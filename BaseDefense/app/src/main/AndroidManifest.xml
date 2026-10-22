@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Reminders about the daily challenge; Android 13 and later ask the player first. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="true"
+        android:appCategory="game"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.BaseDefense">
+
+        <!-- RuStore's Pay SDK reads these; only RuStore builds include it (see build.gradle.kts). -->
+        <meta-data
+            android:name="console_app_id_value"
+            android:value="@string/rustore_app_id" />
+        <meta-data
+            android:name="sdk_pay_scheme_value"
+            android:value="${payScheme}" />
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Banking apps come back here after paying for VIP. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${payScheme}" />
+            </intent-filter>
+        </activity>
+
+        <!-- Posts a planned reminder while the game is closed. -->
+        <receiver
+            android:name=".NoticeReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

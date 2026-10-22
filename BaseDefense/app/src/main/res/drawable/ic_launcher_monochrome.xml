@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The helmet and chevrons alone, for themed icons. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M39,54 C39,41.5 45.5,34 54,34 C62.5,34 69,41.5 69,54 Z M40.2,46.5 V49.2 H67.8 V46.5 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M38,53 H70 L74.5,58.5 H33.5 Z M45,65.5 L54,60.5 L63,65.5 V69 L54,64 L45,69 Z M45,71.5 L54,66.5 L63,71.5 V75 L54,70 L45,75 Z" />
+</vector>

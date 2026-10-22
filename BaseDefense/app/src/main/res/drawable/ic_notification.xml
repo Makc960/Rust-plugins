@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher's plate for the status bar: one colour, the helmet and chevrons cut out. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="54"
+    android:viewportHeight="54">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M15,0 H39 L54,15 V39 L39,54 H15 L0,39 V15 Z M12,27 C12,14.5 18.5,7 27,7 C35.5,7 42,14.5 42,27 Z M11,27 H43 L47.5,31.5 H6.5 Z M18,38.5 L27,33.5 L36,38.5 V42 L27,37 L18,42 Z M18,44.5 L27,39.5 L36,44.5 V48 L27,43 L18,48 Z" />
+</vector>
