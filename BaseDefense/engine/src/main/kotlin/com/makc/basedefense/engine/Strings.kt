@@ -475,7 +475,7 @@ object Tx {
         L("Новый мир «Руины города»: 8 уровней на двух дорогах, засады, байкеры, огнемётные танки и босс-дирижабль", "A new world, the City Ruins: 8 levels on two roads, ambushes, bikers, flame tanks and an airship boss"),
         L("Штурм боссов на время: вкладка «Боссы» в заданиях", "A boss rush against the clock: the Bosses tab of the missions"),
         L("Четвёртый командир — лейтенант Соколова, снайпер и медик", "A fourth commander: lieutenant Sokolova, a sniper and a medic"),
-        L("Сюжет в картинках, приказы штаба каждый день и снабжение", "A story in pictures, daily orders from headquarters and supplies"),
+        L("Новая оркестровая музыка и звуки, сюжет в картинках и приказы штаба", "New orchestral music and sounds, a story in pictures and daily orders"),
     )
     val NEWS_GO = L("В КАМПАНИЮ", "TO THE CAMPAIGN")
     val UPDATE_TITLE = L("НОВАЯ ВЕРСИЯ", "NEW VERSION")

@@ -1,12 +1,26 @@
 package com.makc.basedefense.engine
 
-enum class Sfx {
+/**
+ * The sound effects. Each is one or more takes in the app's audio files (sfx_shoot_1.ogg,
+ * sfx_shoot_2.ogg…), one picked at random; a [varied] one also plays a little higher or
+ * lower each time, so a long fight does not drone. Fanfares and the interface stay as made.
+ */
+enum class Sfx(val varied: Boolean = true) {
     SHOOT, SHOTGUN, FLAME, ROCKET, MISSILE, ZAP, BOOM, BASE_HIT, COIN,
-    BUILD, UPGRADE, SELL, WAVE, WIN, LOSE, CLICK, ERROR,
-    SNIPER, MINE, PLANE, FREEZE, REPAIR, SIREN, JAM, CLEAR, ACHIEVEMENT, RAIL,
+    BUILD, UPGRADE(false), SELL, WAVE(false), WIN(false), LOSE(false), CLICK(false), ERROR(false),
+    SNIPER, MINE, PLANE(false), FREEZE(false), REPAIR, SIREN(false), JAM, CLEAR, ACHIEVEMENT(false), RAIL,
+    ;
+
+    /** The name of its [take]'s file, from 1. */
+    fun file(take: Int): String = "sfx_${name.lowercase()}_$take.ogg"
 }
 
-enum class Track { MENU, BATTLE, BOSS }
+/** The music, a looping file each (music_menu.ogg…). */
+enum class Track {
+    MENU, BATTLE, BOSS;
+
+    val file: String get() = "music_${name.lowercase()}.ogg"
+}
 
 enum class Touch { DOWN, MOVE, UP, CANCEL }
 

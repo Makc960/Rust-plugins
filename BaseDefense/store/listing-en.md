@@ -38,8 +38,8 @@ A boss rush against the clock with medals; a weekly operation of 15 heavy waves;
 ★ COMFORTABLE
 A training battle with tips, pinch to zoom the map, undo a misplaced squad, faster play, and your battle is saved when you leave the game. English and Russian.
 
-The graphics come from the free Kenney packs (kenney.nl, CC0), and the sounds and music are synthesized inside the game. No internet needed.
+The graphics and many sounds come from the free Kenney packs (kenney.nl, CC0); the orchestral music is played with the GeneralUser GS sound bank. No internet needed.
 
 ## What's new (up to 500 characters)
 
-Base Defense 3.1: a fifth world, the City Ruins: 8 levels where enemies come down two roads at once and lay ambushes, with bikers, flame tanks and an airship boss. A boss rush against the clock, with medals. A fourth commander, lieutenant Sokolova, a sniper and a medic. A story in pictures: a backstory and chapters between the worlds. Three orders from headquarters every day, and supplies for every day you play.
+Base Defense 3.1: a fifth world, the City Ruins: 8 levels where enemies come down two roads at once and lay ambushes, with bikers, flame tanks and an airship boss. A boss rush against the clock, with medals. A fourth commander, lieutenant Sokolova, a sniper and a medic. A story in pictures: a backstory and chapters between the worlds. Three orders from headquarters every day, and supplies for every day you play. New orchestral music and sounds.

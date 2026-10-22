@@ -1246,23 +1246,4 @@ class ScreensTest {
         run(g, 0.1f)
         assertNull(platform.track, "music off")
     }
-
-    @Test
-    fun soundsAndMusicAreMade() {
-        for (s in Sfx.entries) {
-            val pcm = Synth.render(s)
-            assertTrue(pcm.size in 300..Synth.RATE * 2, "$s length ${pcm.size}")
-            assertTrue(pcm.any { it > 8000 }, "$s is silent")
-            val wav = Synth.wav(pcm)
-            assertEquals(44 + pcm.size * 2, wav.size)
-        }
-        for (t in Track.entries) {
-            val pcm = Music.render(t)
-            val seconds = pcm.size / Music.RATE.toFloat()
-            assertTrue(seconds in 20f..60f, "$t lasts $seconds s")
-            assertTrue(pcm.any { it > 12000 }, "$t is too quiet")
-            // The loop joins smoothly: no big jump from the last sample to the first.
-            assertTrue(kotlin.math.abs(pcm.last() - pcm.first()) < 12000, "$t clicks at the loop point")
-        }
-    }
 }

@@ -27,6 +27,7 @@ tasks.test {
     useJUnitPlatform()
     systemProperty("java.awt.headless", "true")
     systemProperty("screens.dir", layout.buildDirectory.dir("screens").get().asFile.path)
+    systemProperty("audio.dir", rootProject.file("app/src/main/assets/audio").path)
     testLogging {
         events("failed")
         showStandardStreams = true

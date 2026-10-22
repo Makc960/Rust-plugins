@@ -1,0 +1,10 @@
+{
+  "name": "base-defense-audio",
+  "private": true,
+  "description": "Renders the game's music and sound effects with a SoundFont",
+  "type": "module",
+  "dependencies": {
+    "generaluser": "1.47.1",
+    "spessasynth_core": "4.3.22"
+  }
+}
