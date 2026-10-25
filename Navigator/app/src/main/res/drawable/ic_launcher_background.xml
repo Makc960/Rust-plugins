@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A blue to teal sky with faint roads crossing it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108">
+                <item android:offset="0" android:color="#FF2F6FED" />
+                <item android:offset="1" android:color="#FF17B3C8" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M-10,78 C30,64 60,90 118,52"
+        android:strokeWidth="7"
+        android:strokeColor="#26FFFFFF"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M30,-10 C40,30 70,50 64,118"
+        android:strokeWidth="5"
+        android:strokeColor="#1FFFFFFF"
+        android:fillColor="#00000000" />
+</vector>

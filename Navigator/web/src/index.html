@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <title>Штурман</title>
+    <link rel="stylesheet" href="lib/maplibre-gl.css">
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+    <div id="map"></div>
+
+    <!-- Browsing: the search bar and the places under it. -->
+    <header id="top" class="top">
+        <div class="searchbar">
+            <button class="icon-btn" id="menu-btn" aria-label="Настройки"></button>
+            <button class="search-field" id="search-open">Куда едем?</button>
+        </div>
+        <div class="chips" id="chips"></div>
+        <div class="notice" id="notice" hidden></div>
+    </header>
+
+    <!-- Map buttons on the right. -->
+    <div class="fabs" id="fabs">
+        <button class="fab" id="compass-btn" aria-label="На север" hidden></button>
+        <button class="fab" id="locate-btn" aria-label="Где я"></button>
+    </div>
+
+    <!-- Search: a page over the map. -->
+    <section id="search" class="page" hidden>
+        <div class="page-head">
+            <button class="icon-btn" id="search-back" aria-label="Назад"></button>
+            <input id="search-input" type="search" placeholder="Адрес, место или координаты" autocomplete="off" enterkeyhint="search">
+            <button class="icon-btn" id="search-clear" aria-label="Стереть" hidden></button>
+        </div>
+        <div class="page-body" id="search-results"></div>
+    </section>
+
+    <!-- A place, or the routes to it: a sheet at the bottom. -->
+    <section id="sheet" class="sheet" hidden></section>
+
+    <!-- Driving. -->
+    <div id="banner" class="banner" hidden></div>
+    <div id="lanes" class="lanes" hidden></div>
+    <div id="speed" class="speed" hidden></div>
+    <button id="resume-btn" class="resume" hidden>Продолжить</button>
+    <section id="navbar" class="navbar" hidden></section>
+
+    <!-- Settings and dialogs. -->
+    <section id="settings" class="page" hidden></section>
+    <div id="dialog" class="dialog" hidden></div>
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

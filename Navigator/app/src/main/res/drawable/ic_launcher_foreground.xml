@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The navigation arrow, white with a soft shadow, inside the icon's safe circle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M54,32 L73,77 L54,67.5 L35,77 Z"
+        android:fillColor="#33000000"
+        android:strokeColor="#33000000"
+        android:strokeWidth="3"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M54,29 L73,74 L54,64.5 L35,74 Z"
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M54,29 L54,64.5 L35,74 Z"
+        android:fillColor="#FFDCE7FF" />
+</vector>

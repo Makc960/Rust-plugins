@@ -1,0 +1,37 @@
+// Links other apps open the navigator with: geo:55.75,37.62?q=..., google.navigation:q=...
+// Returns {point, label} for a place to show, {query} for something to search, or null.
+
+function coords(text) {
+    const m = (text || '').match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    const lat = parseFloat(m[1]);
+    const lon = parseFloat(m[2]);
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180 || (lat === 0 && lon === 0)) return null;
+    return [lon, lat];
+}
+
+export function parseIntent(uri) {
+    if (!uri) return null;
+    let rest;
+    if (uri.startsWith('geo:')) rest = uri.slice(4);
+    else if (uri.startsWith('google.navigation:')) rest = `0,0?${uri.slice('google.navigation:'.length)}`;
+    else return null;
+    const [path, queryString = ''] = rest.split('?');
+    let q = '';
+    try {
+        q = (new URLSearchParams(queryString).get('q') || '').trim();
+    } catch (e) {
+        q = '';
+    }
+    if (q) {
+        // "q=55.75,37.62(Красная площадь)": a point with a name.
+        const point = coords(q);
+        if (point) {
+            const label = (q.match(/\((.*)\)\s*$/) || [])[1];
+            return { point, label: label ? label.trim() : '' };
+        }
+        return { query: q };
+    }
+    const point = coords(path);
+    return point ? { point, label: '' } : null;
+}
