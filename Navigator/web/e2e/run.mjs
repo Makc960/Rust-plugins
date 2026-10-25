@@ -8,7 +8,7 @@ import { extname, join, resolve } from 'node:path';
 
 import { chromium } from 'playwright-core';
 
-import { CENTER, cityGeojson, cityStyle, grid, reverseAnswer, routeAnswer, searchAnswer } from './city.mjs';
+import { CENTER, cityGeojson, cityStyle, grid, nearbyAnswer, overpassAnswer, reverseAnswer, routeAnswer, searchAnswer, traceAnswer } from './city.mjs';
 
 const [appDir, shotsDir, browserPath = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'] = process.argv.slice(2).map((p, i) => (i < 2 ? resolve(p) : p));
 mkdirSync(shotsDir, { recursive: true });
@@ -56,11 +56,12 @@ function nativeBridge(start) {
         openLocationSettings() { calls.push('openLocationSettings'); },
         speak(text) { (window.__said ||= []).push(text); },
         stopSpeaking() {},
-        http(id, method, url, body, timeout) {
+        http(id, method, url, body, timeout, type) {
             calls.push(`http ${url.split('?')[0]}`);
-            fetch(url).then(async (r) => window.__shturman.http(id, r.status, await r.text()), () => window.__shturman.http(id, -1, 'IOException'));
+            fetch(url, { method, body: body || undefined, headers: type ? { 'content-type': type } : undefined }).then(async (r) => window.__shturman.http(id, r.status, await r.text()), () => window.__shturman.http(id, -1, 'IOException'));
         },
         keepScreenOn(on) { calls.push(`keepScreenOn ${on}`); },
+        navStatus(title, text) { calls.push('navStatus'); window.__status = `${title} | ${text}`; },
         setTheme(t) { calls.push(`setTheme ${t}`); },
         share() {}, copy() {}, openUrl() {}, vibrate() {}, exit() {},
         info() { return JSON.stringify({ version: '1.0', store: 'github', supportUrl: 'https://example.org' }); },
@@ -83,11 +84,18 @@ async function phone({ landscape = false, theme = 'day', native = false } = {}) 
     page.on('pageerror', (e) => problems.push(`page: ${e.message}`));
     await page.route('https://photon.komoot.io/**', (route) => {
         const url = new URL(route.request().url());
-        const body = url.pathname === '/reverse' ? reverseAnswer([+url.searchParams.get('lon'), +url.searchParams.get('lat')]) : searchAnswer();
+        const point = [+url.searchParams.get('lon'), +url.searchParams.get('lat')];
+        const tag = url.searchParams.get('osm_tag');
+        const body = url.pathname !== '/reverse' ? searchAnswer() : tag ? nearbyAnswer(point, tag) : reverseAnswer(point);
         route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body), headers: { 'access-control-allow-origin': '*' } });
     });
-    await page.route('https://valhalla1.openstreetmap.de/**', (route) =>
-        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(routeAnswer()), headers: { 'access-control-allow-origin': '*' } }));
+    await page.route('https://valhalla1.openstreetmap.de/**', (route) => {
+        const trace = route.request().url().includes('/trace_attributes');
+        const body = trace ? traceAnswer(JSON.parse(route.request().postData() || '{}')) : routeAnswer();
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body), headers: { 'access-control-allow-origin': '*' } });
+    });
+    await page.route(/overpass/, (route) =>
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(overpassAnswer()), headers: { 'access-control-allow-origin': '*' } }));
     await page.goto(`${base}/index.html?style=${encodeURIComponent(`${base}/test/style-${theme}.json`)}`);
     await page.waitForFunction(() => window.__app && window.__app.map.map.isStyleLoaded());
     await page.waitForTimeout(800);
@@ -106,6 +114,11 @@ try {
         const { context, page } = await phone();
         await shot(page, '01_map');
         await page.click('#search-open');
+        await page.waitForSelector('#search-results .cat');
+        await page.click('#search-results [data-act="cat"][data-id="cafe"]');
+        await page.waitForSelector('#search-results .row');
+        await shot(page, '01b_nearby');
+        await page.click('#search-clear');
         await page.fill('#search-input', 'кафе');
         await page.waitForSelector('#search-results .row');
         await shot(page, '02_search');
@@ -120,6 +133,15 @@ try {
         await page.waitForSelector('#banner .dist');
         await page.waitForTimeout(4500);
         await shot(page, '05_driving');
+        // Places along the way: petrol stations ahead, one taken as a stop.
+        await page.click('[data-act="along"]');
+        await page.click('[data-act="alongCat"][data-id="fuel"]');
+        await page.waitForSelector('[data-act="addStop"]');
+        await shot(page, '05b_along');
+        await page.click('[data-act="addStop"]');
+        await page.waitForFunction(() => window.__app.S.nav && window.__app.S.nav.stops.length === 1 && !window.__app.S.nav.rerouting);
+        await page.waitForTimeout(1500);
+        await shot(page, '05c_stop_added');
         // On to where the lanes show, before the turn onto проспект Мира.
         await page.waitForFunction(() => {
             const n = window.__app.S.nav;
@@ -129,6 +151,11 @@ try {
         await page.click('[data-act="overview"]');
         await page.waitForTimeout(1000);
         await shot(page, '07_overview');
+        await page.click('#navbar .eta');
+        await page.click('#dialog [data-value="steps"]');
+        await page.waitForSelector('#steps .step-row');
+        await shot(page, '07b_steps');
+        await page.click('#steps [data-act="closeSteps"]');
         await page.click('#resume-btn');
         await page.waitForFunction(() => window.__app.S.nav && window.__app.S.nav.arrived, null, { timeout: 90000 });
         await shot(page, '08_arrived');
@@ -162,6 +189,31 @@ try {
         await page.waitForSelector('#sheet .option');
         await page.click('[data-act="go"]');
         await page.waitForSelector('#banner .dist');
+        // Driving at 15 m/s with real fixes, then into a tunnel: no fixes, the car goes on along the route.
+        await page.evaluate(async () => {
+            const r = window.__app.S.nav.route;
+            const at = (d) => {
+                let i = 0;
+                while (i < r.coords.length - 2 && r.cum[i + 1] < d) i++;
+                const f = (d - r.cum[i]) / (r.cum[i + 1] - r.cum[i]);
+                return [r.coords[i][0] + (r.coords[i + 1][0] - r.coords[i][0]) * f, r.coords[i][1] + (r.coords[i + 1][1] - r.coords[i][1]) * f];
+            };
+            for (let k = 0; k < 6; k++) {
+                const [lon, lat] = at(50 + k * 15);
+                window.__shturman.location({ lon, lat, accuracy: 6, speed: 15, heading: 90, time: Date.now() });
+                await new Promise((ok) => setTimeout(ok, 1000));
+            }
+        });
+        const lastSeen = await page.evaluate(() => window.__app.S.nav.progress.along);
+        await page.waitForFunction(() => window.__app.S.nav.predicting, null, { timeout: 8000 });
+        await page.waitForTimeout(2200);
+        const tunnel = await page.evaluate(() => ({ along: window.__app.S.nav.progress.along, banner: document.querySelector('#banner').textContent }));
+        await shot(page, '14a_tunnel');
+        if (!(tunnel.along > lastSeen + 40)) problems.push(`tunnel: stayed at ${tunnel.along} from ${lastSeen}`);
+        if (!tunnel.banner.includes('веду по маршруту')) problems.push(`tunnel: banner "${tunnel.banner}"`);
+        await page.waitForFunction(() => window.__status);
+        const status = await page.evaluate(() => window.__status);
+        if (!/^\d[\d,]* к?м · /.test(status)) problems.push(`native: notification says "${status}"`);
         const back = await page.evaluate(() => window.__shturman.back());
         await page.waitForSelector('#dialog .box');
         await shot(page, '14_native_end_dialog');
@@ -170,7 +222,7 @@ try {
         const said = await page.evaluate(() => window.__said || []);
         const atBrowse = await page.evaluate(() => window.__shturman.back());
         console.log('native calls:', [...new Set(calls)].join(', '));
-        for (const want of ['startLocation', 'http https://valhalla1.openstreetmap.de/route', 'http https://photon.komoot.io/reverse', 'keepScreenOn true', 'keepScreenOn false', 'setTheme day']) {
+        for (const want of ['navStatus', 'startLocation', 'http https://valhalla1.openstreetmap.de/route', 'http https://photon.komoot.io/reverse', 'keepScreenOn true', 'keepScreenOn false', 'setTheme day']) {
             if (!calls.includes(want)) problems.push(`native: no "${want}"`);
         }
         if (back !== true) problems.push('native: back while driving was not handled');

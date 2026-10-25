@@ -128,3 +128,46 @@ export function searchAnswer() {
 export function reverseAnswer(point) {
     return { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: point }, properties: { street: 'Садовая улица', housenumber: '8', city: 'Тестоград', osm_key: 'building', osm_value: 'yes' } }] };
 }
+
+/** Speed limits for whatever stretch is asked: 60 on its first half, 40 on the rest. */
+export function traceAnswer(request) {
+    const shape = request.encoded_polyline;
+    const n = (shape ? decodeCount(shape) : 2) - 1;
+    const mid = Math.floor(n / 2);
+    return {
+        units: 'kilometers', shape,
+        edges: [{ begin_shape_index: 0, end_shape_index: mid, speed_limit: 60 }, { begin_shape_index: mid, end_shape_index: n, speed_limit: 40 }],
+    };
+}
+
+function decodeCount(polyline) {
+    let count = 0;
+    for (let i = 0; i < polyline.length;) {
+        for (const _ of [0, 1]) {
+            let b;
+            do b = polyline.charCodeAt(i++) - 63; while (b >= 0x20 && i < polyline.length);
+        }
+        count++;
+    }
+    return count;
+}
+
+/** A speed camera on Тверская улица, a few blocks from the start. */
+export function overpassAnswer() {
+    const [lon, lat] = grid(4, 0);
+    return { elements: [{ type: 'node', id: 4242, lat, lon, tags: { highway: 'speed_camera', maxspeed: '60' } }] };
+}
+
+/** Places of a kind near a point: three of them along the streets around it. */
+export function nearbyAnswer(point, tag) {
+    const names = { 'amenity:fuel': ['Лукойл', 'Роснефть', 'Газпромнефть'], 'amenity:cafe': ['Шоколадница', 'Кофе Хауз', 'Кафе «Пять звёзд»'] }[tag] || ['Место 1', 'Место 2', 'Место 3'];
+    const [key, value] = tag.split(':');
+    const near = (dx, dy) => [point[0] + dx * 0.0024, point[1] + dy * 0.00135];
+    return {
+        type: 'FeatureCollection',
+        features: names.map((name, i) => ({
+            type: 'Feature', geometry: { type: 'Point', coordinates: near([0.2, 1, -0.4][i], [0.05, -0.3, 0.6][i]) },
+            properties: { name, street: 'Тестовая улица', housenumber: String(i + 1), city: 'Тестоград', osm_key: key, osm_value: value, osm_type: 'N', osm_id: Math.round(point[0] * 1e4) * 10 + i },
+        })),
+    };
+}

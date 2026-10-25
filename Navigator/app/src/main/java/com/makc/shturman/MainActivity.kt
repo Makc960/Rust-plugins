@@ -129,6 +129,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // "Завершить" in the driving notification.
+        if (intent.action == NavService.ACTION_END) {
+            js("command('end')")
+            return
+        }
         val link = linkOf(intent) ?: return
         if (loaded) deliverLink(link) else pendingLink = link
     }

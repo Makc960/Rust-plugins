@@ -36,6 +36,8 @@ export class MapView {
         this.shown = null;                  // {pos, heading} drawn this frame
         this.anim = null;
         this.navZoom = 17;
+        this.cameraPoints = [];
+        this.stopMarkers = [];
 
         this.map = new maplibregl.Map({
             container,
@@ -116,6 +118,16 @@ export class MapView {
         m.addLayer({ id: 'alts-hit', type: 'line', source: 'alts', paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 28 } }, before);
         m.addLayer({ id: 'route-casing', type: 'line', source: 'route', layout: round, paint: { 'line-color': c.casing, 'line-width': width(12) } }, before);
         m.addLayer({ id: 'route-line', type: 'line', source: 'route', layout: round, paint: { 'line-color': c.route, 'line-width': width(8.5) } }, before);
+        // Speed cameras on the route: red dots with a white ring, from close enough to matter.
+        m.addSource('cameras', { type: 'geojson', data: collection(this.cameraPoints.map((p) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p } }))) });
+        m.addLayer({
+            id: 'cameras', type: 'circle', source: 'cameras', minzoom: 11,
+            paint: {
+                'circle-color': '#e5484d', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5,
+                'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3, 16, 7, 19, 10],
+                'circle-pitch-alignment': 'map',
+            },
+        });
         m.addLayer({
             id: 'maneuver-casing', type: 'line', source: 'maneuver', filter: ['==', ['geometry-type'], 'LineString'], layout: round,
             paint: { 'line-color': c.arrowCasing, 'line-width': width(10), 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0, 14, 1] },
@@ -235,6 +247,24 @@ export class MapView {
         el.className = 'puck';
         el.innerHTML = '<div class="puck-halo"></div><div class="puck-body"><svg viewBox="0 0 40 40"><circle class="puck-ring" cx="20" cy="20" r="15"/><path class="puck-arrow" d="M20 8 29 29 20 24.5 11 29z"/><path class="puck-chevron" d="M20 3 34 35 20 27.5 6 35z"/></svg></div>';
         return el;
+    }
+
+    /** Speed cameras to show, as points. */
+    setCameras(points) {
+        this.cameraPoints = points;
+        const src = this.map.getSource('cameras');
+        if (src) src.setData(collection(points.map((p) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p } }))));
+    }
+
+    /** Stops on the way: small numbered pins. */
+    setStops(points) {
+        for (const m of this.stopMarkers) m.remove();
+        this.stopMarkers = points.map((p, i) => {
+            const el = document.createElement('div');
+            el.className = 'stop-pin';
+            el.innerHTML = `<svg viewBox="0 0 30 40"><path d="M15 1.5C7.5 1.5 1.5 7.4 1.5 14.6c0 9.9 13.5 23.9 13.5 23.9s13.5-14 13.5-23.9C28.5 7.4 22.5 1.5 15 1.5z"/></svg><span>${i + 1}</span>`;
+            return new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat(p).addTo(this.map);
+        });
     }
 
     setDestination(point) {

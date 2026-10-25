@@ -11,6 +11,7 @@ const handlers = {
     intent: () => {},
     resume: () => {},
     voiceStatus: () => {},
+    command: () => {},
 };
 
 let nextId = 1;
@@ -49,6 +50,9 @@ window.__shturman = {
     },
     voiceStatus(status) {
         handlers.voiceStatus(status);
+    },
+    command(name) {
+        handlers.command(name);
     },
 };
 
@@ -116,17 +120,17 @@ export function stopSpeaking() {
 // ---- Network ----
 
 /** A GET (or [method]) to [url]: resolves to {status, text}, rejects when there is no answer. */
-export function http(url, { method = 'GET', body = null, timeout = 15000 } = {}) {
+export function http(url, { method = 'GET', body = null, type = '', timeout = 15000 } = {}) {
     if (bridge) {
         return new Promise((resolve, reject) => {
             const id = nextId++;
             pending.set(id, { resolve, reject });
-            bridge.http(id, method, url, body || '', timeout);
+            bridge.http(id, method, url, body || '', timeout, type);
         });
     }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeout);
-    return fetch(url, { method, body, signal: ctrl.signal })
+    return fetch(url, { method, body, headers: type ? { 'content-type': type } : undefined, signal: ctrl.signal })
         .then(async (r) => ({ status: r.status, text: await r.text() }))
         .finally(() => clearTimeout(timer));
 }
@@ -135,6 +139,11 @@ export function http(url, { method = 'GET', body = null, timeout = 15000 } = {})
 
 export function keepScreenOn(on) {
     if (bridge) bridge.keepScreenOn(on);
+}
+
+/** What the notification says while driving with the app out of sight. */
+export function navStatus(title, text) {
+    if (bridge && bridge.navStatus) bridge.navStatus(title, text);
 }
 
 /** The status bar's icons follow the map: dark over the day map, light at night. */

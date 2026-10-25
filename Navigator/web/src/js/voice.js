@@ -1,6 +1,7 @@
 // What the voice says and when: each manoeuvre is announced far off (on fast roads), near, and as
 // it comes, and a turn close behind another is added with "затем".
 
+import { cameraAhead } from './roadinfo.js';
 import { capital, forDistance, forTime, inDistance, roundSpoken, stepSaid, thenSaid } from './words.js';
 
 const STAGE = { none: 0, far: 1, near: 2, now: 3 };
@@ -55,6 +56,9 @@ export class Announcer {
         if (d <= t.now && stage < STAGE.now) {
             this.stages.set(j, STAGE.now);
             if (s.type === 'arrive') return null;
+            if (s.type === 'waypoint') {
+                return s.modifier === 'right' ? 'Промежуточная точка справа.' : s.modifier === 'left' ? 'Промежуточная точка слева.' : 'Промежуточная точка.';
+            }
             return this.phrase(j, '', t);
         }
         if (d <= t.near && stage < STAGE.near && d > t.now + t.slowest * 2) {
@@ -80,9 +84,9 @@ export class Announcer {
         const r = this.route;
         const s = r.steps[j];
         let text;
-        if (s.type === 'arrive') {
+        if (s.type === 'arrive' || s.type === 'waypoint') {
             const side = s.modifier === 'right' ? ', справа' : s.modifier === 'left' ? ', слева' : '';
-            text = `${distance} место назначения${side}`;
+            text = `${distance} ${s.type === 'arrive' ? 'место назначения' : 'промежуточная точка'}${side}`;
         } else {
             text = distance ? `${distance} ${stepSaid(s)}` : stepSaid(s);
             const k = r.nextSpoken(j);
@@ -96,5 +100,28 @@ export class Announcer {
             }
         }
         return `${capital(text.trim())}.`;
+    }
+}
+
+/**
+ * Warnings about the road rather than the route: a speed camera ahead, with its limit, and a word
+ * to slow down when going faster than [tolerance] km/h over it.
+ */
+export class RoadAlerts {
+    constructor() {
+        this.told = new Set();
+    }
+
+    update(progress, speed, cameras, limit, tolerance = 10) {
+        if (!cameras || !cameras.length) return null;
+        const v = Math.max(speed || 0, 8);
+        const camera = cameraAhead(cameras, progress.along, clamp(v * 18, 250, 500));
+        if (!camera || this.told.has(camera.id)) return null;
+        this.told.add(camera.id);
+        const max = camera.limit ?? limit;
+        let text = 'Впереди камера';
+        if (max) text += `, ограничение ${max}`;
+        if (max && speed != null && speed * 3.6 > max + tolerance) text += '. Сбавьте скорость';
+        return `${text}.`;
     }
 }

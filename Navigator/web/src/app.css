@@ -277,14 +277,32 @@ body.driving .maplibregl-ctrl-attrib { opacity: .6; }
 .lanes .lane { width: 36px; height: 36px; padding: 2px; }
 .lanes .lane + .lane { border-left: 1px dashed rgba(255, 255, 255, .25); }
 
-.speed {
+.speedbox {
     position: absolute; z-index: 4; left: calc(var(--inset-left) + 12px);
     bottom: calc(var(--inset-bottom) + var(--nav-height, 120px) + 14px);
+    display: flex; align-items: center; gap: 8px;
+}
+.speed {
     width: 66px; height: 66px; border-radius: 50%; background: var(--card); box-shadow: var(--shadow);
     display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1;
+    transition: background .2s, color .2s;
 }
 .speed b { font-size: 25px; font-weight: 800; }
 .speed small { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.speed.over { background: var(--danger); color: #fff; animation: over 1s ease-in-out infinite alternate; }
+.speed.over small { color: rgba(255, 255, 255, .85); }
+@keyframes over { to { transform: scale(1.06); } }
+/* The speed limit sign: a red ring around the number, as on the road. */
+.limit {
+    width: 52px; height: 52px; border-radius: 50%; background: #fff; border: 5px solid #e5484d;
+    display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); color: #111;
+}
+.limit b { font-size: 19px; font-weight: 800; letter-spacing: -.02em; }
+.cam {
+    height: 40px; padding: 0 12px 0 8px; border-radius: 20px; background: #1f2937; color: #fff;
+    display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; box-shadow: var(--shadow);
+}
+.cam svg { width: 22px; height: 22px; color: #ff8a8d; }
 
 .resume {
     position: absolute; z-index: 6; left: 50%; transform: translateX(-50%);
@@ -300,10 +318,11 @@ body.driving .maplibregl-ctrl-attrib { opacity: .6; }
     background: var(--card); border-radius: 24px 24px 0 0; box-shadow: 0 -4px 24px rgba(17, 24, 39, .18);
     display: flex; align-items: center; gap: 10px;
 }
-.navbar .eta { flex: 1; min-width: 0; text-align: center; }
+.navbar .eta { flex: 1; min-width: 0; text-align: center; border-radius: 14px; padding: 2px 0; }
+.navbar .eta:active { background: var(--press); }
 .navbar .eta .clock { font-size: 27px; font-weight: 800; line-height: 1.1; }
 .navbar .eta .left { font-size: 15px; color: var(--muted); margin-top: 2px; }
-.navbar .round { width: 52px; height: 52px; padding: 13px; border-radius: 50%; background: var(--press); flex: none; }
+.navbar .round { width: 50px; height: 50px; padding: 13px; border-radius: 50%; background: var(--press); flex: none; }
 .navbar .round.end { background: #fde7e8; color: var(--danger); }
 :root[data-theme="night"] .navbar .round.end { background: #3b1a1d; }
 .navbar .round.on { color: var(--accent); }
@@ -320,6 +339,41 @@ body.driving .maplibregl-ctrl-attrib { opacity: .6; }
 :root[data-theme="night"] .arrived .flag { background: #123222; }
 .arrived h2 { margin: 0; }
 .arrived .btn { margin-top: 16px; width: 100%; }
+
+/* ---- Kinds of places, stops, steps ---- */
+
+.cats { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 4px 18px 10px; }
+.sheet .cats { padding: 10px 0 6px; }
+.cats::-webkit-scrollbar { display: none; }
+.cat {
+    flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 72px; padding: 10px 4px 8px;
+    border-radius: 16px; background: var(--card); border: 1.5px solid var(--line); font-size: 12.5px; font-weight: 600; color: var(--fg);
+}
+.cat svg { width: 26px; height: 26px; color: var(--accent); }
+.cat.on { border-color: var(--accent); background: var(--accent-soft); }
+.page .cat { box-shadow: none; }
+.link {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; color: var(--accent); font-weight: 600; font-size: 15px;
+}
+.link svg { width: 18px; height: 18px; }
+.along-list .row { padding: 10px 4px; min-height: 58px; }
+.along-list .side { line-height: 1.3; }
+.along-list .side b { color: var(--fg); }
+.stops-line {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px; border-radius: 14px;
+    background: var(--accent-soft); font-size: 14.5px;
+}
+.stops-line svg { width: 20px; height: 20px; color: var(--accent); flex: none; }
+.stops-line span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.steps-sum { padding: 14px 18px 4px; font-size: 15px; color: var(--muted); font-weight: 600; }
+.step-row { cursor: default; }
+.step-row:active { background: none; }
+.row .ico.step-ico { background: var(--banner); color: #fff; padding: 5px; border-radius: 12px; }
+.step-row .side small { font-size: 12px; }
+
+.stop-pin { width: 30px; height: 40px; position: relative; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); }
+.stop-pin path { fill: var(--accent); stroke: #fff; stroke-width: 2.5; }
+.stop-pin span { position: absolute; left: 0; right: 0; top: 6px; text-align: center; color: #fff; font-weight: 800; font-size: 14px; }
 
 /* ---- Settings ---- */
 

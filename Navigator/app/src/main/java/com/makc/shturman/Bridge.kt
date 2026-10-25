@@ -10,6 +10,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.os.VibrationEffect
@@ -50,6 +51,9 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     }
 
     // Every method spelled out: before Android 11 the system calls them all and has no defaults.
+    private val notifications = activity.registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    private var askedNotifications = false
+
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) = onLocation(location)
 
@@ -177,9 +181,9 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
 
     // ---- Network ----
 
-    /** Fetches [url] off the main thread and hands the page {status, text}, or status -1 on no answer. */
+    /** Fetches [url] off the main thread and hands the page {status, text}, or status -1 on no answer; [type] is the body's. */
     @JavascriptInterface
-    fun http(id: Int, method: String, url: String, body: String, timeout: Int) {
+    fun http(id: Int, method: String, url: String, body: String, timeout: Int, type: String) {
         network.execute {
             var status = -1
             var text = ""
@@ -192,7 +196,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                 c.setRequestProperty("Accept-Language", "ru")
                 if (body.isNotEmpty()) {
                     c.doOutput = true
-                    c.setRequestProperty("Content-Type", "application/json")
+                    c.setRequestProperty("Content-Type", type.ifEmpty { "application/json" })
                     c.outputStream.use { it.write(body.toByteArray()) }
                 }
                 status = c.responseCode
@@ -209,12 +213,29 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
 
     // ---- Everything else ----
 
+    /** Driving starts or ends: the screen stays on, and guidance goes on in the background. */
     @JavascriptInterface
     fun keepScreenOn(on: Boolean) = activity.runOnUiThread {
         navigating = on
         activity.keepScreenOn(on)
-        if (!on && !visible) stopListening()
+        if (on) {
+            if (hasPermission()) NavService.start(activity)
+            // Android 13 and later show the notification only once allowed; asked at the first drive.
+            if (Build.VERSION.SDK_INT >= 33 && !askedNotifications &&
+                ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                askedNotifications = true
+                notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } else {
+            NavService.stop(activity)
+            if (!visible) stopListening()
+        }
     }
+
+    /** The next manoeuvre, for the notification while the app is out of sight. */
+    @JavascriptInterface
+    fun navStatus(title: String, text: String) = NavService.update(activity, title, text)
 
     @JavascriptInterface
     fun setTheme(theme: String) = activity.runOnUiThread { activity.setDark(theme == "night") }
@@ -250,6 +271,7 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         .toString()
 
     fun release() {
+        NavService.stop(activity)
         stopListening()
         voice.release()
         network.shutdownNow()

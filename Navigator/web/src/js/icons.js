@@ -39,6 +39,21 @@ export const ICONS = {
     info: svg(stroke('M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 11v5.5M12 7.5h.01')),
     heart: svg(stroke('M12 19.5s-7.5-4.5-7.5-10A4 4 0 0 1 12 7a4 4 0 0 1 7.5 2.5c0 5.5-7.5 10-7.5 10z')),
     flag: svg(stroke('M6 21V4M6 4h11l-2.5 4L17 12H6')),
+    list: svg(stroke('M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01')),
+    camera: svg(stroke('M4 8.5h10.5V16H4zM14.5 10.5 20 8v9l-5.5-2.5M7 6V4.5')),
+    stop: svg(stroke('M12 21s-6.5-7.4-6.5-12a6.5 6.5 0 1 1 13 0c0 4.6-6.5 12-6.5 12z') + fill('M12 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z')),
+    plus: svg(stroke('M12 5v14M5 12h14')),
+    // Kinds of places, for searching nearby and along the route.
+    fuel: svg(stroke('M5 20V5.5A1.5 1.5 0 0 1 6.5 4h6A1.5 1.5 0 0 1 14 5.5V20M3.5 20h12M5 10h9M14 9l3 2.5V17a1.5 1.5 0 0 0 3 0v-7l-2.5-2.5')),
+    cafe: svg(stroke('M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5zM16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5c0 1.5 1 1.5 1 3M11.5 3.5c0 1.5 1 1.5 1 3')),
+    food: svg(stroke('M7 3v7M5 3v4.5a2 2 0 0 0 4 0V3M7 10v11M16.5 21V3c-2 1-3.5 3.5-3.5 7.5h3.5')),
+    pharmacy: svg(stroke('M9.5 4h5v5.5H20v5h-5.5V20h-5v-5.5H4v-5h5.5z')),
+    atm: svg(stroke('M3.5 6.5h17v11h-17zM3.5 10h17M7 14.5h4')),
+    parking: svg(stroke('M5 3.5h14v17H5zM10 16.5v-9h3a2.5 2.5 0 0 1 0 5h-3')),
+    shop: svg(stroke('M3.5 4.5h2l2.2 10h10.3l2-7H6.6M9.5 19.5h.01M17 19.5h.01')),
+    charging: svg(stroke('M13 3 6 13.5h5L10 21l7-10.5h-5z')),
+    repair: svg(stroke('M14.5 6a4 4 0 0 0 4.9 4.9L20 11l-9.5 9.5a2.1 2.1 0 0 1-3-3L17 8l.1-.6A4 4 0 0 0 14.5 6l2.5 2.5')),
+    toilets: svg(stroke('M7.5 6.5a1.5 1.5 0 1 0 0-.01zM16.5 6.5a1.5 1.5 0 1 0 0-.01zM5.5 20v-6H4.5l1-5h4l1 5h-1v6M14.5 20v-5h-1.5l2-6h3l2 6H18.5v5M12 4v16')),
 };
 
 // ---- Manoeuvre arrows ----
@@ -106,6 +121,10 @@ export function maneuverIcon(step) {
             break;
         case 'depart':
             body = turnArrow(0);
+            break;
+        case 'waypoint':
+            body = `<path d="M24 8a9 9 0 0 0-9 9c0 6.5 9 17 9 17s9-10.5 9-17a9 9 0 0 0-9-9zm0 12.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" fill="currentColor"/>` +
+                `<path d="M16 41h16" stroke="currentColor" stroke-width="4" stroke-linecap="round" opacity=".55"/>`;
             break;
         case 'roundabout':
             body = roundabout(step);

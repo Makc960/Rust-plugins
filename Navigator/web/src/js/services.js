@@ -1,12 +1,15 @@
 // The free servers the app asks: Photon (komoot) for places, Valhalla and OSRM (FOSSGIS) for routes.
 // Requests go through [http] (the app's own, or fetch in a browser): (url, options) => {status, text}.
 
+import { along, distance, project } from './geo.js';
+import { cameraQuery, limitChunks, parseCameras, parseLimits, traceRequest } from './roadinfo.js';
 import { distinct, fromOsrm, fromValhalla } from './route.js';
 
 export const SERVERS = {
     photon: 'https://photon.komoot.io',
     valhalla: 'https://valhalla1.openstreetmap.de',
     osrm: 'https://routing.openstreetmap.de',
+    overpass: ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'],
 };
 
 export class ServiceError extends Error {
@@ -147,7 +150,7 @@ const OSRM_PROFILE = { car: 'routed-car', bike: 'routed-bike', foot: 'routed-foo
  * A Valhalla request from [from] to [to] ([lon, lat]); [heading] is the way the car points when
  * it is moving, so a new route does not begin with a U-turn.
  */
-export function valhallaRequest(from, to, mode, { avoidTolls, avoidHighways, avoidFerries, heading, alternates = 2 } = {}) {
+export function valhallaRequest(from, to, mode, { avoidTolls, avoidHighways, avoidFerries, heading, alternates = 2, stops = [] } = {}) {
     const start = { lat: from[1], lon: from[0] };
     if (heading != null) {
         start.heading = Math.round(heading);
@@ -166,23 +169,25 @@ export function valhallaRequest(from, to, mode, { avoidTolls, avoidHighways, avo
         options.use_ferry = 0;
     }
     const body = {
-        locations: [start, { lat: to[1], lon: to[0] }],
+        // Stops on the way are breaks: the route comes to each and the voice says so.
+        locations: [start, ...stops.map((p) => ({ lat: p[1], lon: p[0], type: 'break' })), { lat: to[1], lon: to[0] }],
         costing,
         costing_options: { [costing]: options },
         directions_options: { units: 'kilometers', language: 'ru-RU' },
         directions_type: 'maneuvers',
         turn_lanes: true,
     };
-    if (alternates > 0) body.alternates = alternates;
+    // Valhalla gives alternatives only for routes with no stops.
+    if (alternates > 0 && !stops.length) body.alternates = alternates;
     return `${SERVERS.valhalla}/route?json=${encodeURIComponent(JSON.stringify(body))}`;
 }
 
-export function osrmRequest(from, to, mode, { heading, alternates = 2 } = {}) {
+export function osrmRequest(from, to, mode, { heading, alternates = 2, stops = [] } = {}) {
     const profile = OSRM_PROFILE[mode] || OSRM_PROFILE.car;
     const q = new URLSearchParams({ overview: 'full', geometries: 'polyline6', steps: 'true' });
-    if (alternates > 0) q.set('alternatives', String(alternates));
-    if (heading != null) q.set('bearings', `${Math.round(heading)},45;`);
-    const pts = `${from[0].toFixed(6)},${from[1].toFixed(6)};${to[0].toFixed(6)},${to[1].toFixed(6)}`;
+    if (alternates > 0 && !stops.length) q.set('alternatives', String(alternates));
+    if (heading != null) q.set('bearings', `${Math.round(heading)},45${';'.repeat(stops.length + 1)}`);
+    const pts = [from, ...stops, to].map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join(';');
     return `${SERVERS.osrm}/${profile}/route/v1/driving/${pts}?${q}`;
 }
 
@@ -218,4 +223,113 @@ export async function routes(http, from, to, mode, options = {}) {
         if (e.kind === 'noroute') throw e;
     }
     throw firstError && firstError.kind === 'network' ? firstError : new ServiceError('Сервер маршрутов не ответил', 'server');
+}
+
+// ---- What the road says ----
+
+/** Speed limits along a car route from Valhalla, stretch by stretch; [] when it cannot tell. */
+export async function speedLimits(http, route) {
+    if (route.mode !== 'car') return [];
+    const out = [];
+    for (const chunk of limitChunks(route)) {
+        try {
+            const res = await http(`${SERVERS.valhalla}/trace_attributes`, {
+                method: 'POST', body: JSON.stringify(traceRequest(chunk.coords)), type: 'application/json', timeout: 20000,
+            });
+            if (res.status !== 200) break;
+            out.push(...parseLimits(JSON.parse(res.text), chunk.from, chunk.to));
+        } catch (e) {
+            break;
+        }
+    }
+    return out;
+}
+
+/** Speed cameras along the first few hundred kilometres of a car route; [] when none answer. */
+export async function cameras(http, route) {
+    if (route.mode !== 'car') return [];
+    const query = cameraQuery(route);
+    for (const server of SERVERS.overpass) {
+        try {
+            const res = await http(server, { method: 'POST', body: `data=${encodeURIComponent(query)}`, type: 'application/x-www-form-urlencoded', timeout: 30000 });
+            if (res.status === 200) return parseCameras(JSON.parse(res.text), route);
+        } catch (e) {
+            // On to the next server.
+        }
+    }
+    return [];
+}
+
+// ---- Places of a kind: nearby, or along the route ----
+
+export const CATEGORIES = [
+    { id: 'fuel', label: 'АЗС', tag: 'amenity:fuel' },
+    { id: 'cafe', label: 'Кафе', tag: 'amenity:cafe' },
+    { id: 'food', label: 'Еда', tag: 'amenity:fast_food' },
+    { id: 'pharmacy', label: 'Аптека', tag: 'amenity:pharmacy' },
+    { id: 'atm', label: 'Банкомат', tag: 'amenity:atm' },
+    { id: 'parking', label: 'Парковка', tag: 'amenity:parking' },
+    { id: 'shop', label: 'Продукты', tag: 'shop:supermarket' },
+    { id: 'charging', label: 'Зарядка', tag: 'amenity:charging_station' },
+    { id: 'repair', label: 'Автосервис', tag: 'shop:car_repair' },
+    { id: 'toilets', label: 'Туалет', tag: 'amenity:toilets' },
+];
+
+export function nearbyUrl(point, tag, radiusKm = 3, limit = 15) {
+    return `${SERVERS.photon}/reverse?lat=${point[1].toFixed(6)}&lon=${point[0].toFixed(6)}&osm_tag=${encodeURIComponent(tag)}&limit=${limit}&radius=${radiusKm}`;
+}
+
+/** Places of [category] near [point], nearest first. */
+export async function nearby(http, point, category, radiusKm = 3) {
+    const { status, json } = await getJson(http, nearbyUrl(point, category.tag, radiusKm));
+    if (status !== 200 || !json) throw new ServiceError('Поиск сейчас не отвечает', status ? 'server' : 'network');
+    const seen = new Set();
+    const out = [];
+    for (const f of json.features || []) {
+        const p = placeFromPhoton(f);
+        if (seen.has(p.id)) continue;
+        seen.add(p.id);
+        if (!p.kind) p.kind = category.label;
+        if (p.title === 'Точка на карте' || !f.properties.name) p.title = f.properties.name || category.label;
+        out.push({ ...p, away: distance(point, [p.lon, p.lat]) });
+    }
+    return out.sort((a, b) => a.away - b.away);
+}
+
+/**
+ * Places of [category] along [route] ahead of [from] metres: looked for around a few points ahead,
+ * each placed at how far along the route it is and how far off it.
+ */
+export async function alongRoute(http, route, from, category) {
+    const ahead = route.mode === 'car' ? [1500, 5000, 10000, 18000, 30000] : [300, 1000, 2000];
+    const radius = route.mode === 'car' ? 2.5 : 0.8;
+    const found = new Map();
+    let failed = 0;
+    for (const extra of ahead) {
+        const d = from + extra;
+        if (d > route.length + 500) break;
+        try {
+            const places = await nearby(http, along(route.coords, route.cum, Math.min(d, route.length)).point, category, radius);
+            for (const p of places) found.set(p.id, p);
+        } catch (e) {
+            failed++;
+        }
+    }
+    if (!found.size && failed) throw new ServiceError('Поиск сейчас не отвечает', 'network');
+    const out = [];
+    for (const p of found.values()) {
+        const spot = [p.lon, p.lat];
+        let best = null;
+        for (let i = 0; i < route.coords.length - 1; i++) {
+            if (route.cum[i + 1] < from) continue;
+            const { t, dist } = project(spot, route.coords[i], route.coords[i + 1]);
+            if (!best || dist < best.dist) best = { i, t, dist };
+        }
+        if (!best) continue;
+        const at = route.cum[best.i] + (route.cum[best.i + 1] - route.cum[best.i]) * best.t;
+        if (at < from + 100) continue;
+        out.push({ ...p, ahead: at - from, off: best.dist });
+    }
+    // Close to the road first, then nearer ahead.
+    return out.filter((p) => p.off < radius * 1000).sort((a, b) => (a.ahead + a.off * 6) - (b.ahead + b.off * 6)).slice(0, 15);
 }

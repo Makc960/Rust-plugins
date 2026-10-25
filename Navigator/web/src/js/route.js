@@ -1,10 +1,10 @@
 // A route as the app uses it, whichever server built it: the line, and the manoeuvres along it.
 //
 // A step is a manoeuvre at a point of the line and the stretch that follows it to the next one:
-//   type      depart, arrive, turn, continue, namechange, ramp, exit, fork, merge,
-//             roundabout, roundabout-exit, ferry, ferry-exit, other
+//   type      depart, arrive, waypoint (a stop on the way), turn, continue, namechange, ramp,
+//             exit, fork, merge, roundabout, roundabout-exit, ferry, ferry-exit, other
 //   modifier  uturn, sharp-right, right, slight-right, straight, slight-left, left, sharp-left
-//             (for arrive: the side the destination is on)
+//             (for arrive and waypoint: the side the place is on)
 //   exit      which exit to take at a roundabout
 //   street    the name of the road after the manoeuvre; toward: where the signs point
 //   at        metres from the start to the manoeuvre; length and time: of the stretch after it
@@ -39,6 +39,7 @@ export class Route {
         }
         this.duration = duration ?? this.steps.reduce((t, s) => t + (s.time || 0), 0);
         this.id = `${provider}:${Math.round(this.length)}:${Math.round(this.duration)}:${coords.length}`;
+        this.stops = this.steps.filter((s) => s.type === 'waypoint');
     }
 
     /** Seconds left from [d] metres along, by each stretch's own pace. */
@@ -118,29 +119,59 @@ function signText(sign) {
     return toward.length ? toward.slice(0, 2).join(', ') : undefined;
 }
 
-export function fromValhallaTrip(trip, mode) {
-    const leg = trip.legs[0];
-    const coords = decode(leg.shape);
-    const steps = leg.maneuvers.map((m) => {
-        const [type, modifier] = VALHALLA_TYPES[m.type] || ['other'];
-        const step = {
-            type,
-            modifier: modifier || (m.type === 26 ? undefined : 'straight'),
-            index: m.begin_shape_index,
-            street: (m.street_names && m.street_names[0]) || (m.begin_street_names && m.begin_street_names[0]) || '',
-            time: m.time || 0,
-            toll: Boolean(m.toll),
-        };
-        if (m.type === 12) step.side = 'right';
-        if (m.type === 13) step.side = 'left';
-        if (type === 'roundabout') step.exit = m.roundabout_exit_count || undefined;
-        const toward = signText(m.sign);
-        if (toward) step.toward = toward;
-        const lanes = valhallaLanes(m.lanes);
-        if (lanes) step.lanes = lanes;
-        return step;
+function valhallaStep(m, offset) {
+    const [type, modifier] = VALHALLA_TYPES[m.type] || ['other'];
+    const step = {
+        type,
+        modifier: modifier || (m.type === 26 ? undefined : 'straight'),
+        index: m.begin_shape_index + offset,
+        street: (m.street_names && m.street_names[0]) || (m.begin_street_names && m.begin_street_names[0]) || '',
+        time: m.time || 0,
+        toll: Boolean(m.toll),
+    };
+    if (m.type === 12) step.side = 'right';
+    if (m.type === 13) step.side = 'left';
+    if (type === 'roundabout') step.exit = m.roundabout_exit_count || undefined;
+    const toward = signText(m.sign);
+    if (toward) step.toward = toward;
+    const lanes = valhallaLanes(m.lanes);
+    if (lanes) step.lanes = lanes;
+    return step;
+}
+
+/**
+ * Legs joined into one line. Where one leg ends and the next begins, the arrival and the new
+ * departure become one step: a stop on the way, on the side the arrival said.
+ */
+function joinLegs(legs) {
+    const coords = [];
+    const steps = [];
+    let side = null;
+    legs.forEach(({ line, stepsOf }, li) => {
+        const offset = coords.length ? coords.length - 1 : 0;
+        coords.push(...(coords.length ? line.slice(1) : line));
+        const last = li === legs.length - 1;
+        for (const step of stepsOf(offset)) {
+            if (step.type === 'arrive' && !last) {
+                side = step.modifier;
+                continue;
+            }
+            if (step.type === 'depart' && li > 0) {
+                step.type = 'waypoint';
+                step.modifier = side || 'straight';
+            }
+            steps.push(step);
+        }
     });
-    const sum = trip.summary || leg.summary || {};
+    return { coords, steps };
+}
+
+export function fromValhallaTrip(trip, mode) {
+    const { coords, steps } = joinLegs(trip.legs.map((leg) => ({
+        line: decode(leg.shape),
+        stepsOf: (offset) => leg.maneuvers.map((m) => valhallaStep(m, offset)),
+    })));
+    const sum = trip.summary || trip.legs[0].summary || {};
     return new Route({
         coords, steps, mode, provider: 'valhalla',
         duration: sum.time,
@@ -176,14 +207,10 @@ function osrmLanes(intersections) {
     }));
 }
 
-export function fromOsrmRoute(r, mode) {
-    const coords = [];
-    const steps = [];
-    for (const s of r.legs[0].steps) {
-        const line = decode(s.geometry);
-        const index = Math.max(0, coords.length - 1);
-        // Each step's line begins where the last one ended.
-        coords.push(...(coords.length ? line.slice(1) : line));
+function osrmSteps(leg, offset) {
+    // A step's line begins where the last one ended; the index is where it begins in the joined line.
+    let index = offset;
+    return leg.steps.map((s) => {
         const type = OSRM_TYPES[s.maneuver.type] || 'other';
         let modifier = (s.maneuver.modifier || 'straight').replace(' ', '-');
         if (type === 'arrive' && !s.maneuver.modifier) modifier = 'straight';
@@ -192,8 +219,19 @@ export function fromOsrmRoute(r, mode) {
         if (s.destinations) step.toward = s.destinations;
         const lanes = osrmLanes(s.intersections);
         if (lanes) step.lanes = lanes;
-        steps.push(step);
-    }
+        index += Math.max(0, decode(s.geometry).length - 1);
+        return step;
+    });
+}
+
+export function fromOsrmRoute(r, mode) {
+    const { coords, steps } = joinLegs(r.legs.map((leg) => ({
+        line: leg.steps.reduce((line, s) => {
+            const part = decode(s.geometry);
+            return line.length ? line.concat(part.slice(1)) : part;
+        }, []),
+        stepsOf: (offset) => osrmSteps(leg, offset),
+    })));
     if (coords.length < 2 && r.geometry) coords.splice(0, coords.length, ...decode(r.geometry));
     return new Route({ coords, steps, mode, provider: 'osrm', duration: r.duration });
 }

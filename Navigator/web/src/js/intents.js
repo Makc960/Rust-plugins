@@ -1,5 +1,6 @@
-// Links other apps open the navigator with: geo:55.75,37.62?q=..., google.navigation:q=...
-// Returns {point, label} for a place to show, {query} for something to search, or null.
+// Links other apps open the navigator with: geo:55.75,37.62?q=..., google.navigation:q=..., and the
+// app's own shortcuts shturman://home, //work, //car, //search.
+// Returns {point, label} for a place to show, {query} for something to search, {go} for a shortcut, or null.
 
 function coords(text) {
     const m = (text || '').match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
@@ -10,8 +11,14 @@ function coords(text) {
     return [lon, lat];
 }
 
+const SHORTCUTS = new Set(['home', 'work', 'car', 'search']);
+
 export function parseIntent(uri) {
     if (!uri) return null;
+    if (uri.startsWith('shturman://')) {
+        const go = uri.slice('shturman://'.length).replace(/\/+$/, '');
+        return SHORTCUTS.has(go) ? { go } : null;
+    }
     let rest;
     if (uri.startsWith('geo:')) rest = uri.slice(4);
     else if (uri.startsWith('google.navigation:')) rest = `0,0?${uri.slice('google.navigation:'.length)}`;

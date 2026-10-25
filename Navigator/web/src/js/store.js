@@ -12,12 +12,15 @@ const DEFAULTS = {
         avoidHighways: false,
         avoidFerries: false,
         demoSpeed: 2,
+        cameras: true,       // speed cameras and limits
+        speedTolerance: 10,  // km/h over the limit before the speed turns red
     },
     home: null,
     work: null,
     saved: [],
     recent: [],
     view: null,              // {center, zoom} where the map was last left
+    parked: null,            // {lon, lat, time}: where the car was left at the end of a drive
 };
 
 function load() {
@@ -86,6 +89,11 @@ export const store = {
 
     setWork(place) {
         this.data.work = place ? this.keep(place) : null;
+        this.save();
+    },
+
+    setParked(spot) {
+        this.data.parked = spot;
         this.save();
     },
 

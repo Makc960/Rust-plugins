@@ -50,6 +50,7 @@ const SCREEN = {
 export function stepText(s) {
     if (s.type === 'roundabout') return s.exit ? `Кольцо, ${s.exit}-й съезд` : 'Круговое движение';
     if (s.type === 'arrive') return s.modifier === 'right' ? 'Финиш справа' : s.modifier === 'left' ? 'Финиш слева' : 'Финиш';
+    if (s.type === 'waypoint') return s.modifier === 'right' ? 'Заезд справа' : s.modifier === 'left' ? 'Заезд слева' : 'Заезд';
     return SCREEN[`${s.type}:${s.modifier}`] || SCREEN[s.type] || 'Прямо';
 }
 
@@ -89,6 +90,7 @@ export function stepSaid(s) {
 export function thenSaid(s) {
     if (s.type === 'roundabout') return s.exit && s.exit <= 10 ? `на кольце ${ORDINALS[s.exit]} съезд` : 'круговое движение';
     if (s.type === 'arrive') return 'финиш';
+    if (s.type === 'waypoint') return 'заезд';
     return THEN[`${s.type}:${s.modifier}`] || null;
 }
 
