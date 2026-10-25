@@ -41,7 +41,33 @@ const browser = await chromium.launch({
 
 const problems = [];
 
-async function phone({ landscape = false, theme = 'day' } = {}) {
+// What MainActivity and Bridge.kt do, played in the page: network, position and back go through
+// window.ShturmanNative and come back through window.__shturman, as on the phone.
+function nativeBridge(start) {
+    const calls = (window.__native = []);
+    const answer = (fn) => setTimeout(fn, 20);
+    window.ShturmanNative = {
+        startLocation() {
+            calls.push('startLocation');
+            answer(() => window.__shturman.location({ lon: start[0], lat: start[1], accuracy: 8, speed: null, heading: null, time: Date.now() }));
+        },
+        stopLocation() { calls.push('stopLocation'); },
+        requestLocation() { calls.push('requestLocation'); },
+        openLocationSettings() { calls.push('openLocationSettings'); },
+        speak(text) { (window.__said ||= []).push(text); },
+        stopSpeaking() {},
+        http(id, method, url, body, timeout) {
+            calls.push(`http ${url.split('?')[0]}`);
+            fetch(url).then(async (r) => window.__shturman.http(id, r.status, await r.text()), () => window.__shturman.http(id, -1, 'IOException'));
+        },
+        keepScreenOn(on) { calls.push(`keepScreenOn ${on}`); },
+        setTheme(t) { calls.push(`setTheme ${t}`); },
+        share() {}, copy() {}, openUrl() {}, vibrate() {}, exit() {},
+        info() { return JSON.stringify({ version: '1.0', store: 'github', supportUrl: 'https://example.org' }); },
+    };
+}
+
+async function phone({ landscape = false, theme = 'day', native = false } = {}) {
     const size = landscape ? { width: 860, height: 400 } : { width: 400, height: 860 };
     const context = await browser.newContext({
         viewport: size, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'ru-RU',
@@ -51,6 +77,7 @@ async function phone({ landscape = false, theme = 'day' } = {}) {
         localStorage.setItem('shturman.v1', JSON.stringify({ settings: { theme: t, demoSpeed: 4 }, view: { center: [37.6176, 55.7558], zoom: 15 } }));
         window.speechSynthesis && (window.speechSynthesis.speak = (u) => { (window.__said ||= []).push(u.text); });
     }, theme);
+    if (native) await context.addInitScript(nativeBridge, CENTER);
     const page = await context.newPage();
     page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
     page.on('pageerror', (e) => problems.push(`page: ${e.message}`));
@@ -123,6 +150,32 @@ try {
         await page.click('[data-act="demo"]');
         await page.waitForTimeout(5000);
         await shot(page, '11_night_driving');
+        await context.close();
+    }
+    // As inside the Android app: everything through the bridge.
+    {
+        const { context, page } = await phone({ native: true });
+        await page.waitForFunction(() => window.__app.S.locStatus === 'ok');
+        await page.evaluate(() => window.__shturman.intent('geo:0,0?q=55.7429,37.6326(Кофейня «Утро»)'));
+        await page.waitForSelector('#sheet [data-act="route"]');
+        await page.click('[data-act="route"]');
+        await page.waitForSelector('#sheet .option');
+        await page.click('[data-act="go"]');
+        await page.waitForSelector('#banner .dist');
+        const back = await page.evaluate(() => window.__shturman.back());
+        await page.waitForSelector('#dialog .box');
+        await shot(page, '14_native_end_dialog');
+        await page.click('#dialog [data-value="yes"]');
+        const calls = await page.evaluate(() => window.__native);
+        const said = await page.evaluate(() => window.__said || []);
+        const atBrowse = await page.evaluate(() => window.__shturman.back());
+        console.log('native calls:', [...new Set(calls)].join(', '));
+        for (const want of ['startLocation', 'http https://valhalla1.openstreetmap.de/route', 'http https://photon.komoot.io/reverse', 'keepScreenOn true', 'keepScreenOn false', 'setTheme day']) {
+            if (!calls.includes(want)) problems.push(`native: no "${want}"`);
+        }
+        if (back !== true) problems.push('native: back while driving was not handled');
+        if (atBrowse !== false) problems.push('native: back on the map should leave the app');
+        if (!said[0] || !said[0].startsWith('Маршрут построен')) problems.push(`native: said ${said}`);
         await context.close();
     }
     // Lying on its side in a car holder.
