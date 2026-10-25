@@ -61,8 +61,15 @@ class MainActivity : ComponentActivity() {
             setGeolocationEnabled(false)
         }
         web.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
-                assets.shouldInterceptRequest(request.url)
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                val response = assets.shouldInterceptRequest(request.url) ?: return null
+                // Module scripts load only with a script type, and Android does not know ".mjs".
+                typeOf(request.url.path.orEmpty())?.let {
+                    response.mimeType = it
+                    response.encoding = "utf-8"
+                }
+                return response
+            }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (request.url.host == HOST) return false
@@ -179,6 +186,14 @@ class MainActivity : ComponentActivity() {
     fun js(call: String) {
         if (!loaded) return
         runOnUiThread { web.evaluateJavascript("window.__shturman && window.__shturman.$call", null) }
+    }
+
+    private fun typeOf(path: String): String? = when (path.substringAfterLast('.', "")) {
+        "mjs", "js" -> "text/javascript"
+        "css" -> "text/css"
+        "html" -> "text/html"
+        "json" -> "application/json"
+        else -> null
     }
 
     private fun deliverLink(link: String) {
