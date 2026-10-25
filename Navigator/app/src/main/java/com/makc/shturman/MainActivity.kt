@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
                 return true
             }
 
-            override fun onPageFinished(view: WebView, url: String) {
+            override fun onPageFinished(view: WebView, url: String?) {
                 loaded = true
                 ViewCompat.requestApplyInsets(web)
                 pendingLink?.let { deliverLink(it) }

@@ -10,6 +10,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.net.Uri
+import android.os.Bundle
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -48,7 +49,21 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         if (granted.values.any { it }) listen() else activity.js("locationStatus('denied')")
     }
 
-    private val listener = LocationListener { location -> onLocation(location) }
+    // Every method spelled out: before Android 11 the system calls them all and has no defaults.
+    private val listener = object : LocationListener {
+        override fun onLocationChanged(location: Location) = onLocation(location)
+
+        override fun onProviderEnabled(provider: String) {
+            if (LocationManagerCompat.isLocationEnabled(locations)) activity.js("locationStatus('ok')")
+        }
+
+        override fun onProviderDisabled(provider: String) {
+            if (!LocationManagerCompat.isLocationEnabled(locations)) activity.js("locationStatus('off')")
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+    }
 
     // ---- Position ----
 
