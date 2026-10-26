@@ -65,6 +65,20 @@ class ShopTest {
     }
 
     @Test
+    fun aStoreTakingNoPaymentsGrantsNothing() {
+        val platform = SilentPlatform(day = 1000)
+        platform.shop = Shop.HERE
+        platform.payment = Payment.UNAVAILABLE
+        val game = Game(platform)
+        var heard: Payment? = null
+        game.buy(Product.GROM) { heard = it }
+        assertEquals(Payment.UNAVAILABLE, heard)
+        assertFalse(game.profile.owned(Product.GROM))
+        game.buy(Product.VIP_MONTH) { heard = it }
+        assertFalse(game.profile.vip(1000), "no VIP either")
+    }
+
+    @Test
     fun purchasesComeBackOnANewPhone() {
         val store = SilentPlatform(day = 1000)
         store.owned += Product.GROM

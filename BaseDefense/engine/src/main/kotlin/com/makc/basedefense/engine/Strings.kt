@@ -320,6 +320,7 @@ object Tx {
     // Shop
     val BOUGHT = L("Покупка прошла. Спасибо за поддержку!", "Purchase complete. Thank you for the support!")
     val PAY_FAILED = L("Оплата не прошла", "The payment did not go through")
+    val PAY_UNAVAILABLE = L("Покупки в RuStore сейчас недоступны. Попробуйте позже", "RuStore is not taking payments right now. Try again later")
     val RESTORE = L("ВОССТАНОВИТЬ ПОКУПКИ", "RESTORE PURCHASES")
     val RESTORED = L("Покупки восстановлены", "Purchases restored")
     val NOT_FOUND = L("Покупки не найдены", "No purchases found")

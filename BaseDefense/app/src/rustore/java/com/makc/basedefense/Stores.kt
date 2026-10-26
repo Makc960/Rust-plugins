@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import com.makc.basedefense.engine.Payment
 import com.makc.basedefense.engine.Product
 import com.makc.basedefense.engine.Purchases
@@ -24,6 +25,7 @@ import ru.rustore.sdk.pay.model.ProductPurchase
 import ru.rustore.sdk.pay.model.ProductPurchaseParams
 import ru.rustore.sdk.pay.model.ProductPurchaseStatus
 import ru.rustore.sdk.pay.model.ProductType
+import ru.rustore.sdk.pay.model.PurchaseAvailabilityResult
 import ru.rustore.sdk.pay.model.RuStorePaymentException
 import ru.rustore.sdk.pay.model.SdkTheme
 import ru.rustore.sdk.pay.model.SubscriptionPurchase
@@ -52,7 +54,31 @@ private class RuStore(private val app: Context) : Store {
 
     override val shop = Shop.HERE
 
+    /**
+     * Asks RuStore first whether it takes payments now: when it does not (the player is not signed
+     * in, or payments are off for the game in the RuStore Console), the game says so instead of
+     * opening RuStore's payment sheet only for it to fail.
+     */
     override fun buy(product: Product, done: (Payment, Int) -> Unit) {
+        try {
+            client.getPurchaseInteractor()
+                .getPurchaseAvailability()
+                .addOnSuccessListener { result ->
+                    if (result is PurchaseAvailabilityResult.Unavailable) {
+                        Log.w(TAG, "payments unavailable", result.cause)
+                        main.post { done(Payment.UNAVAILABLE, 0) }
+                    } else {
+                        purchase(product, done)
+                    }
+                }
+                // The check itself failed: try the purchase, RuStore's sheet tells what is wrong.
+                .addOnFailureListener { purchase(product, done) }
+        } catch (e: RuntimeException) {
+            purchase(product, done)
+        }
+    }
+
+    private fun purchase(product: Product, done: (Payment, Int) -> Unit) {
         try {
             client.getPurchaseInteractor()
                 .purchase(ProductPurchaseParams(ProductId(product.id)), PreferredPurchaseType.ONE_STEP, SdkTheme.DARK)
@@ -199,4 +225,8 @@ private class RuStore(private val app: Context) : Store {
     private fun lastDay(date: Date?): Int = date?.let { day(it) } ?: (today() + Vip.DAYS)
 
     private fun day(date: Date): Int = date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay().toInt()
+
+    private companion object {
+        const val TAG = "BaseDefense"
+    }
 }

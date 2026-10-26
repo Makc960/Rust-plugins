@@ -12,8 +12,11 @@ enum class Shop {
     HERE,
 }
 
-/** How a purchase ended. */
-enum class Payment { PAID, CANCELLED, FAILED }
+/**
+ * How a purchase ended. UNAVAILABLE: the store takes no payments at the moment, so the purchase
+ * was not even started (the player is not signed in to RuStore, or the game's payments are off).
+ */
+enum class Payment { PAID, CANCELLED, FAILED, UNAVAILABLE }
 
 /**
  * Everything on sale, by its product ID in the RuStore Console. VIP by the month is a

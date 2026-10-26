@@ -149,6 +149,8 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
                 sound(Sfx.ACHIEVEMENT, 0.8f)
             } else if (payment == Payment.FAILED) {
                 toast(Tx.PAY_FAILED.t, Icon.WARNING)
+            } else if (payment == Payment.UNAVAILABLE) {
+                toast(Tx.PAY_UNAVAILABLE.t, Icon.WARNING)
             }
             onDone(payment)
         }
