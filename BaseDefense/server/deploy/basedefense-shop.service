@@ -1,0 +1,31 @@
+[Unit]
+Description=Base Defense shop server (Pally payments)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=basedefense-shop
+Group=basedefense-shop
+EnvironmentFile=/etc/basedefense-shop/shop.env
+ExecStart=/usr/bin/env node /opt/basedefense-shop/src/server.mjs
+Restart=on-failure
+RestartSec=3
+# /var/lib/basedefense-shop: the orders and purchases (db.json). The only place it may write.
+StateDirectory=basedefense-shop
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

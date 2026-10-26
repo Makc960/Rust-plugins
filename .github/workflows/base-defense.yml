@@ -38,6 +38,10 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Test the shop server
+        working-directory: BaseDefense/server
+        run: node --test test/*.test.mjs
+
       - name: Test the game and build the APK
         run: ./gradlew --no-daemon :engine:test :app:assembleRelease
 
