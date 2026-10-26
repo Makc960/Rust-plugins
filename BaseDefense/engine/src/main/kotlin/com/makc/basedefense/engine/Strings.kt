@@ -240,6 +240,7 @@ object Tx {
     val VIP = L("VIP", "VIP")
     val VIP_TITLE = L("VIP-СТАТУС", "VIP STATUS")
     val VIP_PRICE = L("%d ₽ в месяц", "%d ₽ a month")
+    val VIP_PRICE_DAYS = L("%d ₽ за 30 дней", "%d ₽ for 30 days")
     val VIP_ACTIVE = L("Активен до %s", "Active until %s")
     val VIP_WITHOUT = L("Без VIP", "Without")
     val VIP_ROW_START = L("Монеты на старте боя", "Starting coins")
@@ -315,12 +316,28 @@ object Tx {
         "Подписка оформляется через RuStore и продлевается каждый месяц. Отменить её можно в любой момент в RuStore, в разделе «Подписки».",
         "The subscription goes through RuStore and renews every month. You can cancel it any time in RuStore, under Subscriptions.",
     )
+    val VIP_NOTE_DAYS = L(
+        "Оплата картой или через СБП на странице Pally. VIP на месяц — это 30 дней без автопродления: сам ничего не спишется.",
+        "Pay by card or SBP on Pally's page. Monthly VIP is 30 days that do not renew: nothing is ever charged by itself.",
+    )
     val VIP_THANKS = L("VIP включён. Спасибо за поддержку!", "VIP is on. Thank you for the support!")
 
     // Shop
     val BOUGHT = L("Покупка прошла. Спасибо за поддержку!", "Purchase complete. Thank you for the support!")
     val PAY_FAILED = L("Оплата не прошла", "The payment did not go through")
-    val PAY_UNAVAILABLE = L("Покупки в RuStore сейчас недоступны. Попробуйте позже", "RuStore is not taking payments right now. Try again later")
+    val PAY_UNAVAILABLE = L("Оплата сейчас недоступна. Попробуйте позже", "Payments are unavailable right now. Try again later")
+    val CODE_LABEL = L("КОД ПОКУПОК", "PURCHASE CODE")
+    val CODE_TEXT = L(
+        "Покупки хранятся под этим кодом. Запишите его: на новом телефоне введите код, и всё купленное перенесётся. Нажмите на код, чтобы скопировать.",
+        "Your purchases are kept under this code. Write it down: enter it on a new phone and everything you bought moves there. Tap the code to copy it.",
+    )
+    val CODE_ENTER = L("ВВЕСТИ КОД С ДРУГОГО ТЕЛЕФОНА", "ENTER A CODE FROM ANOTHER PHONE")
+    val CODE_TITLE = L("Код покупок", "Purchase code")
+    val CODE_HINT = L("XXXX-XXXX-XXXX-XXXX-XXXX", "XXXX-XXXX-XXXX-XXXX-XXXX")
+    val CODE_GO = L("Перенести", "Move")
+    val CODE_WRONG = L("Код не подошёл или нет связи с магазином", "Wrong code, or the shop is out of reach")
+    val CODE_TAKEN = L("Код принят. Покупок под ним пока нет", "Code accepted. Nothing bought under it yet")
+    val CODE_COPIED = L("Код скопирован", "Code copied")
     val RESTORE = L("ВОССТАНОВИТЬ ПОКУПКИ", "RESTORE PURCHASES")
     val RESTORED = L("Покупки восстановлены", "Purchases restored")
     val NOT_FOUND = L("Покупки не найдены", "No purchases found")

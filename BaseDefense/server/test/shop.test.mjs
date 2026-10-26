@@ -69,10 +69,10 @@ test('an order makes a bill, and a signed notice from Pally hands over what was 
     assert.deepEqual((await shop.status(CODE, order)).status, 'pending');
     assert.equal(shop.postback(notice(order, 149)), true);
     assert.deepEqual(await shop.status(CODE, order), { status: 'paid', vipUntil: null });
-    assert.deepEqual(shop.purchases(CODE).owned, ['commander_grom']);
+    assert.deepEqual((await shop.purchases(CODE)).owned, ['commander_grom']);
     // The same notice twice changes nothing.
     shop.postback(notice(order, 149));
-    assert.deepEqual(shop.purchases(CODE).owned, ['commander_grom']);
+    assert.deepEqual((await shop.purchases(CODE)).owned, ['commander_grom']);
 });
 
 test('notices not signed with the API token, or paying too little, are refused', async () => {
@@ -82,7 +82,7 @@ test('notices not signed with the API token, or paying too little, are refused',
     assert.equal(shop.postback({ InvId: order, OutSum: '399.00' }), false);
     assert.equal(shop.postback(notice(order, 100)), true);
     assert.equal((await shop.status(CODE, order)).status, 'pending');
-    assert.deepEqual(shop.purchases(CODE).owned, []);
+    assert.deepEqual((await shop.purchases(CODE)).owned, []);
     assert.equal(readPostback(notice(order, 399), 'another-token'), null);
 });
 
@@ -91,14 +91,14 @@ test('VIP adds 30 days, from today or from when it ends, and passes count by day
     const day = today(Date.UTC(2026, 9, 26, 12));
     const a = await shop.order(CODE, 'vip_month');
     shop.postback(notice(a.order, 50));
-    assert.equal(shop.purchases(CODE).vipUntil, day + 30);
+    assert.equal((await shop.purchases(CODE)).vipUntil, day + 30);
     const b = await shop.order(CODE, 'vip_month');
     shop.postback(notice(b.order, 50));
-    assert.equal(shop.purchases(CODE).vipUntil, day + 60);
+    assert.equal((await shop.purchases(CODE)).vipUntil, day + 60);
     assert.equal((await shop.status(CODE, b.order)).vipUntil, day + 60);
     const c = await shop.order(CODE, 'season_pass');
     shop.postback(notice(c.order, 149));
-    assert.deepEqual(shop.purchases(CODE).passes, [day]);
+    assert.deepEqual((await shop.purchases(CODE)).passes, [day]);
 });
 
 test('with no notice from Pally, the order is checked with Pally after a while', async () => {
@@ -108,7 +108,7 @@ test('with no notice from Pally, the order is checked with Pally after a while',
     assert.equal((await shop.status(CODE, order)).status, 'pending', 'not asked at once');
     time.now += 20000;
     assert.equal((await shop.status(CODE, order)).status, 'paid');
-    assert.deepEqual(shop.purchases(CODE).owned, ['skin_night']);
+    assert.deepEqual((await shop.purchases(CODE)).owned, ['skin_night']);
 });
 
 test("another player's code sees no order, and unknown products are refused", async () => {
@@ -117,6 +117,36 @@ test("another player's code sees no order, and unknown products are refused", as
     await assert.rejects(shop.status('ZZZZZZZZZZZZZZZZZZZZ', order), /no such order/);
     await assert.rejects(shop.order(CODE, 'free_gold'), /no such product/);
     await assert.rejects(shop.order('bad', 'skin_night'), /bad code/);
+});
+
+test('a code typed on another phone takes over the purchases, and the old code follows it', async () => {
+    const { shop } = shopAt();
+    const OLD = 'AAAAAAAAAAAAAAAAAAAA';
+    const NEW = 'BBBBBBBBBBBBBBBBBBBB';
+    const a = await shop.order(OLD, 'vip_month');
+    shop.postback(notice(a.order, 50));
+    const b = await shop.order(NEW, 'skin_night');
+    shop.postback(notice(b.order, 99));
+    const pending = await shop.order(OLD, 'commander_grom');
+    const day = today(Date.UTC(2026, 9, 26, 12));
+    assert.deepEqual(await shop.move(OLD, NEW), { owned: ['skin_night'], vipUntil: day + 30, passes: [] });
+    // The old code, still on the old phone, sees the same, and its unpaid order counts when paid.
+    shop.postback(notice(pending.order, 149));
+    assert.deepEqual((await shop.purchases(OLD)).owned, ['skin_night', 'commander_grom']);
+    assert.equal((await shop.status(NEW, pending.order)).status, 'paid');
+    // Moving back and forth makes no loop.
+    await shop.move(NEW, OLD);
+    await shop.move(OLD, NEW);
+    assert.deepEqual((await shop.purchases(NEW)).owned, ['skin_night', 'commander_grom']);
+    await assert.rejects(shop.move(OLD, 'short'), /bad code/);
+});
+
+test('asking what a player has checks their recent unpaid orders with Pally', async () => {
+    const { shop, pally, time } = shopAt();
+    await shop.order(CODE, 'skin_parade');
+    pally.states.set('bill1', 'paid');
+    time.now += 20000;
+    assert.deepEqual((await shop.purchases(CODE)).owned, ['skin_parade']);
 });
 
 test('the Pally client sends a bill and reads its link and status', async () => {
@@ -156,6 +186,8 @@ test('the HTTP side: orders, status, purchases, notices and the page back to the
         r = await fetch(`${base}/api/order/${order}?code=${CODE}`);
         assert.deepEqual(await r.json(), { status: 'paid', vipUntil: null });
         r = await fetch(`${base}/api/purchases?code=${CODE}`);
+        assert.deepEqual((await r.json()).owned, ['commander_grom']);
+        r = await fetch(`${base}/api/move`, { method: 'POST', body: JSON.stringify({ from: CODE, to: 'CCCCCCCCCCCCCCCCCCCC' }) });
         assert.deepEqual((await r.json()).owned, ['commander_grom']);
         r = await fetch(`${base}/pally/result`, { method: 'POST', body: 'InvId=1&OutSum=1&SignatureValue=00' });
         assert.equal(r.status, 400);

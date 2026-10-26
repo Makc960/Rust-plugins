@@ -95,6 +95,41 @@ class ShopTest {
     }
 
     @Test
+    fun purchasesMoveByCodeWhereTheGameSellsThemItself() {
+        val platform = SilentPlatform(day = 1000)
+        platform.shop = Shop.HERE
+        platform.purchaseCode = "AAAAAAAAAAAAAAAAAAAA"
+        val game = Game(platform)
+        assertEquals("AAAA-AAAA-AAAA-AAAA-AAAA", game.purchaseCode, "shown in groups of four")
+        game.copyPurchaseCode()
+        assertEquals("AAAA-AAAA-AAAA-AAAA-AAAA", platform.copied)
+
+        platform.codes["BBBBBBBBBBBBBBBBBBBB"] = Purchases(1020, setOf(Product.SKIN_NIGHT))
+        var done = false
+        platform.typed = " bbbb-8bbb-bbbb-bbbb-bbbb "
+        game.enterPurchaseCode { done = true }
+        assertTrue(done)
+        assertEquals("BBBBBBBBBBBBBBBBBBBB", platform.purchaseCode, "the code typed is this phone's from now on")
+        assertTrue(game.profile.owned(Product.SKIN_NIGHT) && game.vip, "with what was bought under it")
+
+        for (wrong in listOf("BBBB-BBBB", "CCCCCCCCCCCCCCCCCCCC")) {
+            platform.typed = wrong
+            game.enterPurchaseCode()
+            assertEquals("BBBBBBBBBBBBBBBBBBBB", platform.purchaseCode, "a short or unknown code changes nothing")
+        }
+        // A payment that came in after the game stopped waiting is taken when the store says so.
+        platform.owned += Product.GROM
+        game.paidLater()
+        assertTrue(game.profile.owned(Product.GROM))
+
+        platform.typed = null
+        done = false
+        game.enterPurchaseCode { done = true }
+        assertTrue(done, "cancelling ends it too")
+        assertEquals(null, Game(SilentPlatform()).purchaseCode, "stores that keep purchases themselves have no code")
+    }
+
+    @Test
     fun vipGivesAGiftADay() {
         val platform = SilentPlatform(day = 1000)
         val p = Profile(platform)

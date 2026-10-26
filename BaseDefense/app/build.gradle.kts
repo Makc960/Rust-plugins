@@ -9,7 +9,8 @@ plugins {
 val uploadKey = System.getenv("UPLOAD_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
 
 // Which store a build is for: "github" (the APK in the repository's releases), "rustore" or "play".
-// Only RuStore builds sell VIP and the rest of the shop: they carry RuStore's Pay SDK (src/rustore).
+// RuStore builds sell VIP and the rest of the shop through RuStore's Pay SDK (src/rustore); with a
+// shopServer below, RuStore and GitHub builds sell through the game's own server instead.
 // Google Play allows no payments outside its own billing and rejects donation links, so its bundle has neither.
 val store = (findProperty("store") as String?) ?: "github"
 
@@ -20,6 +21,11 @@ if (store == "rustore") require(rustoreAppId.isNotEmpty()) { "A RuStore build ne
 // The rewarded video unit from the Yandex Advertising Network (partner.yandex.ru), like R-M-1234567-1;
 // RuStore builds only. Empty, the default, shows no adverts; demo-rewarded-yandex plays Yandex's test videos.
 val rewardedAdUnit = if (store == "rustore") (findProperty("rewardedAdUnit") as String?).orEmpty().trim() else ""
+
+// The game's own shop server (BaseDefense/server), like https://shop.example.ru: set, the game sells
+// through it, paid on Pally's page, instead of through RuStore Pay. Never in the Google Play bundle.
+val shopServer = if (store == "play") "" else (findProperty("shopServer") as String?).orEmpty().trim().trimEnd('/')
+require(shopServer.isEmpty() || shopServer.matches(Regex("https://[A-Za-z0-9.-]+(:\\d+)?"))) { "shopServer must be https://host, not $shopServer" }
 
 // The page where players can support the author; empty hides the button in the settings.
 val supportUrl = "https://pay.cloudtips.ru/p/5b9bb7e3"
@@ -36,13 +42,14 @@ android {
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100) ?: 2
         versionName = "3.1"
         buildConfigField("String", "SUPPORT_URL", "\"${if (store == "play") "" else supportUrl}\"")
-        val shop = when (store) {
-            "rustore" -> "HERE"
-            "play" -> "NONE"
+        val shop = when {
+            store == "rustore" || shopServer.isNotEmpty() -> "HERE"
+            store == "play" -> "NONE"
             else -> "ELSEWHERE"
         }
         buildConfigField("String", "SHOP", "\"$shop\"")
         buildConfigField("String", "REWARDED_AD_UNIT", "\"$rewardedAdUnit\"")
+        buildConfigField("String", "SHOP_SERVER", "\"$shopServer\"")
         resValue("string", "rustore_app_id", rustoreAppId)
         // Payment apps open this scheme to come back to the game.
         manifestPlaceholders["payScheme"] = "com.makc.basedefense"

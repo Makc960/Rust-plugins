@@ -39,12 +39,16 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         AndroidGfx.preload(cacheDir)
-        store = Stores.create(this)
+        // Built with a shop server, the game sells through it whatever store it came from.
+        store = Stores.create(this).let { base ->
+            if (BuildConfig.SHOP_SERVER.isEmpty()) base else ShopServer(this, BuildConfig.SHOP_SERVER, base)
+        }
         // A payment app may have opened the game to say how a payment went.
         if (savedInstanceState == null) store.handleIntent(intent)
         platform = AndroidPlatform(this, store, Notices(this), Advertising.create(this), ::askNotifications, ::askText)
         // The intro plays when the game opens, not when Android brings it back.
         game = Game(platform, showIntro = savedInstanceState == null)
+        (store as? ShopServer)?.paidLater = { game.paidLater() }
         view = GameView(this, game)
         setContentView(view)
         // The launch picture was only for the start; the game paints the whole screen from here on.
@@ -132,6 +136,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         view.resetClock()
         hideSystemBars()
+        store.resume()
     }
 
     override fun onPause() {

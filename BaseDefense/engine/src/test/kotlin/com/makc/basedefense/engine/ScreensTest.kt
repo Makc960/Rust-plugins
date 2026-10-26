@@ -421,6 +421,27 @@ class ScreensTest {
     }
 
     @Test
+    fun theGamesOwnShopShowsThePurchaseCode() {
+        val platform = SilentPlatform()
+        platform.shop = Shop.HERE
+        platform.purchaseCode = "K7QM2XWP4RTBZHNC5DJE"
+        val g = game(small, platform)
+        run(g, 1f)
+        if (has(g, small, "popupLater")) press(g, small, "popupLater")
+        press(g, small, "vip")
+        frame(g, small)
+        g.ui.scrollTo(Screen.VIP.name, 10_000f)
+        run(g, 0.3f)
+        shot(g, small, "small_86_vip_code")
+        press(g, small, "copycode")
+        assertEquals("K7QM-2XWP-4RTB-ZHNC-5DJE", platform.copied)
+        platform.codes["GGGGGGGGGGGGGGGGGGGG"] = Purchases(null, setOf(Product.GROM))
+        platform.typed = "gggg-gggg-gggg-gggg-gggg"
+        press(g, small, "entercode")
+        assertTrue(g.profile.owned(Product.GROM), "a code from another phone brings its purchases")
+    }
+
+    @Test
     fun vipRemindersAfterADefeatAndWhenItEnds() {
         // A defeat in the RuStore version shows what VIP's second chance would do.
         val platform = SilentPlatform()

@@ -12,6 +12,8 @@ const CODE = /^[A-Z2-7]{20}$/;
 // How long after an order the server asks Pally itself, in case the postback is late or lost.
 const CHECK_AFTER = 15000;
 const CHECK_EVERY = 10000;
+// Unpaid orders this young are checked again when the player asks what they have.
+const RECHECK_FOR = 60 * 60 * 1000;
 
 export class ShopError extends Error {
     constructor(status, message) {
@@ -79,29 +81,61 @@ export class Shop {
     async status(code, orderId) {
         const player = normalCode(code);
         let order = this.db.order(orderId);
-        if (!player || !order || order.player !== player) throw new ShopError(404, 'no such order');
-        const now = this.now();
-        if (order.status === 'pending' && order.bill && now - order.created > CHECK_AFTER && now - order.checked > CHECK_EVERY) {
-            order = { ...order, checked: now };
-            this.db.putOrder(order);
-            try {
-                const state = await this.pally.billStatus(order.bill);
-                if (state === 'paid') order = this.paid(order);
-                else if (state === 'failed') this.db.putOrder((order = { ...order, status: 'failed' }));
-            } catch (e) {
-                // Pally did not answer: the postback may still come.
-            }
-        }
+        if (!player || !order || this.db.resolve(order.player) !== this.db.resolve(player)) throw new ShopError(404, 'no such order');
+        order = await this.refresh(order);
         const answer = { status: order.status };
         if (order.status === 'paid') answer.vipUntil = this.db.player(player).vipUntil;
         return answer;
     }
 
-    /** Everything [code] has paid for. */
-    purchases(code) {
+    /** Everything [code] has paid for, with its recent unpaid orders checked with Pally first. */
+    async purchases(code) {
         const player = normalCode(code);
         if (!player) throw new ShopError(400, 'bad code');
+        const now = this.now();
+        const recent = this.db.ordersOf(player).filter((o) => o.status === 'pending' && now - o.created < RECHECK_FOR);
+        for (const order of recent.slice(-3)) await this.refresh(order);
         return this.db.player(player);
+    }
+
+    /**
+     * Moves [from]'s purchases into [to], the code typed on a new phone (or the code of the old one
+     * typed on this phone), and has [from] mean [to] from now on. Answers what [to] has then.
+     */
+    async move(from, to) {
+        const a = normalCode(from);
+        const b = normalCode(to);
+        if (!a || !b) throw new ShopError(400, 'bad code');
+        const source = this.db.resolve(a);
+        const target = this.db.resolve(b);
+        if (source !== target) {
+            const p = this.db.player(source);
+            const q = this.db.player(target);
+            const until = [p.vipUntil, q.vipUntil].filter((day) => day != null);
+            this.db.putPlayer(target, {
+                owned: [...new Set([...q.owned, ...p.owned])],
+                vipUntil: until.length ? Math.max(...until) : null,
+                passes: [...q.passes, ...p.passes],
+            });
+            this.db.alias(source, target);
+        }
+        return this.purchases(target);
+    }
+
+    /** Asks Pally about a pending [order] when its notice is late; answers the order as it is then. */
+    async refresh(order) {
+        const now = this.now();
+        if (order.status !== 'pending' || !order.bill || now - order.created <= CHECK_AFTER || now - order.checked <= CHECK_EVERY) return order;
+        let current = { ...order, checked: now };
+        this.db.putOrder(current);
+        try {
+            const state = await this.pally.billStatus(order.bill);
+            if (state === 'paid') current = this.paid(current);
+            else if (state === 'failed') this.db.putOrder((current = { ...current, status: 'failed' }));
+        } catch (e) {
+            // Pally did not answer: the postback may still come.
+        }
+        return current;
     }
 
     /** Marks [order] paid, once, and gives the player what it bought. */

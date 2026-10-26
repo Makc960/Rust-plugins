@@ -3,6 +3,7 @@
 //   POST /api/order          {code, product}  -> {order, url}       the game opens url to pay
 //   GET  /api/order/:id?code=                -> {status, vipUntil?} pending, paid or failed
 //   GET  /api/purchases?code=                -> {owned, vipUntil, passes}
+//   POST /api/move           {from, to}       -> what [to] has, [from]'s purchases moved into it
 //   POST /pally/result       Pally's payment notice (Result URL in Pally's cabinet)
 //   GET  /return             the page Pally sends the player back to, with a button into the game
 //   GET  /health
@@ -50,7 +51,12 @@ export function makeServer(shop, { log = console } = {}) {
                 return json(res, 200, await shop.status(url.searchParams.get('code'), orderPath[1]));
             }
             if (req.method === 'GET' && url.pathname === '/api/purchases') {
-                return json(res, 200, shop.purchases(url.searchParams.get('code')));
+                return json(res, 200, await shop.purchases(url.searchParams.get('code')));
+            }
+            if (req.method === 'POST' && url.pathname === '/api/move') {
+                if (!allowOrder(ip)) throw new ShopError(429, 'too many tries');
+                const body = JSON.parse((await readBody(req)) || '{}');
+                return json(res, 200, await shop.move(body.from, body.to));
             }
             if (req.method === 'POST' && url.pathname === '/pally/result') {
                 const body = await readBody(req);

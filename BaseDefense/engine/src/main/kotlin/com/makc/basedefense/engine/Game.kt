@@ -126,13 +126,61 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
     /** Asks the store what was paid for, maybe on another phone or after a renewal; [onDone] hears whether it found anything. */
     internal fun checkPurchases(onDone: ((Boolean) -> Unit)? = null) {
         platform.checkPurchases { found ->
-            val pass = found != null && found.passDays.any { Season.of(it) == Season.of(today) }
-            if (found != null) {
-                found.vipUntil?.let { profile.grantVip(it) }
-                for (p in found.owned) profile.grant(p)
-                if (pass) profile.grant(Product.PASS)
+            val any = found != null && take(found)
+            onDone?.invoke(any)
+        }
+    }
+
+    /** Hands over what [found] says is paid for; answers whether there was anything still in force. */
+    private fun take(found: Purchases): Boolean {
+        val pass = found.passDays.any { Season.of(it) == Season.of(today) }
+        found.vipUntil?.let { profile.grantVip(it) }
+        for (p in found.owned) profile.grant(p)
+        if (pass) profile.grant(Product.PASS)
+        return (found.vipUntil ?: -1) >= today || found.owned.isNotEmpty() || pass
+    }
+
+    /** A payment the store stopped waiting for went through after all: takes what it bought. */
+    fun paidLater() = checkPurchases { found ->
+        if (found) {
+            toast(Tx.BOUGHT.t, Icon.CROWN)
+            sound(Sfx.ACHIEVEMENT, 0.8f)
+        }
+    }
+
+    /** The code purchases are kept under where the game's own shop keeps them, shown as XXXX-XXXX-…; null elsewhere. */
+    internal val purchaseCode: String? get() = platform.purchaseCode?.chunked(4)?.joinToString("-")
+
+    internal fun copyPurchaseCode() {
+        val code = purchaseCode ?: return
+        platform.copyText(code)
+        toast(Tx.CODE_COPIED.t, Icon.CHECK)
+    }
+
+    /** Asks for the purchase code from another phone and brings what was bought there here; [onDone] runs at the end. */
+    internal fun enterPurchaseCode(onDone: () -> Unit = {}) {
+        platform.askText(Tx.CODE_TITLE.t, Tx.CODE_HINT.t, Tx.CODE_GO.t) { text ->
+            // Base 32 has no 0, 1 or 8: they can only be O, I and B misread.
+            val code = text?.uppercase()?.filter { it in 'A'..'Z' || it in '0'..'9' }
+                ?.map { when (it) { '0' -> 'O'; '1' -> 'I'; '8' -> 'B'; else -> it } }?.joinToString("")
+            when {
+                code == null -> onDone()
+                code.length != CODE_LENGTH -> {
+                    toast(Tx.CODE_WRONG.t, Icon.WARNING)
+                    onDone()
+                }
+                else -> platform.usePurchaseCode(code) { found ->
+                    when {
+                        found == null -> toast(Tx.CODE_WRONG.t, Icon.WARNING)
+                        take(found) -> {
+                            toast(Tx.RESTORED.t, Icon.CHECK)
+                            sound(Sfx.ACHIEVEMENT, 0.8f)
+                        }
+                        else -> toast(Tx.CODE_TAKEN.t, Icon.CHECK)
+                    }
+                    onDone()
+                }
             }
-            onDone?.invoke(found != null && ((found.vipUntil ?: -1) >= today || found.owned.isNotEmpty() || pass))
         }
     }
 
@@ -535,5 +583,8 @@ class Game(private val platform: Platform, showIntro: Boolean = false) {
 
         /** The tutorial has the squads and the airstrike of a player past the first level. */
         const val TUTORIAL_PROGRESS = 2
+
+        /** Letters and digits in a purchase code. */
+        const val CODE_LENGTH = 20
     }
 }

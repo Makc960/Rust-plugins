@@ -1,6 +1,8 @@
 package com.makc.basedefense
 
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.AssetFileDescriptor
@@ -172,6 +174,14 @@ class AndroidPlatform(
     override fun buy(product: Product, done: (Payment, Int) -> Unit) = store.buy(product, done)
 
     override fun checkPurchases(done: (Purchases?) -> Unit) = store.check(done)
+
+    override val purchaseCode: String? get() = store.code
+
+    override fun usePurchaseCode(code: String, done: (Purchases?) -> Unit) = store.useCode(code, done)
+
+    override fun copyText(text: String) {
+        app.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(text, text))
+    }
 
     override fun askReview() = store.askReview()
 

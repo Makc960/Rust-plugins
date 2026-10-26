@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- The game's own shop server, in builds that sell through it (shopServer in build.gradle.kts). -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Reminders about the daily challenge; Android 13 and later ask the player first. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -30,7 +32,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Banking apps come back here after paying for VIP. -->
+            <!-- Banking apps, and the shop server's page after paying, come back here. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

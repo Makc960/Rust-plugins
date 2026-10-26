@@ -360,7 +360,7 @@ internal class Menus(private val game: Game) {
         val bw = pw - d(44f)
         val by = py + ph - d(126f)
         val here = game.shop == Shop.HERE
-        val price = if (here) Tx.VIP_PRICE.f(Product.VIP_MONTH.rubles) else Tx.VIP_ELSEWHERE.t
+        val price = if (here) monthPrice() else Tx.VIP_ELSEWHERE.t
         when (p) {
             Popup.WELCOME -> ui.button(g, "popupGo", bx, by, bw, d(56f), Tx.WELCOME_GO.t, Style.PRIMARY, size = 17f, icon = Icon.PLAY) {
                 popup = null
@@ -1209,7 +1209,7 @@ internal class Menus(private val game: Game) {
         val line = when {
             profile.vipForever -> Tx.VIP_ACTIVE_FOREVER.t
             active -> Tx.VIP_ACTIVE.f(date(profile.vipUntil))
-            else -> Tx.VIP_PRICE.f(Product.VIP_MONTH.rubles)
+            else -> monthPrice()
         }
         ui.textMid(g, line, cx, y + d(124f), d(16f), if (active) Ui.GREEN else Ui.TEXT)
         y += d(146f)
@@ -1243,7 +1243,7 @@ internal class Menus(private val game: Game) {
         // Buying it by the month or for good, or getting back what was paid before.
         val here = shop == Shop.HERE
         if (!active) {
-            val sub = if (here) Tx.VIP_PRICE.f(Product.VIP_MONTH.rubles) else Tx.VIP_ELSEWHERE.t
+            val sub = if (here) monthPrice() else Tx.VIP_ELSEWHERE.t
             ui.button(g, "vipbuy", x, y, w, d(58f), Tx.VIP_BUY.t, Style.PRIMARY, here && !busy, size = 19f, icon = Icon.CROWN, sub = sub) {
                 buy(Product.VIP_MONTH)
             }
@@ -1259,15 +1259,48 @@ internal class Menus(private val game: Game) {
         if (here) {
             restoreButton(g, x, y, w, busy)
             y += d(58f)
-            y += ui.paragraph(g, Tx.VIP_NOTE.t, cx, y, w - d(16f), d(11.5f), Ui.DIM, Align.CENTER)
+            val code = game.purchaseCode
+            if (code != null) y += codePanel(g, code, x, y, w, busy) + d(14f)
+            val note = if (code != null) Tx.VIP_NOTE_DAYS else Tx.VIP_NOTE
+            y += ui.paragraph(g, note.t, cx, y, w - d(16f), d(11.5f), Ui.DIM, Align.CENTER)
         }
         vipBottom = y + d(20f) - (top - off)
         ui.endScroll(g, Screen.VIP.name)
     }
 
+    /** What VIP by the month costs: a subscription in RuStore, 30 days at a time in the game's own shop. */
+    private fun monthPrice(): String = (if (game.purchaseCode != null) Tx.VIP_PRICE_DAYS else Tx.VIP_PRICE).f(Product.VIP_MONTH.rubles)
+
     private fun buy(product: Product) {
         vipBusyAt = clock
         game.buy(product) { vipBusyAt = -100f }
+    }
+
+    /**
+     * The code this phone's purchases are kept under, copied when tapped, and the way to bring them
+     * over from another phone; returns its height.
+     */
+    private fun codePanel(g: Gfx, code: String, x: Float, y: Float, w: Float, busy: Boolean): Float {
+        val pad = d(14f)
+        val iw = w - pad * 2f
+        val size = d(11.5f)
+        val step = size * 1.35f
+        val textH = size + (ui.lines(g, Tx.CODE_TEXT.t, size, iw).size - 1) * step + size * 0.3f
+        val ph = d(32f) + d(48f) + d(10f) + textH + d(12f) + d(44f) + pad
+        ui.panel(g, x, y, w, ph)
+        var cy = y + pad
+        ui.textMid(g, Tx.CODE_LABEL.t, x + w / 2f, cy + d(8f), d(11f), Ui.DIM)
+        cy += d(22f)
+        ui.well(g, x + pad, cy, iw, d(48f), d(6f))
+        ui.textMid(g, code, x + w / 2f, cy + d(24f), d(17f), Ui.GOLD, font = Font.DISPLAY, maxW = iw - d(12f))
+        ui.area("copycode", x + pad, cy, iw, d(48f)) { game.copyPurchaseCode() }
+        cy += d(58f)
+        cy += ui.paragraph(g, Tx.CODE_TEXT.t, x + w / 2f, cy, iw, size, Ui.DIM, Align.CENTER) + d(12f)
+        ui.button(g, "entercode", x + pad, cy, iw, d(44f), Tx.CODE_ENTER.t, Style.GHOST, !busy, size = 12.5f, icon = Icon.PHONE) {
+            vipBusyAt = clock
+            game.enterPurchaseCode { vipBusyAt = -100f }
+        }
+        return ph
     }
 
     private fun restoreButton(g: Gfx, x: Float, y: Float, w: Float, busy: Boolean) {

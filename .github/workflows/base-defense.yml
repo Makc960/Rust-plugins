@@ -43,7 +43,10 @@ jobs:
         run: node --test test/*.test.mjs
 
       - name: Test the game and build the APK
-        run: ./gradlew --no-daemon :engine:test :app:assembleRelease
+        env:
+          # The game's own shop server (BaseDefense/server), a repository variable; unset, the APK sells nothing.
+          SHOP_SERVER: ${{ vars.BASEDEFENSE_SHOP_SERVER }}
+        run: ./gradlew --no-daemon :engine:test :app:assembleRelease -PshopServer="$SHOP_SERVER"
 
       - name: Name APK
         run: cp app/build/outputs/apk/release/app-release.apk BaseDefense.apk
@@ -70,9 +73,11 @@ jobs:
           UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
           # The rewarded video unit from the Yandex Advertising Network (a repository variable); unset, no adverts.
           REWARDED_AD_UNIT: ${{ vars.YANDEX_REWARDED_AD_UNIT }}
+          # Set, the RuStore APK sells through the game's own shop server (Pally) instead of RuStore Pay.
+          SHOP_SERVER: ${{ vars.BASEDEFENSE_SHOP_SERVER }}
         run: |
           echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
-          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore -PrewardedAdUnit="$REWARDED_AD_UNIT"
+          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore -PrewardedAdUnit="$REWARDED_AD_UNIT" -PshopServer="$SHOP_SERVER"
           cp app/build/outputs/apk/release/app-release.apk BaseDefense-RuStore.apk
           rm "$RUNNER_TEMP/upload.jks"
           # RuStore keeps the first upload's certificate for good; show which one this APK carries.

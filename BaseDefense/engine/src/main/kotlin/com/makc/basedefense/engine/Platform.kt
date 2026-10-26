@@ -64,6 +64,22 @@ interface Platform {
     /** Asks the store what is paid for; [done] gets null when the store cannot tell. */
     fun checkPurchases(done: (Purchases?) -> Unit) = Unit
 
+    /**
+     * The code this phone's purchases are kept under on the game's own shop server, for the player
+     * to type on a new phone; null when the store keeps purchases with the player's account. With
+     * such a code, VIP by the month is paid for 30 days at a time and does not renew by itself.
+     */
+    val purchaseCode: String? get() = null
+
+    /**
+     * Makes [code], typed from another phone, this phone's purchase code, the purchases under both
+     * kept together; [done] hears what they are, or null when the code is wrong or the shop is out of reach.
+     */
+    fun usePurchaseCode(code: String, done: (Purchases?) -> Unit) = done(null)
+
+    /** Puts [text] on the phone's clipboard. */
+    fun copyText(text: String) = Unit
+
     /** Opens the store's own window for rating the game, where the store has one. */
     fun askReview() = Unit
 
@@ -117,6 +133,11 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
 
     /** False makes the store unreachable. */
     var storeAnswers = true
+    override var purchaseCode: String? = null
+
+    /** What the shop keeps under each purchase code; a code not here is a wrong one. */
+    val codes = HashMap<String, Purchases>()
+    var copied: String? = null
     var reviewsAsked = 0
     var updateOut = false
     var updatesStarted = 0
@@ -214,4 +235,14 @@ class SilentPlatform(var day: Int = 20_000, var language: String = "ru") : Platf
     }
 
     override fun askText(title: String, hint: String, ok: String, done: (String?) -> Unit) = done(typed)
+
+    override fun usePurchaseCode(code: String, done: (Purchases?) -> Unit) {
+        val found = codes[code] ?: return done(null)
+        purchaseCode = code
+        done(found)
+    }
+
+    override fun copyText(text: String) {
+        copied = text
+    }
 }
