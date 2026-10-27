@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { CATALOG } from '../src/catalog.mjs';
+import { admin } from '../src/admin.mjs';
+import { readEnv } from '../src/check.mjs';
 import { Db } from '../src/db.mjs';
 import { makePally, readPostback, signature } from '../src/pally.mjs';
 import { makeServer } from '../src/server.mjs';
@@ -149,6 +151,21 @@ test('asking what a player has checks their recent unpaid orders with Pally', as
     assert.deepEqual((await shop.purchases(CODE)).owned, ['skin_parade']);
 });
 
+test('support sees orders and players, and can hand a purchase over', async () => {
+    const { shop } = shopAt();
+    const now = Date.UTC(2026, 9, 26, 12);
+    const { order } = await shop.order(CODE, 'skin_parade');
+    assert.match(admin(shop.db, ['orders'], now)[0], new RegExp(`${order}.*skin_parade.*149 ₽.*ждёт оплаты`));
+    assert.deepEqual(admin(shop.db, ['orders', 'ZZZZZZZZZZZZZZZZZZZZ'], now), ['Заказов нет.']);
+    assert.match(admin(shop.db, ['grant', 'abcd-efgh-ijkl-mnop-qrst', 'commander_grom'], now)[0], /Выдано: Командир: капитан Гром/);
+    assert.deepEqual((await shop.purchases(CODE)).owned, ['commander_grom']);
+    const player = admin(shop.db, ['player', CODE], now).join('\n');
+    assert.match(player, /куплено: Командир: капитан Гром/);
+    assert.match(player, /VIP до: —/);
+    assert.match(admin(shop.db, ['grant', CODE, 'free_gold'], now)[0], /Пример/);
+    assert.match(admin(shop.db, ['player', 'short'], now)[0], /20 букв/);
+});
+
 test('the Pally client sends a bill and reads its link and status', async () => {
     const calls = [];
     const fetch = async (url, init) => {
@@ -166,9 +183,57 @@ test('the Pally client sends a bill and reads its link and status', async () => 
     assert.equal(form.get('amount'), '50.00');
     assert.equal(form.get('shop_id'), 'S1');
     assert.equal(form.get('order_id'), 'bd1');
+    assert.equal(form.get('success_url'), 's');
+    assert.equal(form.has('payer_pays_commission'), false);
     assert.equal(await pally.billStatus('B42'), 'paid');
     const failing = makePally({ token: TOKEN, shopId: 'S1', fetch: async () => ({ ok: false, status: 401, text: async () => '{"success":"false"}' }) });
     await assert.rejects(failing.createBill({ orderId: 'x', rubles: 1, description: '', successUrl: '', failUrl: '' }), /401/);
+});
+
+test('when Pally refuses the return addresses, bills go without them from then on', async () => {
+    const forms = [];
+    const warnings = [];
+    const fetch = async (url, init) => {
+        const form = new URLSearchParams(init.body);
+        forms.push(form);
+        if (form.has('success_url')) return { ok: false, status: 422, text: async () => '{"success":false,"message":"success_url domain"}' };
+        return { ok: true, status: 200, text: async () => '{"success":true,"bill_id":"B1","link_page_url":"https://pally/page"}' };
+    };
+    const pally = makePally({ token: TOKEN, shopId: 'S1', fetch, log: { warn: (m) => warnings.push(m) } });
+    const bill = { orderId: 'bd1', rubles: 99, description: 'Ночь', successUrl: 'https://shop/s', failUrl: 'https://shop/f' };
+    assert.equal((await pally.createBill(bill)).url, 'https://pally/page');
+    await pally.createBill(bill);
+    assert.deepEqual(forms.map((f) => f.has('success_url')), [true, false, false], 'tried once with them, then never again');
+    assert.equal(warnings.length, 1);
+    // A wrong token is not about the addresses: no second try.
+    const calls = [];
+    const denied = makePally({ token: 'x', shopId: 'S1', fetch: async (u, i) => (calls.push(i), { ok: false, status: 401, text: async () => '{}' }) });
+    await assert.rejects(denied.createBill(bill), /401/);
+    assert.equal(calls.length, 1);
+});
+
+test("a bill's status counts even where Pally's \"success\" is false for an unpaid bill", async () => {
+    let answer;
+    const pally = makePally({ token: TOKEN, shopId: 'S1', fetch: async () => ({ ok: true, status: 200, text: async () => JSON.stringify(answer) }) });
+    answer = { success: false, status: 'NEW' };
+    assert.equal(await pally.billStatus('B1'), 'pending');
+    answer = { success: false, status: 'FAIL' };
+    assert.equal(await pally.billStatus('B1'), 'failed');
+    answer = { success: 'true', status: 'OVERPAID' };
+    assert.equal(await pally.billStatus('B1'), 'paid');
+    answer = { success: false, status: 'UNDERPAID' };
+    assert.equal(await pally.billStatus('B1'), 'pending');
+});
+
+test('the token check tells a wrong token from a right one', async () => {
+    const answering = (status) => makePally({ token: TOKEN, shopId: 'S1', fetch: async () => ({ ok: status < 300, status, text: async () => '{"success":false}' }) });
+    assert.equal(await answering(422).checkToken(), 'ok', 'no such bill: the token is fine');
+    assert.equal(await answering(401).checkToken(), 'bad-token');
+    assert.equal(await answering(403).checkToken(), 'banned');
+    assert.equal(await answering(502).checkToken(), 'unreachable');
+    const offline = makePally({ token: TOKEN, shopId: 'S1', fetch: async () => { throw new TypeError('fetch failed'); } });
+    assert.equal(await offline.checkToken(), 'unreachable');
+    assert.deepEqual(readEnv('# note\nPALLY_TOKEN="a=b"\n\nPALLY_SHOP_ID=XY\n# PORT=1\n'), { PALLY_TOKEN: 'a=b', PALLY_SHOP_ID: 'XY' });
 });
 
 test('the HTTP side: orders, status, purchases, notices and the page back to the game', async () => {
@@ -197,6 +262,10 @@ test('the HTTP side: orders, status, purchases, notices and the page back to the
         assert.equal(r.status, 400);
         r = await fetch(`${base}/return?order=${order}&result=success`);
         assert.match(await r.text(), /com\.makc\.basedefense:\/\/paid/);
+        // Pally itself comes back with a POST, its payment fields in the body.
+        r = await fetch(`${base}/return?result=fail`, { method: 'POST', body: new URLSearchParams(n).toString(), headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+        assert.equal(r.status, 200);
+        assert.match(await r.text(), /Оплата не прошла/);
         // Too many new orders from one address are turned away.
         let last = 200;
         for (let i = 0; i < 25 && last === 200; i++) {

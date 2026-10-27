@@ -73,6 +73,7 @@ if [ -t 0 ]; then
 	fi
 fi
 CONFIGURED=1
+TOKEN_BAD=0
 [ -n "$(get_var PALLY_SHOP_ID)" ] && [ -n "$(get_var PALLY_TOKEN)" ] || CONFIGURED=0
 
 # ---- Node.js ----
@@ -97,6 +98,8 @@ install -m 644 "$SRC/package.json" "$APP/package.json"
 install -m 644 "$SRC"/src/*.mjs "$APP/src/"
 sed "s#^ExecStart=.*#ExecStart=$NODE $APP/src/server.mjs#" "$HERE/basedefense-shop.service" \
 	>/etc/systemd/system/basedefense-shop.service
+sed "s#^NODE=.*#NODE=$NODE#" "$HERE/basedefense-shop" >/usr/local/bin/basedefense-shop
+chmod 755 /usr/local/bin/basedefense-shop
 systemctl daemon-reload
 systemctl enable basedefense-shop >/dev/null 2>&1
 if [ "$CONFIGURED" = 1 ]; then
@@ -108,6 +111,7 @@ if [ "$CONFIGURED" = 1 ]; then
 	curl -fsS --max-time 2 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 ||
 		die "Сервер не запустился. Журнал: journalctl -u basedefense-shop -n 50"
 	echo "работает на 127.0.0.1:$PORT"
+	"$NODE" "$APP/src/check.mjs" "$ENV_FILE" || TOKEN_BAD=1
 fi
 
 # A copy of the purchases every day, the last 30 kept.
@@ -173,6 +177,9 @@ say "Готово"
 if [ "$CONFIGURED" = 0 ]; then
 	echo "Не заданы PALLY_SHOP_ID и PALLY_TOKEN. Впишите их в $ENV_FILE и выполните:"
 	echo "  systemctl restart basedefense-shop"
+elif [ "$TOKEN_BAD" = 1 ]; then
+	echo "Pally не принял настройки (см. выше). Исправьте $ENV_FILE и выполните:"
+	echo "  systemctl restart basedefense-shop && basedefense-shop check"
 elif [ "$OK" = 1 ]; then
 	echo "Магазин отвечает: https://$DOMAIN/health"
 elif [ "$WEB" = caddy ]; then
@@ -190,5 +197,6 @@ cat <<EOF
 
 Покупки игроков: $DATA/db.json (копия каждый день в /var/backups/basedefense-shop)
 Журнал сервера:  journalctl -u basedefense-shop -f
+Заказы и игроки: sudo basedefense-shop orders | player КОД | grant КОД ТОВАР | check
 Обновить:        git pull и снова sudo bash $0
 EOF

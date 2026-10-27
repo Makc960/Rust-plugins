@@ -5,7 +5,7 @@
 //   GET  /api/purchases?code=                -> {owned, vipUntil, passes}
 //   POST /api/move           {from, to}       -> what [to] has, [from]'s purchases moved into it
 //   POST /pally/result       Pally's payment notice (Result URL in Pally's cabinet)
-//   GET  /return             the page Pally sends the player back to, with a button into the game
+//   POST /return             the page Pally sends the player back to, with a button into the game (GET too)
 //   GET  /health
 //
 // Settings come from the environment (see deploy/shop.env.example).
@@ -67,8 +67,10 @@ export function makeServer(shop, { log = console } = {}) {
                 res.writeHead(taken ? 200 : 400, { 'content-type': 'text/plain; charset=utf-8' });
                 return res.end(taken ? 'OK' : 'bad signature');
             }
-            if (req.method === 'GET' && url.pathname === '/return') {
-                res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+            // Pally sends the player here with a POST, like a form; a GET is the same page.
+            if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/return') {
+                if (req.method === 'POST') await readBody(req);
+                res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
                 return res.end(returnPage(url.searchParams.get('result') !== 'fail'));
             }
             if (req.method === 'GET' && url.pathname === '/health') {

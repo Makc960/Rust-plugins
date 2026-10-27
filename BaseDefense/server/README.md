@@ -58,6 +58,14 @@ sudo bash Rust-plugins/BaseDefense/server/deploy/install.sh shop.ваш-сайт
 | Fail URL    | `https://ДОМЕН/return?result=fail`              |
 
 Проверить, что сервер отвечает: откройте в браузере `https://ДОМЕН/health`, должно быть написано `ok`.
+Проверить токен: `sudo basedefense-shop check`.
+
+**Про домен.** Pally принимает адреса возврата (Success и Fail URL) только на домене сайта, указанного
+в магазине Pally. Проще всего указать сайтом магазина адрес этого сервера. Если в магазине уже стоит
+другой сайт, сервер это переживёт: когда Pally откажется принимать адреса возврата, сервер повторит
+счёт без них и дальше будет создавать счета без них. Тогда после оплаты игрок вернётся в игру сам
+(кнопкой «Назад» или из списка приложений), и игра сама спросит, прошла ли оплата. Даже если до сервера
+не дойдёт уведомление Result URL, сервер сам спросит у Pally статус счёта, и покупка всё равно придёт.
 
 ## Сборка игры с этим магазином
 
@@ -82,6 +90,21 @@ cd Rust-plugins && git pull && sudo bash BaseDefense/server/deploy/install.sh   
 Покупки игроков лежат в `/var/lib/basedefense-shop/db.json`. Время от времени копируйте его
 (или папку `/var/backups/basedefense-shop`) куда-нибудь за пределы VPS.
 
+### Если игрок пишет «оплатил, а покупка не пришла»
+
+Попросите у него код покупок с экрана VIP, затем:
+
+```bash
+sudo basedefense-shop player ABCD-EFGH-IJKL-MNOP-QRST    # что у него есть
+sudo basedefense-shop orders ABCD-EFGH-IJKL-MNOP-QRST    # его заказы и их статус
+sudo basedefense-shop grant ABCD-EFGH-IJKL-MNOP-QRST commander_grom   # выдать вручную
+```
+
+Если заказ «ждёт оплаты», а деньги в кабинете Pally пришли, проверьте Result URL в настройках
+магазина. После `grant` игроку достаточно открыть экран VIP или перезапустить игру. Товары:
+`vip_month`, `vip_forever`, `starter_pack`, `commander_engineer`, `commander_grom`, `commander_sokolova`,
+`skin_night`, `skin_parade`, `season_pass`.
+
 ## Для разработки
 
 ```bash
@@ -90,7 +113,8 @@ PALLY_TOKEN=… PALLY_SHOP_ID=… PUBLIC_URL=https://… DATA_FILE=./db.json npm
 ```
 
 Всё, что зависит от API Pally (адрес, поля счёта, статусы, подпись уведомления), собрано в
-`src/pally.mjs`. Если Pally что-то поменяет, править нужно только этот файл.
+`src/pally.mjs` и сверено со справкой Pally (бывший PayPalych): https://paypalych.com/en/reference/api.
+Если Pally что-то поменяет, править нужно только этот файл.
 
 | Метод | Путь                         | Что делает                                                   |
 |-------|------------------------------|--------------------------------------------------------------|
@@ -99,5 +123,5 @@ PALLY_TOKEN=… PALLY_SHOP_ID=… PUBLIC_URL=https://… DATA_FILE=./db.json npm
 | GET   | `/api/purchases?code=`       | `{owned, vipUntil, passes}`: всё, что купил игрок            |
 | POST  | `/api/move`                  | `{from, to}`: перенос покупок с кода `from` на код `to`       |
 | POST  | `/pally/result`              | уведомление Pally об оплате (Result URL)                     |
-| GET   | `/return`                    | страница после оплаты с кнопкой «Вернуться в игру»           |
+| POST  | `/return`                    | страница после оплаты с кнопкой «Вернуться в игру» (и GET)   |
 | GET   | `/health`                    | `ok`                                                         |
