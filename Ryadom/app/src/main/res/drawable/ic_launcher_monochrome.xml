@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The front pin alone, for themed icons. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M60,78 C60,78 43,61 43,48 A17,17 0 1 1 77,48 C77,61 60,78 60,78 Z M60,41 A7,7 0 1 0 60,55 A7,7 0 1 0 60,41 Z" />
+</vector>

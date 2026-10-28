@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Two pins, a friend behind and you in front, a green edge between them. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#B3FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M42,67 C42,67 29,54 29,44 A13,13 0 1 1 55,44 C55,54 42,67 42,67 Z M42,39 A5,5 0 1 0 42,49 A5,5 0 1 0 42,39 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FF1FA35C"
+        android:strokeWidth="3"
+        android:pathData="M60,78 C60,78 43,61 43,48 A17,17 0 1 1 77,48 C77,61 60,78 60,78 Z" />
+    <path
+        android:fillColor="#FF1FA35C"
+        android:pathData="M60,41 A7,7 0 1 0 60,55 A7,7 0 1 0 60,41 Z" />
+</vector>

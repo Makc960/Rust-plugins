@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+    <meta name="color-scheme" content="dark">
+    <title>Рядом</title>
+    <link rel="stylesheet" href="lib/maplibre-gl.css">
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+    <div id="map"></div>
+
+    <div id="top" class="top">
+        <button id="profileBtn" class="round me-btn" data-action="profile" aria-label="Профиль"></button>
+        <button id="sharingChip" class="chip" data-action="chip" hidden></button>
+        <button id="layersBtn" class="round" data-action="layers" aria-label="Вид карты"></button>
+    </div>
+    <div id="side" class="side">
+        <button id="fitBtn" class="round" data-action="fit" aria-label="Все друзья"></button>
+        <button id="meBtn" class="round" data-action="me" aria-label="Где я"></button>
+    </div>
+    <div id="layers" class="popover" hidden></div>
+    <div id="banner" class="banner" hidden></div>
+
+    <section id="sheet" class="sheet">
+        <header class="sheet-head" data-action="sheet">
+            <span class="handle"></span>
+            <h2>Друзья <span id="count" class="count"></span></h2>
+            <button id="addBtn" class="pill" data-action="add"></button>
+        </header>
+        <div id="list" class="list"></div>
+    </section>
+
+    <section id="card" class="card" hidden></section>
+    <section id="screen" class="screen" hidden></section>
+    <div id="dialog" class="dialog" hidden></div>
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

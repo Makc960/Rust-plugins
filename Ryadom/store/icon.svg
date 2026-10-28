@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72" width="512" height="512">
+  <!-- The launcher icon's picture (app/src/main/res/drawable/ic_launcher_*.xml): the 72 units a phone shows. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3DDC84"/>
+      <stop offset="1" stop-color="#0E7A42"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="108" height="108" fill="url(#g)"/>
+  <path fill="#FFFFFF" fill-opacity="0.7" fill-rule="evenodd" d="M42,67 C42,67 29,54 29,44 A13,13 0 1 1 55,44 C55,54 42,67 42,67 Z M42,39 A5,5 0 1 0 42,49 A5,5 0 1 0 42,39 Z"/>
+  <path fill="#FFFFFF" stroke="#1FA35C" stroke-width="3" d="M60,78 C60,78 43,61 43,48 A17,17 0 1 1 77,48 C77,61 60,78 60,78 Z"/>
+  <path fill="#1FA35C" d="M60,41 A7,7 0 1 0 60,55 A7,7 0 1 0 60,41 Z"/>
+</svg>

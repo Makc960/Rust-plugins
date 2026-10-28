@@ -1,0 +1,15 @@
+{
+  "name": "ryadom-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "maplibre-gl": "6.12.0"
+  },
+  "devDependencies": {
+    "playwright-core": "1.63.0"
+  }
+}

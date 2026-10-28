@@ -1,0 +1,92 @@
+name: Ryadom APK
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "Ryadom/**"
+      - ".github/workflows/ryadom.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ryadom-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Ryadom
+    env:
+      # The private upload key is optional: without these secrets only the GitHub APK is built.
+      HAS_UPLOAD_KEY: ${{ secrets.UPLOAD_KEYSTORE_BASE64 != '' }}
+      # The app's server: the repository variable, or the one on ice-rust.store.
+      RYADOM_SERVER: ${{ vars.RYADOM_SERVER || 'https://ice-rust.store/ryadom' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Ryadom/web/package-lock.json
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test the server
+        working-directory: Ryadom/server
+        run: node --test test/*.test.mjs
+
+      - name: Test the app's logic
+        working-directory: Ryadom/web
+        run: |
+          npm ci
+          npm test
+
+      - name: Build the APK
+        run: ./gradlew --no-daemon :app:assembleRelease -Pserver="$RYADOM_SERVER"
+
+      - name: Name APK
+        run: cp app/build/outputs/apk/release/app-release.apk Ryadom.apk
+
+      - name: Build the RuStore APK
+        if: env.HAS_UPLOAD_KEY == 'true'
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+        run: |
+          echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore -Pserver="$RYADOM_SERVER"
+          cp app/build/outputs/apk/release/app-release.apk Ryadom-RuStore.apk
+          rm "$RUNNER_TEMP/upload.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ryadom
+          path: Ryadom/Ryadom.apk
+
+      - name: Publish to the ryadom release
+        if: github.ref_type == 'branch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
+          FILES="Ryadom.apk"
+          [ -f Ryadom-RuStore.apk ] && FILES="$FILES Ryadom-RuStore.apk"
+          gh release delete ryadom --yes --cleanup-tag || true
+          gh release create ryadom $FILES \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Рядом $VERSION" \
+            --notes "Сборка из ${GITHUB_SHA::7}. Скачай Ryadom.apk на телефон и установи. Ryadom-RuStore.apk — сборка для загрузки в RuStore."
