@@ -1,7 +1,9 @@
-// What the app keeps between launches: settings, home and work, saved places and recent searches.
+// What the app keeps between launches: settings, home and work, saved places, recent searches,
+// past drives, and what makes the next start quicker (the town, the servers to ask).
 
 const KEY = 'shturman.v1';
 const HISTORY = 15;
+const TRIPS = 50;
 
 const DEFAULTS = {
     settings: {
@@ -15,6 +17,14 @@ const DEFAULTS = {
         demoSpeed: 2,
         cameras: true,       // speed cameras and limits
         speedTolerance: 10,  // km/h over the limit before the speed turns red
+        streetNames: true,   // the voice names the street a turn leads onto
+        bumps: true,         // speed bumps and railway crossings
+        schools: true,
+        curves: true,        // sharp bends on fast roads
+        reports: true,       // what other drivers report, on the map and out loud
+        prefetch: 'wifi',    // fetch the map along a route before the drive: wifi, always, off
+        friends: true,       // friends from «Рядом» on the map, once linked
+        hudMirror: true,     // the windscreen view is drawn mirrored
     },
     home: null,
     work: null,
@@ -22,6 +32,13 @@ const DEFAULTS = {
     recent: [],
     view: null,              // {center, zoom} where the map was last left
     parked: null,            // {lon, lat, time}: where the car was left at the end of a drive
+    trips: [],               // past drives, the newest first: {dest, start, end, length, mode}
+    device: null,            // an anonymous id for drivers' reports, made up on the first launch
+    ryadom: null,            // {server, token, name}: a link to «Рядом» that only reads friends' places
+    config: null,            // {servers, message, latest, at}: the last word from the app's server
+    seenMessage: '',
+    area: null,              // the town last searched in: {name, bbox, point}
+    offline: [],             // map areas fetched for the road: {name, bbox, tiles, mb, at}
 };
 
 function load() {
@@ -50,10 +67,6 @@ export const store = {
         return this.data.settings;
     },
 
-    set(name, value) {
-        this.data.settings[name] = value;
-        this.save();
-    },
 
     /** A place as kept: only what is needed to show it and go there. */
     keep(place) {
@@ -100,6 +113,32 @@ export const store = {
 
     setView(center, zoom) {
         this.data.view = { center, zoom };
+        this.save();
+    },
+
+    /** The anonymous id drivers' reports go with: random letters, nothing about the person. */
+    get device() {
+        if (!this.data.device) {
+            const bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            this.data.device = `d${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
+            this.save();
+        }
+        return this.data.device;
+    },
+
+    addTrip(trip) {
+        this.data.trips = [{ ...trip, dest: this.keep(trip.dest) }, ...this.data.trips].slice(0, TRIPS);
+        this.save();
+    },
+
+    set(name, value) {
+        this.data.settings[name] = value;
+        this.save();
+    },
+
+    put(key, value) {
+        this.data[key] = value;
         this.save();
     },
 };

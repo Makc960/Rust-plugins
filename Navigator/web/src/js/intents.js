@@ -1,6 +1,8 @@
-// Links other apps open the navigator with: geo:55.75,37.62?q=..., google.navigation:q=..., and the
-// app's own shortcuts shturman://home, //work, //car, //search.
-// Returns {point, label} for a place to show, {query} for something to search, {go} for a shortcut, or null.
+// Links other apps open the navigator with: geo:55.75,37.62?q=..., google.navigation:q=..., the
+// app's own shortcuts shturman://home, //work, //car, //search, and «Рядом» linking its friends:
+// shturman://friends?server=https://...&token=...&name=...
+// Returns {point, label} for a place to show, {query} for something to search, {go} for a shortcut,
+// {friends: {server, token, name}} for the link to «Рядом», or null.
 
 function coords(text) {
     const m = (text || '').match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
@@ -15,6 +17,18 @@ const SHORTCUTS = new Set(['home', 'work', 'car', 'search']);
 
 export function parseIntent(uri) {
     if (!uri) return null;
+    if (uri.startsWith('shturman://friends?')) {
+        let q;
+        try {
+            q = new URLSearchParams(uri.slice('shturman://friends?'.length));
+        } catch (e) {
+            return null;
+        }
+        const server = (q.get('server') || '').replace(/\/+$/, '');
+        const token = q.get('token') || '';
+        if (!/^https:\/\/[a-z0-9.-]+(\/[\w.-]+)*$/i.test(server) || !/^[\w-]{20,200}$/.test(token)) return null;
+        return { friends: { server, token, name: (q.get('name') || '').slice(0, 40) } };
+    }
     if (uri.startsWith('shturman://')) {
         const go = uri.slice('shturman://'.length).replace(/\/+$/, '');
         return SHORTCUTS.has(go) ? { go } : null;

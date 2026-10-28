@@ -167,19 +167,21 @@ function adjective(word) {
  */
 export function streetAfterNa(name) {
     const words = String(name || '').trim().split(/\s+/).filter(Boolean);
-    const k = words.findIndex((w) => FEMININE[w.toLowerCase()] !== undefined);
-    if (k < 0) return words.join(' ');
+    const kinds = words.map((w, i) => (FEMININE[w.toLowerCase()] !== undefined ? i : -1)).filter((i) => i >= 0);
     const out = [...words];
-    out[k] = sameCase(words[k], FEMININE[words[k].toLowerCase()]);
-    for (let i = k - 1; i >= 0; i--) {
-        const a = adjective(words[i]);
-        if (!a) break;
-        out[i] = a;
-    }
-    for (let i = k + 1; i < words.length; i++) {
-        const a = adjective(words[i]);
-        if (!a) break;
-        out[i] = a;
+    // "Набережная улица": both words are kinds of street, and both change.
+    for (const k of kinds) out[k] = sameCase(words[k], FEMININE[words[k].toLowerCase()]);
+    for (const k of kinds) {
+        for (let i = k - 1; i >= 0 && !kinds.includes(i); i--) {
+            const a = adjective(words[i]);
+            if (!a) break;
+            out[i] = a;
+        }
+        for (let i = k + 1; i < words.length && !kinds.includes(i); i++) {
+            const a = adjective(words[i]);
+            if (!a) break;
+            out[i] = a;
+        }
     }
     return out.join(' ');
 }

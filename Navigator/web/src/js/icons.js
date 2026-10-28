@@ -44,6 +44,23 @@ export const ICONS = {
     camera: svg(stroke('M4 8.5h10.5V16H4zM14.5 10.5 20 8v9l-5.5-2.5M7 6V4.5')),
     stop: svg(stroke('M12 21s-6.5-7.4-6.5-12a6.5 6.5 0 1 1 13 0c0 4.6-6.5 12-6.5 12z') + fill('M12 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z')),
     plus: svg(stroke('M12 5v14M5 12h14')),
+    mic: svg(stroke('M12 3.5a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0v-5a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v3.5M9 20.5h6')),
+    report: svg(stroke('M12 3.5 2.5 20h19zM12 10v4.5M12 17.5h.01')),
+    history: svg(stroke('M4 12a8 8 0 1 0 2.4-5.7M4 4.5V8h3.5M12 8v4.5l3 2')),
+    download: svg(stroke('M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14')),
+    friends: svg(stroke('M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20c.5-3.5 3.2-5.5 6.5-5.5s6 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 6.8M18 14.7c2 .6 3.3 2.4 3.5 5.3')),
+    hud: svg(stroke('M3.5 6.5h17v11h-17zM12 9.5v5M9.5 12 12 9.5l2.5 2.5')),
+    thumbUp: svg(stroke('M7 11v9H4v-9zM7 11l4-7.5c1.5 0 2.5 1 2.5 2.5L13 10h5.5a2 2 0 0 1 2 2.3l-1.2 6a2 2 0 0 1-2 1.7H7')),
+    thumbDown: svg(stroke('M7 13V4H4v9zM7 13l4 7.5c1.5 0 2.5-1 2.5-2.5L13 14h5.5a2 2 0 0 0 2-2.3l-1.2-6a2 2 0 0 0-2-1.7H7')),
+    // What a warning on the road is about.
+    bump: svg(stroke('M2.5 17.5h19M5.5 17.5c1.5-6 11.5-6 13 0M9 9.5l-1-2M15 9.5l1-2M12 8.5V6')),
+    rail: svg(stroke('M5 5l14 14M19 5 5 19')),
+    school: svg(stroke('M2.5 9.5 12 5l9.5 4.5L12 14zM6.5 11.5V16c1.5 1.5 3.5 2.2 5.5 2.2s4-.7 5.5-2.2v-4.5M21.5 9.5V15')),
+    curve: svg(stroke('M7 20.5V13a6 6 0 0 1 6-6h4.5M14.5 3.5l3.5 3.5-3.5 3.5')),
+    crash: svg(stroke('M12 3l1.8 4.2 4.4-1.6-1.6 4.4L21 12l-4.4 1.8 1.6 4.4-4.4-1.6L12 21l-1.8-4.4-4.4 1.6 1.6-4.4L3 12l4.4-1.8-1.6-4.4 4.4 1.6z')),
+    works: svg(stroke('M10 3.5h4l4 15.5H6zM8 11h8M7 15h10M3.5 19h17')),
+    police: svg(stroke('M12 3 19 6v5.5c0 4.5-3 8-7 9.5-4-1.5-7-5-7-9.5V6zM9 12l2.2 2.2L15.5 10')),
+    jam: svg(stroke('M8.5 3h7v18h-7zM12 6.5h.01M12 12h.01M12 17.5h.01') + fill('M12 5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12 16a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z')),
     // Kinds of places, for searching nearby and along the route.
     fuel: svg(stroke('M5 20V5.5A1.5 1.5 0 0 1 6.5 4h6A1.5 1.5 0 0 1 14 5.5V20M3.5 20h12M5 10h9M14 9l3 2.5V17a1.5 1.5 0 0 0 3 0v-7l-2.5-2.5')),
     cafe: svg(stroke('M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5zM16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5c0 1.5 1 1.5 1 3M11.5 3.5c0 1.5 1 1.5 1 3')),
@@ -55,6 +72,14 @@ export const ICONS = {
     charging: svg(stroke('M13 3 6 13.5h5L10 21l7-10.5h-5z')),
     repair: svg(stroke('M14.5 6a4 4 0 0 0 4.9 4.9L20 11l-9.5 9.5a2.1 2.1 0 0 1-3-3L17 8l.1-.6A4 4 0 0 0 14.5 6l2.5 2.5')),
     toilets: svg(stroke('M7.5 6.5a1.5 1.5 0 1 0 0-.01zM16.5 6.5a1.5 1.5 0 1 0 0-.01zM5.5 20v-6H4.5l1-5h4l1 5h-1v6M14.5 20v-5h-1.5l2-6h3l2 6H18.5v5M12 4v16')),
+};
+ICONS.danger = ICONS.warning;
+ICONS.mobile = ICONS.camera;
+
+/** The colour each kind of road warning is shown in. */
+export const HAZARD_COLORS = {
+    camera: '#e5484d', mobile: '#e5484d', bump: '#f5a524', rail: '#7c5cdb', school: '#0b9bd7', curve: '#f97316',
+    crash: '#dc2626', works: '#ea6a0c', police: '#2563eb', jam: '#d97706', danger: '#e5a000',
 };
 
 // ---- Manoeuvre arrows ----

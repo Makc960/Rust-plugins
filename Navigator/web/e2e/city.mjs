@@ -154,8 +154,46 @@ function decodeCount(polyline) {
 
 /** A speed camera on Тверская улица, a few blocks from the start. */
 export function overpassAnswer() {
-    const [lon, lat] = grid(4, 0);
-    return { elements: [{ type: 'node', id: 4242, lat, lon, tags: { highway: 'speed_camera', maxspeed: '60' } }] };
+    const at = (x, y) => {
+        const [lon, lat] = grid(x, y);
+        return { lon, lat };
+    };
+    return { elements: [
+        { type: 'node', id: 4242, ...at(4, 0), tags: { highway: 'speed_camera', maxspeed: '60' } },
+        { type: 'node', id: 4243, ...at(2, 0), tags: { traffic_calming: 'bump' } },
+        { type: 'node', id: 4244, ...at(6, -1.5), tags: { railway: 'level_crossing' } },
+        { type: 'way', id: 4245, center: at(7.25, -5), tags: { amenity: 'school', name: 'Школа № 1' } },
+    ] };
+}
+
+/** What drivers reported in the town: a crash on Тверская and a police post on проспект Мира. */
+export function reportsAnswer() {
+    const at = (x, y) => {
+        const [lon, lat] = grid(x, y);
+        return { lon, lat };
+    };
+    const now = Date.now();
+    return { reports: [
+        { id: 'r1', kind: 'crash', ...at(5, 0), heading: 90, created: now - 12 * 60000, confirmed: now - 4 * 60000, votes: 3 },
+        { id: 'r2', kind: 'police', ...at(7, -6), heading: 180, created: now - 30 * 60000, confirmed: now - 30 * 60000, votes: 1 },
+        { id: 'r3', kind: 'works', ...at(2, -4), heading: null, created: now - 3 * 3600000, confirmed: now - 3600000, votes: 2 },
+    ], kinds: ['crash', 'works', 'police', 'camera', 'jam', 'danger'] };
+}
+
+/** Friends from «Рядом», about town. */
+export function friendsAnswer() {
+    const place = (x, y, minutes, battery) => {
+        const [lon, lat] = grid(x, y);
+        return { lon, lat, accuracy: 10, battery, charging: false, time: Date.now() - minutes * 60000, at: Date.now() - minutes * 60000 };
+    };
+    return {
+        me: { id: 'me', name: 'Я', color: '#2f6fed' },
+        friends: [
+            { id: 'f1', name: 'Аня Смирнова', color: '#e5484d', sharing: true, place: place(3, 2, 2, 81) },
+            { id: 'f2', name: 'Боря', color: '#12a150', sharing: true, place: place(-3, -2, 40, 35) },
+        ],
+        incoming: [], outgoing: [], now: Date.now(),
+    };
 }
 
 /** Places of a kind near a point: three of them along the streets around it. */

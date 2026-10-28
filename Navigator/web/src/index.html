@@ -16,6 +16,7 @@
         <div class="searchbar">
             <button class="icon-btn" id="menu-btn" aria-label="Настройки"></button>
             <button class="search-field" id="search-open">Куда едем?</button>
+            <button class="icon-btn mic" id="voice-btn" aria-label="Сказать адрес" hidden></button>
         </div>
         <div class="chips" id="chips"></div>
         <div class="notice" id="notice" hidden></div>
@@ -24,9 +25,13 @@
     <!-- Map buttons on the right. -->
     <div class="fabs" id="fabs">
         <button class="fab" id="compass-btn" aria-label="На север" hidden></button>
+        <button class="fab report" id="report-btn" aria-label="Сообщить о дороге" hidden></button>
         <button class="fab" id="layers-btn" aria-label="Вид карты"></button>
         <button class="fab" id="locate-btn" aria-label="Где я"></button>
     </div>
+
+    <!-- A drive offered before it is asked for: «На работу · 18 мин». -->
+    <button id="suggest" class="suggest" hidden></button>
 
     <!-- Search: a page over the map. -->
     <section id="search" class="page" hidden>
@@ -34,23 +39,27 @@
             <button class="icon-btn" id="search-back" aria-label="Назад"></button>
             <input id="search-input" type="search" placeholder="Адрес, место или координаты" autocomplete="off" enterkeyhint="search">
             <button class="icon-btn" id="search-clear" aria-label="Стереть" hidden></button>
+            <button class="icon-btn mic" id="search-voice" aria-label="Сказать адрес" hidden></button>
         </div>
         <div class="page-body" id="search-results"></div>
     </section>
 
-    <!-- A place, or the routes to it: a sheet at the bottom. -->
+    <!-- A place, the routes to it, a warning on the road: a sheet at the bottom. -->
     <section id="sheet" class="sheet" hidden></section>
 
     <!-- Driving. -->
     <div id="banner" class="banner" hidden></div>
     <div id="lanes" class="lanes" hidden></div>
     <div id="speed" class="speedbox" hidden></div>
+    <div id="prompt" class="prompt" hidden></div>
     <button id="resume-btn" class="resume" hidden>Продолжить</button>
     <section id="navbar" class="navbar" hidden></section>
+    <section id="hud" class="hud" hidden></section>
 
-    <!-- Settings and dialogs. -->
+    <!-- Settings, pages and dialogs. -->
     <section id="settings" class="page" hidden></section>
     <section id="steps" class="page" hidden></section>
+    <section id="history" class="page" hidden></section>
     <div id="dialog" class="dialog" hidden></div>
     <div id="toast" class="toast" hidden></div>
 

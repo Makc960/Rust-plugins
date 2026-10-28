@@ -1,9 +1,10 @@
 // The map: MapLibre with the day or night style, the routes on it, the car's marker and the camera
-// that follows it.
+// that follows it, road warnings and drivers' reports as round badges, friends from «Рядом».
 
 import * as maplibregl from '../lib/maplibre-gl.mjs';
 
 import { along, bearing, lerp, slice, turn } from './geo.js';
+import { HAZARD_COLORS, ICONS } from './icons.js';
 
 const COLORS = {
     day: { route: '#2f6fed', casing: '#1846a8', alt: '#9db7e8', altCasing: '#6d8cc6', passed: '#a7b1c2', arrow: '#ffffff', arrowCasing: '#14213a' },
@@ -37,8 +38,9 @@ export class MapView {
         this.shown = null;                  // {pos, heading} drawn this frame
         this.anim = null;
         this.navZoom = 17;
-        this.cameraPoints = [];
+        this.hazards = [];                  // [{kind, point, id}] badges on the map
         this.stopMarkers = [];
+        this.friendMarkers = new Map();
 
         this.map = new maplibregl.Map({
             container,
@@ -137,14 +139,18 @@ export class MapView {
         m.addLayer({ id: 'alts-hit', type: 'line', source: 'alts', paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 28 } }, before);
         m.addLayer({ id: 'route-casing', type: 'line', source: 'route', layout: round, paint: { 'line-color': c.casing, 'line-width': width(12) } }, before);
         m.addLayer({ id: 'route-line', type: 'line', source: 'route', layout: round, paint: { 'line-color': c.route, 'line-width': width(8.5) } }, before);
-        // Speed cameras on the route: red dots with a white ring, from close enough to matter.
-        m.addSource('cameras', { type: 'geojson', data: collection(this.cameraPoints.map((p) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p } }))) });
+        // Road warnings and drivers' reports: round badges, bumps only from close by.
+        for (const kind of Object.keys(HAZARD_COLORS)) {
+            if (!m.hasImage(`hz-${kind}`)) m.addImage(`hz-${kind}`, badgeImage(HAZARD_COLORS[kind], ICONS[kind]), { pixelRatio: 2 });
+        }
+        m.addSource('hazards', { type: 'geojson', data: this.hazardData() });
         m.addLayer({
-            id: 'cameras', type: 'circle', source: 'cameras', minzoom: 11,
-            paint: {
-                'circle-color': '#e5484d', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5,
-                'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3, 16, 7, 19, 10],
-                'circle-pitch-alignment': 'map',
+            id: 'hazards', type: 'symbol', source: 'hazards', minzoom: 10,
+            filter: ['any', ['!=', ['get', 'kind'], 'bump'], ['>=', ['zoom'], 14.5]],
+            layout: {
+                'icon-image': ['concat', 'hz-', ['get', 'kind']], 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.45, 14, 0.8, 17, 1],
+                'symbol-sort-key': ['get', 'order'],
             },
         });
         m.addLayer({
@@ -268,11 +274,66 @@ export class MapView {
         return el;
     }
 
-    /** Speed cameras to show, as points. */
-    setCameras(points) {
-        this.cameraPoints = points;
-        const src = this.map.getSource('cameras');
-        if (src) src.setData(collection(points.map((p) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p } }))));
+    /** Road warnings and reports to show: [{kind, point, id}]. */
+    setHazards(list) {
+        this.hazards = list;
+        const src = this.map.getSource('hazards');
+        if (src) src.setData(this.hazardData());
+    }
+
+    hazardData() {
+        // Reports over mapped things, cameras over bumps.
+        const order = { bump: 0, school: 1, rail: 2, curve: 3, camera: 4 };
+        return collection(this.hazards.filter((h) => h.point).map((h) => ({
+            type: 'Feature',
+            properties: { kind: h.kind, id: h.id, order: order[h.kind] ?? 9 },
+            geometry: { type: 'Point', coordinates: h.point },
+        })));
+    }
+
+    /** Friends from «Рядом»: a round mark with initials and a name under it, each in their colour. */
+    setFriends(friends) {
+        const keep = new Set();
+        for (const f of friends) {
+            if (!f.place) continue;
+            keep.add(f.id);
+            let marker = this.friendMarkers.get(f.id);
+            if (!marker) {
+                const el = document.createElement('button');
+                el.className = 'friend-pin';
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.emit('friendTap', el.dataset.id);
+                });
+                marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([f.place.lon, f.place.lat]).addTo(this.map);
+                this.friendMarkers.set(f.id, marker);
+            }
+            const el = marker.getElement();
+            el.dataset.id = f.id;
+            el.style.setProperty('--c', f.color || '#2f6fed');
+            el.innerHTML = `<span class="face">${initials(f.name)}</span><span class="label">${escapeHtml(f.name)}</span>`;
+            el.classList.toggle('stale', Date.now() - (f.place.at || 0) > 15 * 60 * 1000);
+            marker.setLngLat([f.place.lon, f.place.lat]);
+        }
+        for (const [id, marker] of this.friendMarkers) {
+            if (keep.has(id)) continue;
+            marker.remove();
+            this.friendMarkers.delete(id);
+        }
+    }
+
+    /** The scheme's tile pattern, letters and icons, for fetching the map ahead: {tiles, glyphs, sprite}. */
+    sources() {
+        const style = this.map.getStyle() || {};
+        const src = this.map.getSource('openmaptiles');
+        const sprite = Array.isArray(style.sprite) ? style.sprite[0]?.url : style.sprite;
+        return { tiles: src && src.tiles ? src.tiles[0] : null, glyphs: style.glyphs || null, sprite: sprite || null };
+    }
+
+    /** What the screen shows: [west, south, east, north]. */
+    viewBox() {
+        const b = this.map.getBounds();
+        return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
     }
 
     /** Stops on the way: small numbered pins. */
@@ -444,6 +505,12 @@ export class MapView {
             this.emit('routeTap', alts[0].properties.idx);
             return;
         }
+        const box = [[e.point.x - 14, e.point.y - 14], [e.point.x + 14, e.point.y + 14]];
+        const hazard = m.getLayer('hazards') ? m.queryRenderedFeatures(box, { layers: ['hazards'] }) : [];
+        if (hazard.length) {
+            this.emit('hazardTap', hazard[0].properties.id);
+            return;
+        }
         const poiLayers = (m.getStyle().layers || []).filter((l) => l.type === 'symbol' && (l['source-layer'] === 'poi' || l['source-layer'] === 'place')).map((l) => l.id);
         const hit = poiLayers.length ? m.queryRenderedFeatures(e.point, { layers: poiLayers }) : [];
         const f = hit.find((x) => x.properties && x.properties.name);
@@ -497,6 +564,52 @@ export class MapView {
     pointAlong(d) {
         return this.active ? along(this.active.coords, this.active.cum, d).point : null;
     }
+}
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+function initials(name) {
+    const words = String(name || '').split(/\s+/).filter(Boolean);
+    return escapeHtml(((words[0]?.[0] || '') + (words[1]?.[0] || '')).toUpperCase() || '?');
+}
+
+/**
+ * A round badge in [color] with an interface icon ([svg], drawn on a 24 grid) in white on it,
+ * for the map's symbol layer: drawn straight on a canvas, so it is there at once.
+ */
+function badgeImage(color, svg) {
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const g = canvas.getContext('2d');
+    g.beginPath();
+    g.arc(32, 32, 28, 0, Math.PI * 2);
+    g.fillStyle = color;
+    g.shadowColor = 'rgba(0, 0, 0, .35)';
+    g.shadowBlur = 4;
+    g.shadowOffsetY = 1.5;
+    g.fill();
+    g.shadowColor = 'transparent';
+    g.lineWidth = 4;
+    g.strokeStyle = '#ffffff';
+    g.stroke();
+    g.save();
+    g.translate(14, 14);
+    g.scale(1.5, 1.5);
+    g.strokeStyle = '#ffffff';
+    g.fillStyle = '#ffffff';
+    g.lineWidth = 2.2;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    for (const m of String(svg || '').matchAll(/<path d="([^"]+)"([^>]*)>/g)) {
+        const path = new Path2D(m[1]);
+        if (m[2].includes('fill="currentColor"')) g.fill(path);
+        else g.stroke(path);
+    }
+    g.restore();
+    return g.getImageData(0, 0, size, size);
 }
 
 function lineFeature(coords, properties = {}) {
