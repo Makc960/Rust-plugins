@@ -134,7 +134,32 @@ if command -v ufw >/dev/null && ufw status | grep -q 'Status: active'; then
 fi
 BUSY=$(ss -ltnpH '( sport = :80 or sport = :443 )' 2>/dev/null | grep -v '"caddy"' || true)
 WEB=caddy
-if [ -n "$BUSY" ]; then
+if [ -n "$BUSY" ] && ! printf '%s\n' "$BUSY" | grep -qv '"nginx"'; then
+	# nginx already serves this machine's sites: the shop becomes one more site of it, with its
+	# certificate from Let's Encrypt through certbot (which renews it by itself).
+	WEB=nginx
+	echo "На сервере уже работает nginx: подключаю магазин через него."
+	NC=/etc/nginx/conf.d/basedefense-shop.conf
+	if [ ! -f "$NC" ]; then
+		{
+			echo "# The Base Defense shop, put here by install.sh; certbot adds HTTPS below."
+			sed -e "s/shop\.example\.ru/$DOMAIN/" -e '/^#/d' "$HERE/nginx.conf"
+		} >"$NC"
+		if ! nginx -t >/dev/null 2>&1; then
+			rm -f "$NC"
+			nginx -t || true
+			die "nginx не принял настройки магазина (см. выше)."
+		fi
+		systemctl reload nginx
+	fi
+	curl -fsS --max-time 5 -H "Host: $DOMAIN" http://127.0.0.1/health >/dev/null 2>&1 ||
+		echo "nginx не отдаёт магазин по http://$DOMAIN: проверьте, что он читает /etc/nginx/conf.d/*.conf."
+	if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+		apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
+		certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect ||
+			echo "certbot не получил сертификат (см. выше). Если дело в лимитах Let's Encrypt для sslip.io, возьмите свой домен: sudo bash $0 shop.ваш-домен.ru"
+	fi
+elif [ -n "$BUSY" ]; then
 	WEB=manual
 	echo "Порты 80/443 уже заняты другим веб-сервером, Caddy не ставлю:"
 	echo "$BUSY"
@@ -165,7 +190,7 @@ fi
 # ---- Done ----
 
 OK=0
-if [ "$CONFIGURED" = 1 ] && [ "$WEB" = caddy ]; then
+if [ "$CONFIGURED" = 1 ] && [ "$WEB" != manual ]; then
 	echo "Жду сертификат..."
 	for _ in $(seq 1 30); do
 		curl -fsS --max-time 5 "https://$DOMAIN/health" >/dev/null 2>&1 && OK=1 && break
@@ -182,6 +207,8 @@ elif [ "$TOKEN_BAD" = 1 ]; then
 	echo "  systemctl restart basedefense-shop && basedefense-shop check"
 elif [ "$OK" = 1 ]; then
 	echo "Магазин отвечает: https://$DOMAIN/health"
+elif [ "$WEB" = nginx ]; then
+	echo "https://$DOMAIN пока не отвечает. Проверьте вывод certbot выше и журнал: journalctl -u nginx -n 50"
 elif [ "$WEB" = caddy ]; then
 	echo "https://$DOMAIN пока не отвечает. Проверьте, что домен смотрит на этот сервер и порты 80/443 открыты"
 	echo "у хостинга. Журнал Caddy: journalctl -u caddy -n 50"
