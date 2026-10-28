@@ -113,6 +113,12 @@ try {
     {
         const { context, page } = await phone();
         await shot(page, '01_map');
+        // The layers button: Схема → Гибрид, remembered; and back.
+        await page.click('#layers-btn');
+        const type = await page.evaluate(() => JSON.parse(localStorage.getItem('shturman.v1')).settings.mapType);
+        if (type !== 'hybrid') problems.push(`layers: map type is ${type}`);
+        await page.click('#layers-btn');
+        await page.click('#layers-btn');
         await page.click('#search-open');
         await page.waitForSelector('#search-results .cat');
         await page.click('#search-results [data-act="cat"][data-id="cafe"]');

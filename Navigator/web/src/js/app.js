@@ -1,4 +1,4 @@
-// Штурман: the screens and what happens on them. Browsing the map, searching, a place, choosing a
+// Навигатор: the screens and what happens on them. Browsing the map, searching, a place, choosing a
 // route, and driving it with the banner, the voice and new routes when the car goes another way.
 
 import { along, distance } from './geo.js';
@@ -7,7 +7,7 @@ import { parseIntent } from './intents.js';
 import { MapView } from './mapview.js';
 import * as platform from './platform.js';
 import { cameraAhead, limitAt } from './roadinfo.js';
-import { alongRoute, cameras as findCameras, CATEGORIES, nearby, reverse, routes as findRoutes, search, speedLimits } from './services.js';
+import { alongRoute, areaAround, boxAround, cameras as findCameras, CATEGORIES, nearby, reverse, routes as findRoutes, search, speedLimits } from './services.js';
 import { Simulator } from './sim.js';
 import { store } from './store.js';
 import { isNight } from './sun.js';
@@ -37,6 +37,11 @@ const S = {
     searching: false,
     searchError: '',
     searchSeq: 0,
+    everywhere: false,         // the last search was asked to look past the town
+    resultsScope: null,        // local, elsewhere, everywhere (see services.search)
+    resultsArea: null,
+    area: null,                // the town around the person: {name, bbox, point}
+    areaAsked: null,
     routeSeq: 0,
     theme: 'day',
     dialog: null,
@@ -51,6 +56,7 @@ document.documentElement.dataset.theme = S.theme;
 
 const map = new MapView($('map'), {
     theme: S.theme,
+    mapType: store.settings.mapType,
     center: view ? view.center : MOSCOW,
     zoom: view ? view.zoom : 11,
 });
@@ -58,6 +64,7 @@ const map = new MapView($('map'), {
 $('menu-btn').innerHTML = ICONS.menu;
 $('search-open').innerHTML = `${ICONS.search}<span>Куда едем?</span>`;
 $('locate-btn').innerHTML = ICONS.locate;
+$('layers-btn').innerHTML = ICONS.layers;
 $('compass-btn').innerHTML = ICONS.compass;
 $('search-back').innerHTML = ICONS.back;
 $('search-clear').innerHTML = ICONS.close;
@@ -119,7 +126,20 @@ function applyTheme() {
     S.theme = t;
     document.documentElement.dataset.theme = t;
     map.setTheme(t);
-    platform.setTheme(t);
+    applyBars();
+}
+
+/** The status bar's icons: light over the night map and over satellite pictures, dark otherwise. */
+function applyBars() {
+    platform.setTheme(S.theme === 'night' || store.settings.mapType !== 'scheme' ? 'night' : 'day');
+}
+
+const MAP_TYPES = [['scheme', 'Схема'], ['hybrid', 'Гибрид'], ['satellite', 'Спутник']];
+
+function setMapType(type) {
+    store.set('mapType', type);
+    map.setMapType(type);
+    applyBars();
 }
 
 let tickCount = 0;
@@ -187,6 +207,13 @@ function wireStatic() {
         updateLocateButton();
     };
     $('compass-btn').onclick = () => map.resetNorth();
+    // Схема → Гибрид → Спутник → Схема.
+    $('layers-btn').onclick = () => {
+        const i = MAP_TYPES.findIndex(([v]) => v === store.settings.mapType);
+        const [type, label] = MAP_TYPES[(i + 1) % MAP_TYPES.length];
+        setMapType(type);
+        toast(label);
+    };
     $('search-back').onclick = () => closeSearch();
     $('search-clear').onclick = () => {
         $('search-input').value = '';
@@ -356,11 +383,27 @@ function closeSearch() {
     if (S.place) renderSheet();
 }
 
-async function onQuery(q) {
+/**
+ * The town search looks in first: the one around the person (or the map, without a position),
+ * asked again only after moving 3 km.
+ */
+async function currentArea() {
+    const point = here() || map.center;
+    if (S.area && distance(S.area.point, point) < 3000) return S.area;
+    if (!S.areaAsked || distance(S.areaAsked.point, point) >= 3000) {
+        S.areaAsked = { point, promise: areaAround(platform.http, point) };
+    }
+    S.area = await S.areaAsked.promise.catch(() => ({ name: null, bbox: boxAround(point, 25000), point }));
+    return S.area;
+}
+
+async function onQuery(q, { everywhere = false } = {}) {
     q = q.trim();
-    if (q === S.query && S.results) return;
+    if (q === S.query && S.results && everywhere === S.everywhere) return;
     S.query = q;
+    S.everywhere = everywhere;
     S.resultsKind = null;
+    S.resultsScope = null;
     const seq = ++S.searchSeq;
     if (q.length < 2) {
         S.results = null;
@@ -372,9 +415,12 @@ async function onQuery(q) {
     S.searchError = '';
     renderResults();
     try {
-        const found = await search(platform.http, q, here() || map.center);
+        const area = everywhere ? null : await currentArea();
+        const found = await search(platform.http, q, here() || map.center, area, { everywhere });
         if (seq !== S.searchSeq) return;
-        S.results = found;
+        S.results = found.places;
+        S.resultsScope = found.scope;
+        S.resultsArea = found.area;
     } catch (e) {
         if (seq !== S.searchSeq) return;
         S.results = null;
@@ -432,12 +478,27 @@ function renderResults() {
         box.innerHTML = `<div class="empty">${ICONS.warning}${esc(S.searchError)}<br><br><button class="btn small" data-act="retry">Повторить</button></div>`;
         return;
     }
+    const town = S.resultsArea?.name;
+    const inTown = town ? `в городе ${town}` : 'рядом с вами';
     if (!S.results || !S.results.length) {
-        box.innerHTML = `<div class="empty">${ICONS.search}Ничего не нашлось.<br>Попробуйте написать иначе или добавить город.</div>`;
+        const where = S.everywhere || S.resultsScope === 'everywhere' ? 'нигде' : `ни ${inTown}, ни в других местах`;
+        box.innerHTML = `<div class="empty">${ICONS.search}«${esc(S.query)}» не нашлось ${esc(where)}.<br>Проверьте, как написан адрес, или добавьте город: «Сочи, Курортный проспект 50».</div>`;
         return;
     }
     const icon = (S.resultsKind && ICONS[S.resultsKind]) || ICONS.place;
-    box.innerHTML = S.results.map((p, i) => placeRow(p, 'pick', `data-which="results" data-i="${i}"`, icon)).join('');
+    const rows = S.results.map((p, i) => placeRow(p, 'pick', `data-which="results" data-i="${i}"`, icon)).join('');
+    const scope = S.resultsKind ? null : S.resultsScope;
+    if (scope === 'local') {
+        box.innerHTML = `<div class="group-title">${esc(town ? `В городе ${town}` : 'Рядом с вами')}</div>${rows}
+            <button class="row more" data-act="everywhere"><span class="ico grey">${ICONS.search}</span><span class="text"><div class="title">Искать в других городах</div></span></button>`;
+    } else if (scope === 'elsewhere') {
+        box.innerHTML = `<div class="notice-row">${ICONS.warning}<span>${esc(`«${S.query}» ${inTown} не нашлось. Ближайшее в других местах:`)}</span></div>${rows}`;
+    } else if (scope === 'everywhere') {
+        box.innerHTML = `<div class="group-title">Везде</div>${rows}
+            ${town ? `<button class="row more" data-act="local"><span class="ico grey">${ICONS.place}</span><span class="text"><div class="title">${esc(`Только в городе ${town}`)}</div></span></button>` : ''}`;
+    } else {
+        box.innerHTML = rows;
+    }
 }
 
 const resultActions = {
@@ -458,6 +519,12 @@ const resultActions = {
     },
     retry() {
         S.query = '';
+        onQuery($('search-input').value, { everywhere: S.everywhere });
+    },
+    everywhere() {
+        onQuery($('search-input').value, { everywhere: true });
+    },
+    local() {
         onQuery($('search-input').value);
     },
     async cat(el) {
@@ -1333,6 +1400,8 @@ function renderSettings() {
             <div class="setting" style="cursor:default"><span class="text"><div class="title">Предупреждать о превышении</div><div class="sub">Скорость краснеет выше ограничения на</div></span></div>
             ${seg('speedTolerance', [[0, '+0 км/ч'], [10, '+10'], [20, '+20']])}
             <div class="group-title">Карта</div>
+            ${seg('mapType', MAP_TYPES)}
+            <div class="setting" style="cursor:default"><span class="text"><div class="sub">Гибрид — снимки со спутника с улицами и подписями. Оформление днём и ночью:</div></span></div>
             ${seg('theme', [['auto', 'Авто'], ['day', 'День'], ['night', 'Ночь']])}
             <div class="group-title">Маршрут на машине</div>
             ${sw('avoidTolls', 'Избегать платных дорог')}
@@ -1345,7 +1414,7 @@ function renderSettings() {
             ${placeLine('work', 'Работа', ICONS.work)}
             ${d.recent.length ? `<button class="setting" data-act="clearRecent"><span class="text"><div class="title">Очистить недавние</div></span></button>` : ''}
             <div class="group-title">О приложении</div>
-            <div class="logo"><div class="mark">${ICONS.navigate}</div><div><div class="name">Штурман</div><div class="ver">Версия ${esc(info.version)}</div></div></div>
+            <div class="logo"><div class="mark">${ICONS.navigate}</div><div><div class="name">Навигатор</div><div class="ver">Версия ${esc(info.version)}</div></div></div>
             <div class="about">
                 Бесплатный навигатор на открытых картах.<br><br>
                 <b>Карта</b> — © участники OpenStreetMap, OpenMapTiles, оформление и тайлы OpenFreeMap.<br>
@@ -1372,6 +1441,7 @@ const settingsActions = {
         const value = key === 'demoSpeed' || key === 'speedTolerance' ? +el.dataset.value : el.dataset.value;
         store.set(key, value);
         if (key === 'theme') applyTheme();
+        if (key === 'mapType') setMapType(value);
         if (key === 'demoSpeed' && S.nav && S.nav.sim) {
             S.nav.sim.speedup = value;
             renderNavbar();
@@ -1518,7 +1588,7 @@ function openIntent(uri) {
 
 wireStatic();
 renderTop();
-platform.setTheme(S.theme);
+applyBars();
 setInterval(tick, 1000);
 platform.startLocation();
 const startIntent = new URLSearchParams(location.search).get('intent');

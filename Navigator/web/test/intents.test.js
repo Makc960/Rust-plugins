@@ -38,4 +38,10 @@ test('the shipped styles are valid MapLibre styles', async () => {
         assert.deepEqual(errors.map((e) => e.message), [], name);
         assert.ok(!JSON.stringify(style).includes('name:latin'), `${name} still shows Latin names`);
     }
+    assert.deepEqual(Object.keys(styles), ['day', 'night', 'hybrid', 'satellite']);
+    assert.match(styles.hybrid.sources.satellite.tiles[0], /World_Imagery/);
+    assert.ok(styles.hybrid.layers.some((l) => l.id === 'label_city'), 'the hybrid has names');
+    assert.ok(styles.hybrid.layers.some((l) => l.id === 'road_motorway'), 'and roads');
+    assert.ok(!styles.hybrid.layers.some((l) => l.id === 'building'), 'but no buildings over the pictures');
+    assert.deepEqual(styles.satellite.layers.map((l) => l.id), ['background', 'satellite']);
 });

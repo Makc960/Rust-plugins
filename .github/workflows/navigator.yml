@@ -51,7 +51,7 @@ jobs:
         run: ./gradlew --no-daemon :app:assembleRelease
 
       - name: Name APK
-        run: cp app/build/outputs/apk/release/app-release.apk Shturman.apk
+        run: cp app/build/outputs/apk/release/app-release.apk Navigator.apk
 
       - name: Build the RuStore APK
         if: env.HAS_UPLOAD_KEY == 'true'
@@ -63,13 +63,13 @@ jobs:
         run: |
           echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore
-          cp app/build/outputs/apk/release/app-release.apk Shturman-RuStore.apk
+          cp app/build/outputs/apk/release/app-release.apk Navigator-RuStore.apk
           rm "$RUNNER_TEMP/upload.jks"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Shturman
-          path: Navigator/Shturman.apk
+          name: Navigator
+          path: Navigator/Navigator.apk
 
       - name: Publish to the navigator release
         if: github.ref_type == 'branch'
@@ -77,11 +77,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
-          FILES="Shturman.apk"
-          [ -f Shturman-RuStore.apk ] && FILES="$FILES Shturman-RuStore.apk"
+          FILES="Navigator.apk"
+          [ -f Navigator-RuStore.apk ] && FILES="$FILES Navigator-RuStore.apk"
           gh release delete navigator --yes --cleanup-tag || true
           gh release create navigator $FILES \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "Штурман $VERSION" \
-            --notes "Сборка из ${GITHUB_SHA::7}. Скачай Shturman.apk на телефон и установи. Shturman-RuStore.apk — сборка для загрузки в RuStore."
+            --title "Навигатор $VERSION" \
+            --notes "Сборка из ${GITHUB_SHA::7}. Скачай Navigator.apk на телефон и установи. Navigator-RuStore.apk — сборка для загрузки в RuStore."

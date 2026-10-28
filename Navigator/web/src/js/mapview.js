@@ -23,8 +23,9 @@ function metersPerPixel(lat, zoom) {
 }
 
 export class MapView {
-    constructor(container, { theme = 'day', center = [37.6176, 55.7558], zoom = 11 } = {}) {
+    constructor(container, { theme = 'day', mapType = 'scheme', center = [37.6176, 55.7558], zoom = 11 } = {}) {
         this.theme = theme;
+        this.mapType = mapType;             // scheme (day or night by theme), hybrid, satellite
         this.mode = 'free';                 // free, follow (north up on the car), nav (behind the car), overview
         this.handlers = {};
         this.routes = [];
@@ -41,7 +42,7 @@ export class MapView {
 
         this.map = new maplibregl.Map({
             container,
-            style: styleUrl(theme),
+            style: styleUrl(this.styleName()),
             center,
             zoom,
             attributionControl: { compact: true },
@@ -83,10 +84,28 @@ export class MapView {
 
     // ---- Style and layers ----
 
+    /** The style file shown: the day or night scheme, or the satellite pictures. */
+    styleName() {
+        return this.mapType === 'scheme' ? this.theme : this.mapType;
+    }
+
+    /** Route colors: over satellite pictures, the bright night ones. */
+    colors() {
+        return COLORS[this.mapType === 'scheme' ? this.theme : 'night'] || COLORS.day;
+    }
+
     setTheme(theme) {
         if (theme === this.theme) return;
+        const was = this.styleName();
         this.theme = theme;
-        this.map.setStyle(styleUrl(theme));
+        if (this.styleName() !== was) this.map.setStyle(styleUrl(this.styleName()));
+    }
+
+    setMapType(type) {
+        if (type === this.mapType) return;
+        const was = this.styleName();
+        this.mapType = type;
+        if (this.styleName() !== was) this.map.setStyle(styleUrl(this.styleName()));
     }
 
     /** The layer our routes go under: the first label above the roads and buildings. */
@@ -102,7 +121,7 @@ export class MapView {
 
     setupLayers() {
         const m = this.map;
-        const c = COLORS[this.theme] || COLORS.day;
+        const c = this.colors();
         const empty = { type: 'FeatureCollection', features: [] };
         const before = this.labelLayer();
         if (!m.hasImage('shturman-arrowhead')) m.addImage('shturman-arrowhead', arrowheadImage(c), { pixelRatio: 2 });
@@ -205,7 +224,7 @@ export class MapView {
 
     paintProgress() {
         if (!this.active || !this.map.getLayer('route-line')) return;
-        const c = COLORS[this.theme] || COLORS.day;
+        const c = this.colors();
         const f = Math.max(0, Math.min(0.999, this.progress / this.active.length));
         this.map.setPaintProperty('route-line', 'line-gradient', f > 0.0005
             ? ['step', ['line-progress'], c.passed, f, c.route]

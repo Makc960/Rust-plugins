@@ -1,4 +1,4 @@
-/* Штурман: the screens over the map. Day colours by default, night ones under [data-theme=night]. */
+/* Навигатор: the screens over the map. Day colours by default, night ones under [data-theme=night]. */
 
 :root {
     --bg: #f4f6fa;
@@ -181,6 +181,12 @@ body.driving .maplibregl-ctrl-attrib { opacity: .6; }
 .row .side-btn:active { background: var(--line); }
 
 .empty { padding: 40px 24px; text-align: center; color: var(--muted); font-size: 15.5px; }
+.notice-row {
+    display: flex; align-items: flex-start; gap: 10px; margin: 10px 14px 4px; padding: 12px 14px; border-radius: 14px;
+    background: var(--warn-soft, rgba(255, 170, 0, .14)); font-size: 14.5px; line-height: 1.4;
+}
+.notice-row svg { width: 20px; height: 20px; flex: none; color: #e69500; }
+.row.more .title { color: var(--accent); font-weight: 600; }
 .empty svg { width: 44px; height: 44px; margin: 0 auto 12px; opacity: .5; }
 
 .spinner {

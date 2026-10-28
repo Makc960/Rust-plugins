@@ -78,19 +78,77 @@ export function parseCoordinates(text) {
     return { title: `${lat.toFixed(5)}, ${lon.toFixed(5)}`, subtitle: 'Координаты', kind: '', lon, lat, id: `${lon},${lat}` };
 }
 
-export function searchUrl(query, near) {
-    const q = new URLSearchParams({ q: query, limit: '10' });
+/** A Photon search for [query]; [near] puts nearby places first, [bbox] keeps to an area. */
+export function searchUrl(query, near, { bbox = null, scale = 0.3, zoom = 12, limit = 10, layer = null } = {}) {
+    const q = new URLSearchParams({ q: query, limit: String(limit) });
     if (near) {
         q.set('lat', near[1].toFixed(5));
         q.set('lon', near[0].toFixed(5));
-        q.set('zoom', '12');
-        q.set('location_bias_scale', '0.3');
+        q.set('zoom', String(zoom));
+        q.set('location_bias_scale', String(scale));
     }
+    if (bbox) q.set('bbox', bbox.map((v) => v.toFixed(5)).join(','));
+    if (layer) q.set('layer', layer);
     return `${SERVERS.photon}/api?${q}`;
 }
 
 export function reverseUrl(point) {
     return `${SERVERS.photon}/reverse?lat=${point[1].toFixed(6)}&lon=${point[0].toFixed(6)}&limit=1&radius=0.2`;
+}
+
+// Words Russian addresses shorten, as the map spells them out.
+const SPELLED = {
+    'ул': 'улица', 'улиц': 'улица', 'пр': 'проспект', 'пр-т': 'проспект', 'пр-кт': 'проспект', 'просп': 'проспект', 'пркт': 'проспект',
+    'пер': 'переулок', 'б-р': 'бульвар', 'бул': 'бульвар', 'бр': 'бульвар', 'ш': 'шоссе', 'наб': 'набережная', 'пл': 'площадь',
+    'мкр': 'микрорайон', 'мкрн': 'микрорайон', 'м-н': 'микрорайон', 'мк-н': 'микрорайон', 'пр-д': 'проезд', 'туп': 'тупик',
+    'корп': 'к', 'кор': 'к',
+};
+// Words that only say what the next one is: «г. Краснодар», «д. 5», «пос. Южный».
+const DROPPED = new Set(['г', 'гор', 'город', 'д', 'дом', 'пос', 'п', 'посёлок', 'поселок', 'ст-ца', 'станица', 'село', 'х', 'хутор', 'россия', 'рф']);
+
+/**
+ * What a person typed as the map would have it: shortened words spelled out, «дом» and «город»
+ * dropped, the flat number (кв. 12) left off. «ул. Красная, д. 120, кв. 5» → «улица Красная 120».
+ */
+export function normalizeQuery(text) {
+    const tokens = String(text).replace(/[«»"]/g, ' ').split(/[\s,;]+/).filter(Boolean);
+    const out = [];
+    for (let i = 0; i < tokens.length; i++) {
+        const raw = tokens[i];
+        const word = raw.toLowerCase().replace(/\.+$/, '');
+        if (word === 'кв' || word === 'квартира' || word === 'оф' || word === 'офис') {
+            i++;
+            continue;
+        }
+        if (DROPPED.has(word) && i + 1 < tokens.length) continue;
+        if (SPELLED[word]) {
+            out.push(SPELLED[word]);
+            continue;
+        }
+        // «ул.Красная» typed without a space.
+        const glued = raw.match(/^([А-Яа-яЁё-]+)\.([А-ЯЁа-яё\d].*)$/);
+        if (glued && (SPELLED[glued[1].toLowerCase()] || DROPPED.has(glued[1].toLowerCase()))) {
+            const kind = SPELLED[glued[1].toLowerCase()];
+            if (kind) out.push(kind);
+            out.push(glued[2]);
+            continue;
+        }
+        out.push(raw);
+    }
+    return out.join(' ').trim() || String(text).trim();
+}
+
+/** The house number in a query, like «120» in «Красная 120» or «12к1» in «Мира 12 к1». */
+export function houseIn(text) {
+    const m = String(text).match(/(?:^|\s)(\d+[а-яА-Я]?(?:\/\d+)?)(?:\s*к\s*(\d+))?(?=\s|$)/);
+    return m ? (m[2] ? `${m[1]}к${m[2]}` : m[1]).toLowerCase() : null;
+}
+
+/** [west, south, east, north] of [meters] around [point], as Photon's bbox wants it. */
+export function boxAround(point, meters) {
+    const dLat = meters / 111320;
+    const dLon = meters / (111320 * Math.cos((point[1] * Math.PI) / 180));
+    return [point[0] - dLon, point[1] - dLat, point[0] + dLon, point[1] + dLat];
 }
 
 async function getJson(http, url, options = {}) {
@@ -109,10 +167,9 @@ async function getJson(http, url, options = {}) {
     return { status: res.status, json };
 }
 
-export async function search(http, query, near) {
-    const coords = parseCoordinates(query);
-    if (coords) return [coords];
-    const { status, json } = await getJson(http, searchUrl(query, near));
+/** Photon's answer as places, the same place once; each knows its house number and town. */
+async function photon(http, url) {
+    const { status, json } = await getJson(http, url);
     if (status !== 200 || !json) throw new ServiceError('Поиск сейчас не отвечает', status ? 'server' : 'network');
     const seen = new Set();
     const out = [];
@@ -121,9 +178,95 @@ export async function search(http, query, near) {
         const key = `${place.title}|${place.subtitle}`;
         if (seen.has(key)) continue;
         seen.add(key);
+        place.house = String(f.properties?.housenumber || '').toLowerCase().replace(/\s+/g, '');
         out.push(place);
     }
     return out;
+}
+
+// A town is searched within its own bounds; bounds wider than this are a region's, not a town's,
+// and a circle of AREA_RADIUS around the person stands in for them.
+const AREA_RADIUS = 25000;
+const MAX_TOWN_SPAN = 1.2;
+
+/**
+ * The town around [point]: {name, bbox, point}, its name from the address there and its bounds
+ * from the map, or a circle of 25 km when the map has no bounds for it.
+ */
+export async function areaAround(http, point) {
+    let name = null;
+    let bbox = null;
+    try {
+        const { status, json } = await getJson(http, reverseUrl(point));
+        const p = status === 200 && json?.features?.[0]?.properties;
+        name = (p && (p.city || p.town || p.village || p.locality)) || null;
+        if (name) {
+            const town = await getJson(http, searchUrl(name, point, { scale: 0.05, zoom: 10, limit: 3, layer: 'city' }));
+            const f = (town.json?.features || []).find((x) => x.properties?.name === name && x.properties?.extent && distance(point, x.geometry.coordinates) < 60000);
+            if (f) {
+                const [w, n, e, s] = f.properties.extent;
+                if (e - w < MAX_TOWN_SPAN && n - s < MAX_TOWN_SPAN) {
+                    // A little wider, and always around the person too: suburbs lie past a town's line.
+                    const pad = 0.02;
+                    bbox = [Math.min(w, point[0]) - pad, Math.min(s, point[1]) - pad, Math.max(e, point[0]) + pad, Math.max(n, point[1]) + pad];
+                }
+            }
+        }
+    } catch (e) {
+        // No answer: the circle around the person will do.
+    }
+    return { name, bbox: bbox || boxAround(point, AREA_RADIUS), point };
+}
+
+/**
+ * The order to show places in: the very house asked for first; then those whose name has the
+ * words typed («Магнит» → the shops called so, before a street of them); then the nearest.
+ */
+function rank(places, query, near) {
+    const house = houseIn(query);
+    const words = query.toLowerCase().replace(house || '', ' ').split(/\s+/).filter((w) => w.length > 1);
+    const houseScore = (p) => (house && p.house === house ? 0 : house && p.house && p.house.startsWith(house) ? 1 : 2);
+    const nameScore = (p) => (words.length && words.every((w) => p.title.toLowerCase().includes(w)) ? 0 : 1);
+    const far = (p) => (near ? distance(near, [p.lon, p.lat]) : 0);
+    return places
+        .map((p, i) => ({ p, i }))
+        .sort((a, b) => houseScore(a.p) - houseScore(b.p) || nameScore(a.p) - nameScore(b.p) || far(a.p) - far(b.p) || a.i - b.i)
+        .map((x) => x.p);
+}
+
+/**
+ * Looks for [query] in the town around the person first ([area], from [areaAround]):
+ *   {places, scope: 'local', area}      found in the town;
+ *   {places, scope: 'elsewhere', area}  nothing in the town: the nearest found elsewhere;
+ *   {places, scope: 'everywhere'}       asked to look everywhere ([everywhere]).
+ * A town's name typed alone («Сочи») finds that town even from another one.
+ */
+export async function search(http, query, near, area = null, { everywhere = false } = {}) {
+    const coords = parseCoordinates(query);
+    if (coords) return { places: [coords], scope: 'coords', area };
+    const typed = query.trim();
+    const text = normalizeQuery(typed);
+    if (!everywhere && area) {
+        const inTown = (q) => photon(http, searchUrl(q, near, { bbox: area.bbox, scale: 0.2, zoom: 14, limit: 15 }));
+        const [local, towns] = await Promise.all([
+            inTown(text),
+            houseIn(text) ? Promise.resolve([]) : photon(http, searchUrl(text, near, { scale: 0.5, zoom: 6, limit: 3, layer: 'city' })).catch(() => []),
+        ]);
+        const found = local.length || text === typed ? local : await inTown(typed);
+        // «Сочи» typed in Krasnodar: that town goes first, before any street named for it.
+        const asked = text.toLowerCase();
+        const town = towns.find((t) => t.title.toLowerCase() === asked && t.title !== area.name);
+        if (found.length) {
+            const places = rank(found, text, near);
+            return { places: town ? [town, ...places.filter((p) => p.id !== town.id)] : places, scope: 'local', area };
+        }
+        if (town) return { places: [town], scope: 'elsewhere', area };
+    }
+    // Everywhere, the nearest first.
+    const anywhere = (q) => photon(http, searchUrl(q, near, { scale: 0.05, zoom: 8, limit: 15 }));
+    let wide = await anywhere(text);
+    if (!wide.length && text !== typed) wide = await anywhere(typed);
+    return { places: rank(wide, text, near), scope: everywhere ? 'everywhere' : 'elsewhere', area };
 }
 
 /** What is at [point]: the nearest address, or the bare coordinates. */

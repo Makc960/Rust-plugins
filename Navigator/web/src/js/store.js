@@ -7,6 +7,7 @@ const DEFAULTS = {
     settings: {
         voice: true,
         theme: 'auto',       // auto, day, night
+        mapType: 'scheme',   // scheme, hybrid, satellite
         mode: 'car',         // car, bike, foot
         avoidTolls: false,
         avoidHighways: false,

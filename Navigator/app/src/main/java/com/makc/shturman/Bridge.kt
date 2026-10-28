@@ -278,6 +278,6 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     }
 
     private companion object {
-        val USER_AGENT = "Shturman/${BuildConfig.VERSION_NAME} (Android navigator; +https://github.com/Makc960/Rust-plugins)"
+        val USER_AGENT = "Navigator-ru/${BuildConfig.VERSION_NAME} (Android navigator; +https://github.com/Makc960/Rust-plugins)"
     }
 }

@@ -21,6 +21,7 @@ export const ICONS = {
     car: svg(stroke('M5 16v3M19 16v3M4 16h16v-4l-2-5H6l-2 5zM4 12h16M7.5 14h.01M16.5 14h.01')),
     bike: svg(stroke('M6 17.5a3.5 3.5 0 1 0 0-.01zM18 17.5a3.5 3.5 0 1 0 0-.01zM6 17.5 9.5 10H15l3 7.5M9.5 10 8 6.5H6M12 17.5 9.5 10M14 6.5h2l-1 3.5')),
     foot: svg(stroke('M13 4.5a1.5 1.5 0 1 0 0 .01zM10 21l2-6 3 3v3M8 12l2-4 3.5 1.5L15 13l2.5 1M12 15l-1.5-4.5')),
+    layers: svg(stroke('M12 4 3.5 8.5 12 13l8.5-4.5zM3.5 12.5 12 17l8.5-4.5M3.5 16.5 12 21l8.5-4.5')),
     locate: svg(stroke('M12 3v3M12 18v3M3 12h3M18 12h3M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z') + fill('M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z')),
     compass: svg(fill('M12 3l3.5 9h-7z') + `<path d="M12 21l-3.5-9h7z" fill="currentColor" opacity=".35"/>`),
     soundOn: svg(stroke('M4 9.5h3.5L12 6v12l-4.5-3.5H4zM15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11')),
