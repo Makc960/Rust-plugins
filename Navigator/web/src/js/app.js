@@ -2168,6 +2168,12 @@ const historyActions = {
 function openSettings() {
     renderSettings();
     $('settings').hidden = false;
+    // The town to offer for offline: looked up now if no search has found it yet.
+    if (platform.isNative && (!S.area || !S.area.name) && (here() || map.center)) {
+        currentArea().then(() => {
+            if (!$('settings').hidden) renderSettings();
+        }, () => {});
+    }
 }
 
 function closeSettings() {
