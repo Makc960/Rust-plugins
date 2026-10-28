@@ -108,7 +108,7 @@ test('with no notice from Pally, the order is checked with Pally after a while',
     const { order } = await shop.order(CODE, 'skin_night');
     pally.states.set('bill1', 'paid');
     assert.equal((await shop.status(CODE, order)).status, 'pending', 'not asked at once');
-    time.now += 20000;
+    time.now += 12000;
     assert.equal((await shop.status(CODE, order)).status, 'paid');
     assert.deepEqual((await shop.purchases(CODE)).owned, ['skin_night']);
 });
@@ -141,6 +141,35 @@ test('a code typed on another phone takes over the purchases, and the old code f
     await shop.move(OLD, NEW);
     assert.deepEqual((await shop.purchases(NEW)).owned, ['skin_night', 'commander_grom']);
     await assert.rejects(shop.move(OLD, 'short'), /bad code/);
+});
+
+test('unpaid orders are asked about now and then, less often as they age, for a day', async () => {
+    const { shop, pally, time } = shopAt();
+    const asked = [];
+    const billStatus = pally.billStatus;
+    pally.billStatus = async (id) => (asked.push(id), billStatus(id));
+    await shop.order(CODE, 'skin_night');
+    await shop.order(CODE, 'skin_parade');
+    await shop.sweep();
+    assert.deepEqual(asked, [], 'not at once');
+    time.now += 25000;
+    await shop.sweep();
+    await shop.sweep();
+    assert.deepEqual(asked, ['bill1', 'bill2'], 'then once each, not twice in a row');
+    pally.states.set('bill2', 'paid');
+    time.now += 20000;
+    await shop.sweep();
+    assert.deepEqual((await shop.purchases(CODE)).owned, ['skin_parade'], 'a payment with no notice still counts');
+    // Two hours on, every quarter of an hour; after a day, never again.
+    asked.length = 0;
+    time.now += 2 * 60 * 60 * 1000;
+    await shop.sweep();
+    time.now += 5 * 60 * 1000;
+    await shop.sweep();
+    assert.deepEqual(asked, ['bill1']);
+    time.now += 24 * 60 * 60 * 1000;
+    await shop.sweep();
+    assert.deepEqual(asked, ['bill1']);
 });
 
 test('asking what a player has checks their recent unpaid orders with Pally', async () => {

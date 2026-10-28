@@ -27,6 +27,10 @@ export class Db {
         this.save();
     }
 
+    allOrders() {
+        return Object.values(this.data.orders);
+    }
+
     /** The orders made under [code] or under a code moved into it. */
     ordersOf(code) {
         const player = this.resolve(code);

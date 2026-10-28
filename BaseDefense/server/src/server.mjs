@@ -137,4 +137,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const shop = new Shop({ db, pally, token: env.PALLY_TOKEN, publicUrl: env.PUBLIC_URL });
     const port = Number(env.PORT || 8787);
     makeServer(shop).listen(port, env.HOST || '127.0.0.1', () => console.log(`shop on ${env.HOST || '127.0.0.1'}:${port}`));
+    setInterval(() => shop.sweep().catch((e) => console.error(e)), 5000);
 }

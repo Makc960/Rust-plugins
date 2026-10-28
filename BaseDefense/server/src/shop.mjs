@@ -9,11 +9,15 @@ import { CATALOG } from './catalog.mjs';
 import { readPostback } from './pally.mjs';
 
 const CODE = /^[A-Z2-7]{20}$/;
-// How long after an order the server asks Pally itself, in case the postback is late or lost.
-const CHECK_AFTER = 15000;
-const CHECK_EVERY = 10000;
-// Unpaid orders this young are checked again when the player asks what they have.
-const RECHECK_FOR = 60 * 60 * 1000;
+// The server asks Pally itself whether a bill is paid: Pally's notice may be late or lost, and never
+// comes at all where the Pally shop is shared with a site whose Result URL it keeps. Not sooner than
+// this after the order, and not more often than this for one order.
+const CHECK_AFTER = 10000;
+const CHECK_EVERY = 5000;
+// Unpaid orders this young are checked again when the player asks what they have, and now and then
+// by [Shop.sweep], less often as they age.
+const RECHECK_FOR = 24 * 60 * 60 * 1000;
+const MINUTE = 60 * 1000;
 
 export class ShopError extends Error {
     constructor(status, message) {
@@ -120,6 +124,28 @@ export class Shop {
             this.db.alias(source, target);
         }
         return this.purchases(target);
+    }
+
+    /**
+     * Asks Pally about the unpaid orders of the last day, every 20 seconds at first, then every
+     * 2 minutes after 10 minutes and every 15 after an hour: a player who paid and never came back to
+     * the game finds the purchase there next time. The server runs this every few seconds.
+     */
+    async sweep() {
+        if (this.sweeping) return;
+        this.sweeping = true;
+        try {
+            const now = this.now();
+            for (const order of this.db.allOrders()) {
+                if (order.status !== 'pending' || !order.bill) continue;
+                const age = now - order.created;
+                if (age > RECHECK_FOR) continue;
+                const every = age < 10 * MINUTE ? 20000 : age < 60 * MINUTE ? 2 * MINUTE : 15 * MINUTE;
+                if (now - order.checked >= every) await this.refresh(order);
+            }
+        } finally {
+            this.sweeping = false;
+        }
     }
 
     /** Asks Pally about a pending [order] when its notice is late; answers the order as it is then. */

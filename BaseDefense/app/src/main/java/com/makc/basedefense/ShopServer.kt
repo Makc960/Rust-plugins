@@ -237,8 +237,9 @@ class ShopServer(context: Context, server: String, private val base: Store) : St
         const val TAG = "BaseDefense"
         const val KEY_CODE = "code"
         const val TIMEOUT = 15_000
-        const val POLL_TRIES = 6
-        const val POLL_EVERY = 2_000L
+        // About 20 seconds: the server asks Pally itself, as no payment notice may come to it.
+        const val POLL_TRIES = 8
+        const val POLL_EVERY = 2_500L
         const val CHECK_WAIT = 20_000L
 
         /** Unpaid orders given up on are asked about again for this long, the last few of them. */

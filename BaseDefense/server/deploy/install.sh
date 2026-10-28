@@ -311,10 +311,10 @@ elif [ "$WEB" = caddy ]; then
 fi
 cat <<EOF
 
-В кабинете Pally, в настройках магазина, укажите:
-  Result URL:   $BASE/pally/result   (метод POST)
-  Success URL:  $BASE/return?result=success
-  Fail URL:     $BASE/return?result=fail
+В кабинете Pally менять ничего не нужно: сервер сам спрашивает у Pally, оплачен ли счёт.
+Если этот магазин Pally уже принимает оплату на сайте, его Result URL не трогайте.
+Только если магазин Pally нужен одной игре, можно указать Result URL $BASE/pally/result
+(метод POST): тогда покупки будут приходить на пару секунд быстрее.
 
 Адрес магазина для сборки игры (SHOP_SERVER): $BASE
 
