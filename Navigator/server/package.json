@@ -1,0 +1,11 @@
+{
+  "name": "navigator-server",
+  "private": true,
+  "type": "module",
+  "description": "The Navigator's own server: road reports, shared drives, search feedback and which map servers to ask.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

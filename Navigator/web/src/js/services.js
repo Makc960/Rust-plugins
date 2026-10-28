@@ -1,16 +1,35 @@
-// The free servers the app asks: Photon (komoot) for places, Valhalla and OSRM (FOSSGIS) for routes.
+// The servers the app asks: Photon (komoot) and Nominatim for places, Valhalla and OSRM (FOSSGIS)
+// for routes, Overpass for what is on the road, and the app's own server for drivers' reports,
+// shared drives, search notes and which of the others to ask (see server/).
 // Requests go through [http] (the app's own, or fetch in a browser): (url, options) => {status, text}.
 
 import { along, distance, project } from './geo.js';
-import { cameraQuery, limitChunks, parseCameras, parseLimits, traceRequest } from './roadinfo.js';
+import { hazardQuery, limitChunks, parseHazards, parseLimits, traceRequest } from './roadinfo.js';
 import { distinct, fromOsrm, fromValhalla } from './route.js';
 
 export const SERVERS = {
     photon: 'https://photon.komoot.io',
+    nominatim: 'https://nominatim.openstreetmap.org',
     valhalla: 'https://valhalla1.openstreetmap.de',
     osrm: 'https://routing.openstreetmap.de',
     overpass: ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'],
+    own: 'https://ice-rust.store/navigator',
 };
+
+const DEFAULT_SERVERS = structuredClone(SERVERS);
+const HTTPS = /^https:\/\/[a-z0-9.-]+(:\d+)?(\/[\w./-]*)?$/i;
+
+/**
+ * Servers named by the app's own server ({photon, valhalla, ...}) take the place of the free
+ * ones; anything not a plain https address is ignored. Called with {} it puts the defaults back.
+ */
+export function useServers(servers = {}) {
+    for (const key of ['photon', 'nominatim', 'valhalla', 'osrm']) {
+        SERVERS[key] = typeof servers[key] === 'string' && HTTPS.test(servers[key]) ? servers[key].replace(/\/+$/, '') : DEFAULT_SERVERS[key];
+    }
+    const overpass = Array.isArray(servers.overpass) ? servers.overpass.filter((u) => typeof u === 'string' && HTTPS.test(u)) : [];
+    SERVERS.overpass = overpass.length ? overpass : [...DEFAULT_SERVERS.overpass];
+}
 
 export class ServiceError extends Error {
     constructor(message, kind) {
@@ -239,9 +258,30 @@ function rank(places, query, near) {
  *   {places, scope: 'local', area}      found in the town;
  *   {places, scope: 'elsewhere', area}  nothing in the town: the nearest found elsewhere;
  *   {places, scope: 'everywhere'}       asked to look everywhere ([everywhere]).
- * A town's name typed alone («Сочи») finds that town even from another one.
+ * A town's name typed alone («Сочи») finds that town even from another one. [precise]: the person
+ * sent the search themselves, so a house number Photon does not know is asked of Nominatim too;
+ * [exact] in the answer says whether the very house asked for was found.
  */
-export async function search(http, query, near, area = null, { everywhere = false } = {}) {
+export async function search(http, query, near, area = null, { everywhere = false, precise = false } = {}) {
+    const found = await photonSearch(http, query, near, area, { everywhere });
+    const house = houseIn(normalizeQuery(query.trim()));
+    found.exact = !house || found.places.some((p) => p.house === house);
+    if (!precise || found.exact || found.scope === 'coords') return found;
+    try {
+        const more = (await nominatim(http, normalizeQuery(query.trim()), everywhere ? null : area)).filter((p) => p.house === house);
+        if (more.length) {
+            const ids = new Set(more.map((p) => p.id));
+            more.sort((a, b) => (near ? distance(near, [a.lon, a.lat]) - distance(near, [b.lon, b.lat]) : 0));
+            const local = area && area.bbox && more.every((p) => p.lon >= area.bbox[0] && p.lon <= area.bbox[2] && p.lat >= area.bbox[1] && p.lat <= area.bbox[3]);
+            return { ...found, places: [...more, ...found.places.filter((p) => !ids.has(p.id))], scope: everywhere ? 'everywhere' : local ? 'local' : found.scope, exact: true };
+        }
+    } catch (e) {
+        // Photon's answer stands.
+    }
+    return found;
+}
+
+async function photonSearch(http, query, near, area, { everywhere }) {
     const coords = parseCoordinates(query);
     if (coords) return { places: [coords], scope: 'coords', area };
     const typed = query.trim();
@@ -267,6 +307,60 @@ export async function search(http, query, near, area = null, { everywhere = fals
     let wide = await anywhere(text);
     if (!wide.length && text !== typed) wide = await anywhere(typed);
     return { places: rank(wide, text, near), scope: everywhere ? 'everywhere' : 'elsewhere', area };
+}
+
+// ---- Nominatim: house numbers Photon misses ----
+
+// Nominatim asks for one request a second at most, and none while typing: it is asked only when a
+// person sends the search themselves, and then waits its turn.
+let nominatimAt = 0;
+
+export function nominatimUrl(query, area) {
+    const q = new URLSearchParams({ q: query, format: 'jsonv2', addressdetails: '1', limit: '8', 'accept-language': 'ru' });
+    if (area && area.bbox) {
+        const [w, s, e, n] = area.bbox;
+        q.set('viewbox', [w, n, e, s].map((v) => v.toFixed(5)).join(','));
+        q.set('bounded', '1');
+    }
+    return `${SERVERS.nominatim}/search?${q}`;
+}
+
+/** A place from a Nominatim answer, in the same shape as Photon's. */
+export function placeFromNominatim(r) {
+    const a = r.address || {};
+    const lon = Number(r.lon);
+    const lat = Number(r.lat);
+    const road = a.road || a.pedestrian || a.footway || a.residential || a.square || '';
+    const street = [road, a.house_number].filter(Boolean).join(', ');
+    const town = a.city || a.town || a.village || a.hamlet || a.municipality || a.county || '';
+    const name = r.name && r.name !== a.house_number ? r.name : '';
+    const title = name || street || town || (r.display_name || '').split(',')[0] || 'Точка на карте';
+    const parts = [];
+    if (name && street) parts.push(street);
+    if (a.suburb && a.suburb !== title) parts.push(a.suburb);
+    if (town && town !== title) parts.push(town);
+    const kind = KINDS[`${r.category}:${r.type}`];
+    const type = { node: 'N', way: 'W', relation: 'R' }[r.osm_type] || '';
+    return {
+        title, subtitle: parts.join(', '), kind: kind && kind !== title ? kind : '', lon, lat,
+        id: type && r.osm_id ? `${type}${r.osm_id}` : `${lon},${lat}`,
+        house: String(a.house_number || '').toLowerCase().replace(/\s+/g, ''),
+    };
+}
+
+/** Looks for [query] in Nominatim, in the town ([area]) first, then anywhere. */
+export async function nominatim(http, query, area = null, wait = (ms) => new Promise((ok) => setTimeout(ok, ms))) {
+    const ask = async (url) => {
+        const gap = Date.now() - nominatimAt;
+        if (gap < 1100) await wait(1100 - gap);
+        nominatimAt = Date.now();
+        const { status, json } = await getJson(http, url, { timeout: 12000 });
+        if (status !== 200 || !Array.isArray(json)) throw new ServiceError('Поиск сейчас не отвечает', status ? 'server' : 'network');
+        return json.map(placeFromNominatim).filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat));
+    };
+    let found = area ? await ask(nominatimUrl(query, area)) : [];
+    if (!found.length) found = await ask(nominatimUrl(area && area.name && !query.includes(area.name) ? `${query}, ${area.name}` : query, null));
+    return found;
 }
 
 /** What is at [point]: the nearest address, or the bare coordinates. */
@@ -388,14 +482,17 @@ export async function speedLimits(http, route) {
     return out;
 }
 
-/** Speed cameras along the first few hundred kilometres of a car route; [] when none answer. */
-export async function cameras(http, route) {
-    if (route.mode !== 'car') return [];
-    const query = cameraQuery(route);
+/**
+ * What to warn about along the first few hundred kilometres of a car route, of [kinds]
+ * ({camera, bump, rail, school}); [] when no Overpass server answers.
+ */
+export async function hazards(http, route, kinds = { camera: true }) {
+    if (route.mode !== 'car' || !Object.values(kinds).some(Boolean)) return [];
+    const query = hazardQuery(route, kinds);
     for (const server of SERVERS.overpass) {
         try {
             const res = await http(server, { method: 'POST', body: `data=${encodeURIComponent(query)}`, type: 'application/x-www-form-urlencoded', timeout: 30000 });
-            if (res.status === 200) return parseCameras(JSON.parse(res.text), route);
+            if (res.status === 200) return parseHazards(JSON.parse(res.text), route);
         } catch (e) {
             // On to the next server.
         }
@@ -475,4 +572,66 @@ export async function alongRoute(http, route, from, category) {
     }
     // Close to the road first, then nearer ahead.
     return out.filter((p) => p.off < radius * 1000).sort((a, b) => (a.ahead + a.off * 6) - (b.ahead + b.off * 6)).slice(0, 15);
+}
+
+// ---- The app's own server ----
+
+/** The server's word on which servers to ask, and a message for everyone: {servers, message, latest}. */
+export async function fetchConfig(http) {
+    const { status, json } = await getJson(http, `${SERVERS.own}/api/config`, { timeout: 8000 });
+    if (status !== 200 || !json || typeof json !== 'object') throw new ServiceError('Сервер приложения не ответил', 'server');
+    return { servers: json.servers || {}, message: String(json.message || ''), latest: String(json.latest || '') };
+}
+
+async function ownPost(http, path, body, method = 'POST') {
+    const { status, json } = await getJson(http, `${SERVERS.own}${path}`, { method, body: JSON.stringify(body), type: 'application/json', timeout: 12000 });
+    if (status !== 200 || !json) throw new ServiceError(json && json.error === 'too many reports' ? 'Слишком много отметок, попробуйте позже' : 'Сервер приложения не ответил', status ? 'server' : 'network');
+    return json;
+}
+
+/** Drivers' reports in [bbox] ([west, south, east, north]): [{id, kind, lat, lon, heading, created, confirmed, votes}]. */
+export async function reportsIn(http, bbox) {
+    const box = bbox.map((v) => v.toFixed(4)).join(',');
+    const { status, json } = await getJson(http, `${SERVERS.own}/api/reports?bbox=${box}`, { timeout: 12000 });
+    if (status !== 200 || !json) throw new ServiceError('Сервер приложения не ответил', status ? 'server' : 'network');
+    return Array.isArray(json.reports) ? json.reports : [];
+}
+
+/** Reports [kind] at the car: {report, confirmed}. */
+export function sendReport(http, { kind, point, heading, device }) {
+    return ownPost(http, '/api/reports', { kind, lat: point[1], lon: point[0], heading: heading ?? null, device });
+}
+
+export function voteReport(http, id, device, still) {
+    return ownPost(http, `/api/reports/${encodeURIComponent(id)}/vote`, { device, still });
+}
+
+/** «Не то нашлось»: the query, what was found and what was wanted. */
+export function sendFeedback(http, note) {
+    return ownPost(http, '/api/feedback', note);
+}
+
+/** Starts sharing a drive: {id, key, url}. */
+export function shareTrip(http, body) {
+    return ownPost(http, '/api/trips', body);
+}
+
+export function updateTrip(http, id, key, body) {
+    return ownPost(http, `/api/trips/${encodeURIComponent(id)}`, { ...body, key }, 'PUT');
+}
+
+export function endTrip(http, id, key) {
+    return ownPost(http, `/api/trips/${encodeURIComponent(id)}/end`, { key });
+}
+
+/** At most [max] points of [line], evenly along it, for sending the road ahead. */
+export function thinLine(line, max = 300) {
+    if (line.length <= max) return line.map(([x, y]) => [Math.round(x * 1e5) / 1e5, Math.round(y * 1e5) / 1e5]);
+    const out = [];
+    const step = (line.length - 1) / (max - 1);
+    for (let i = 0; i < max; i++) {
+        const [x, y] = line[Math.round(i * step)];
+        out.push([Math.round(x * 1e5) / 1e5, Math.round(y * 1e5) / 1e5]);
+    }
+    return out;
 }

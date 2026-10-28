@@ -137,3 +137,49 @@ export function forTime(s) {
 export function capital(text) {
     return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
+
+// ---- Streets out loud ----
+
+// Kinds of street that are feminine, and how they go after "на": "на улицу", "на Красную площадь".
+// Masculine and neuter ones (проспект, переулок, шоссе) stay as they are.
+const FEMININE = {
+    'улица': 'улицу', 'дорога': 'дорогу', 'автодорога': 'автодорогу', 'аллея': 'аллею', 'трасса': 'трассу',
+    'линия': 'линию', 'набережная': 'набережную', 'площадь': 'площадь', 'просека': 'просеку', 'эстакада': 'эстакаду',
+    'магистраль': 'магистраль', 'автомагистраль': 'автомагистраль', 'развязка': 'развязку', 'объездная': 'объездную',
+};
+
+function sameCase(model, word) {
+    return model[0] === model[0].toUpperCase() ? capital(word) : word;
+}
+
+/** A feminine adjective after "на": "Красная" → "Красную", "Верхняя" → "Верхнюю", "1-я" → "1-ю". */
+function adjective(word) {
+    if (/^\d+-я$/.test(word)) return word.replace(/я$/, 'ю');
+    if (/[а-яё]ая$/i.test(word)) return word.replace(/ая$/, 'ую').replace(/АЯ$/, 'УЮ');
+    if (/[а-яё]яя$/i.test(word)) return word.replace(/яя$/, 'юю');
+    return null;
+}
+
+/**
+ * A street's name as it goes after "на": "улица Северная" → "улицу Северную", "Красная площадь"
+ * → "Красную площадь", "проспект Мира" as it is. Only the kind of street and the adjectives
+ * right beside it change; a person's name in it ("улица Героя Сарабьева") stays.
+ */
+export function streetAfterNa(name) {
+    const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+    const k = words.findIndex((w) => FEMININE[w.toLowerCase()] !== undefined);
+    if (k < 0) return words.join(' ');
+    const out = [...words];
+    out[k] = sameCase(words[k], FEMININE[words[k].toLowerCase()]);
+    for (let i = k - 1; i >= 0; i--) {
+        const a = adjective(words[i]);
+        if (!a) break;
+        out[i] = a;
+    }
+    for (let i = k + 1; i < words.length; i++) {
+        const a = adjective(words[i]);
+        if (!a) break;
+        out[i] = a;
+    }
+    return out.join(' ');
+}

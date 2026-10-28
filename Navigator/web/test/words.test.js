@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { parseCoordinates, placeFromPhoton, osrmRequest, searchUrl, valhallaRequest } from '../src/js/services.js';
-import { clockText, distanceText, durationText, forDistance, forTime, inDistance, plural, roundSpoken, stepSaid, stepText } from '../src/js/words.js';
+import { clockText, distanceText, durationText, forDistance, forTime, inDistance, plural, roundSpoken, stepSaid, stepText, streetAfterNa } from '../src/js/words.js';
 
 test('Russian plurals', () => {
     const w = ['метр', 'метра', 'метров'];
@@ -83,4 +83,15 @@ test('requests to the servers', () => {
     assert.equal(JSON.parse(decodeURIComponent(valhallaRequest([1, 2], [3, 4], 'foot', { alternates: 0 }).split('json=')[1])).alternates, undefined);
     assert.match(osrmRequest([37.6, 55.75], [37.7, 55.8], 'bike'), /\/routed-bike\/route\/v1\/driving\/37\.600000,55\.750000;37\.700000,55\.800000\?/);
     assert.match(searchUrl('кафе', [37.6, 55.75]), /q=%D0%BA%D0%B0%D1%84%D0%B5.*lat=55\.75000&lon=37\.60000/);
+});
+
+test('streets after "на", as Russian has them', () => {
+    const cases = {
+        'улица Северная': 'улицу Северную', 'Ставропольская улица': 'Ставропольскую улицу', 'улица Большая Садовая': 'улицу Большую Садовую',
+        'Красная площадь': 'Красную площадь', 'площадь Ленина': 'площадь Ленина', 'улица Героя Сарабьева': 'улицу Героя Сарабьева',
+        'проспект Мира': 'проспект Мира', 'Московское шоссе': 'Московское шоссе', 'Почтовый переулок': 'Почтовый переулок',
+        'Тенистая аллея': 'Тенистую аллею', 'Верхняя улица': 'Верхнюю улицу', '1-я Линия': '1-ю Линию', 'Кольцевая дорога': 'Кольцевую дорогу',
+        'улица 40 лет Победы': 'улицу 40 лет Победы', 'М-4 «Дон»': 'М-4 «Дон»',
+    };
+    for (const [name, after] of Object.entries(cases)) assert.equal(streetAfterNa(name), after, name);
 });

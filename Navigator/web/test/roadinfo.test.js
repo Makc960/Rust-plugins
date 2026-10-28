@@ -3,14 +3,14 @@ import { test } from 'node:test';
 
 import { destination } from '../src/js/geo.js';
 import { encode } from '../src/js/polyline.js';
-import { cameraAhead, cameraQuery, limitAt, limitChunks, parseCameras, parseLimits, traceRequest } from '../src/js/roadinfo.js';
+import { cameraAhead, findCurves, hazardAhead, hazardQuery, limitAt, limitChunks, parseCameras, parseHazards, parseLimits, placeReports, traceRequest } from '../src/js/roadinfo.js';
 import { fromOsrm, fromValhalla } from '../src/js/route.js';
 import { alongRoute, nearby, osrmRequest, routes, valhallaRequest } from '../src/js/services.js';
 import { Tracker } from '../src/js/tracker.js';
 import { Announcer, RoadAlerts } from '../src/js/voice.js';
 import { CITY, osrmRoute, START, valhallaTrip } from './helpers.js';
 
-const cityRoute = () => fromValhalla({ trip: valhallaTrip(CITY).trip }, 'car')[0];
+const cityRoute = (stretches = CITY) => fromValhalla({ trip: valhallaTrip(stretches).trip }, 'car')[0];
 
 test('a route with a stop joins its legs, and the stop is spoken', () => {
     const first = valhallaTrip([[1, 90, 600, 'Тверская улица', 12], [10, 180, 300, 'улица Ленина', 10]]);
@@ -123,16 +123,81 @@ test('speed cameras near the route are kept and the rest left out', () => {
     assert.equal(cams.length, 1);
     assert.ok(Math.abs(cams[0].at - 600) < 3);
     assert.equal(cams[0].limit, 60);
-    assert.equal(cameraAhead(cams, 300, 400).id, 1);
+    assert.equal(cameraAhead(cams, 300, 400).id, 'node1');
     assert.equal(cameraAhead(cams, 100, 400), null);
-    const q = cameraQuery(r);
-    assert.match(q, /^\[out:json\]\[timeout:25\];node\(around:35,55\.75000,37\.60000,/);
-    assert.match(q, /\["highway"="speed_camera"\];out body;$/);
+    const q = hazardQuery(r);
+    assert.match(q, /^\[out:json\]\[timeout:25\];\(node\(around:35,55\.75000,37\.60000,/);
+    assert.match(q, /\["highway"="speed_camera"\];\);out body;$/);
+});
+
+test('bumps, railway crossings and schools on the route are warned about; things beside it are not', () => {
+    const r = cityRoute();
+    const at = (d, off = 0, way = 0) => {
+        const p = off ? destination(destinationAlong(r, d), way, off) : destinationAlong(r, d);
+        return { lat: p[1], lon: p[0] };
+    };
+    const json = { elements: [
+        { type: 'node', id: 1, ...at(300), tags: { traffic_calming: 'bump' } },
+        { type: 'node', id: 2, ...at(300, 30), tags: { traffic_calming: 'hump' } },
+        { type: 'node', id: 3, ...at(1100), tags: { railway: 'level_crossing' } },
+        { type: 'way', id: 4, center: at(2000, 70, 90), tags: { amenity: 'school', name: 'Школа № 5' } },
+        { type: 'node', id: 5, ...at(1500), tags: { traffic_calming: 'island' } },
+        { type: 'node', id: 6, ...at(2200), tags: { highway: 'speed_camera', maxspeed: 'RU:urban' } },
+    ] };
+    const found = parseHazards(json, r);
+    assert.deepEqual(found.map((h) => h.kind), ['bump', 'rail', 'school', 'camera'], 'the bump 30 m aside and the island are left out');
+    assert.ok(Math.abs(found[2].at - 2000) < 5);
+    assert.equal(found[3].limit, undefined, 'a limit written as a word is not a number');
+    assert.deepEqual(parseCameras(json, r).map((h) => h.id), ['node6']);
+    assert.equal(hazardAhead(found, 900, 400).kind, 'rail');
+    assert.equal(hazardAhead(found, 900, 400, new Set(['school'])), null);
+    assert.equal(cameraAhead(found, 2000, 300).id, 'node6');
+    const q = hazardQuery(r, { camera: true, bump: true, rail: true, school: true });
+    assert.match(q, /node\(around:12,[^)]+\)\["traffic_calming"\];/);
+    assert.match(q, /node\(around:15,[^)]+\)\["railway"="level_crossing"\];/);
+    assert.match(q, /nwr\(around:100,[^)]+\)\["amenity"~"\^\(school\|kindergarten\)\$"\];out center;$/);
+    assert.equal(hazardQuery(r, { school: true }).includes('out body'), false);
+});
+
+test('a sharp bend on a fast road is found from the line; turns the voice tells are not bends', () => {
+    // A road at 25 m/s that bends right by 90 degrees over 60 m, then later a real right turn.
+    const bend = [];
+    for (let k = 0; k < 6; k++) bend.push([8, 90 + (k + 1) * 15, 10, 'М-4', 25]);
+    const r = cityRoute([
+        [1, 90, 1000, 'М-4', 25],
+        ...bend,
+        [8, 180, 1000, 'М-4', 25],
+        [10, 270, 1000, 'улица Ленина', 25],
+        [8, 270, 500, 'улица Ленина', 25],
+    ]);
+    const curves = findCurves(r);
+    assert.equal(curves.length, 1, JSON.stringify(curves));
+    assert.equal(curves[0].side, 'right');
+    assert.ok(curves[0].at > 900 && curves[0].at < 1060, `at ${curves[0].at}`);
+    // The same bend in town, at 10 m/s, is no warning.
+    const slow = cityRoute([[1, 90, 1000, 'улица Мира', 10], ...bend.map((b) => [...b.slice(0, 4), 10]), [8, 180, 1000, 'улица Мира', 10]]);
+    assert.deepEqual(findCurves(slow), []);
+});
+
+test('drivers\' reports on the route and going its way are placed along it', () => {
+    const r = cityRoute();
+    const p = destinationAlong(r, 500);
+    const aside = destination(destinationAlong(r, 700), 0, 200);
+    const reports = [
+        { id: 'a', kind: 'crash', lat: p[1], lon: p[0], heading: 90 },
+        { id: 'b', kind: 'police', lat: p[1], lon: p[0], heading: 270 },
+        { id: 'c', kind: 'camera', lat: p[1], lon: p[0], heading: null },
+        { id: 'd', kind: 'jam', lat: aside[1], lon: aside[0], heading: 90 },
+    ];
+    const placed = placeReports(reports, r);
+    assert.deepEqual(placed.map((h) => h.kind), ['crash', 'mobile'], 'the other way and off the road are left out');
+    assert.ok(Math.abs(placed[0].at - 500) < 3);
+    assert.equal(placed[1].report.id, 'c');
 });
 
 test('a camera is told once, with its limit, and a word to slow down when speeding', () => {
     const alerts = new RoadAlerts();
-    const cams = [{ at: 1000, limit: 60, id: 7 }];
+    const cams = [{ at: 1000, limit: 60, id: 7, kind: 'camera' }];
     assert.equal(alerts.update({ along: 300 }, 15, cams, 40), null);
     assert.equal(alerts.update({ along: 750 }, 15, cams, 40), 'Впереди камера, ограничение 60.');
     assert.equal(alerts.update({ along: 800 }, 15, cams, 40), null);
@@ -169,4 +234,36 @@ test('a failing route server with stops still falls back to OSRM', async () => {
         : { status: 200, text: JSON.stringify(osrmRoute([[1, 90, 500, 'Тверская улица', 12]])) });
     const found = await routes(http, [37.6, 55.75], [37.61, 55.75], 'car', { stops: [] });
     assert.equal(found[0].provider, 'osrm');
+});
+
+test('each kind of warning comes at its own distance, and a row of bumps is told once', () => {
+    const hazards = [
+        { at: 500, kind: 'bump', id: 'b1' },
+        { at: 650, kind: 'bump', id: 'b2' },
+        { at: 1500, kind: 'rail', id: 'r' },
+        { at: 2500, kind: 'school', id: 's' },
+        { at: 4000, kind: 'curve', side: 'left', id: 'c' },
+        { at: 6000, kind: 'crash', id: 'x' },
+    ];
+    const alerts = new RoadAlerts();
+    const said = [];
+    for (let d = 0; d <= 6000; d += 10) {
+        const t = alerts.update({ along: d }, 15, hazards, undefined, 10, { hour: 12 });
+        if (t) said.push(`${d}: ${t}`);
+    }
+    assert.deepEqual(said.map((t) => t.split(': ')[1]), [
+        'Лежачий полицейский.', 'Впереди железнодорожный переезд.', 'Осторожно, рядом школа.', 'Впереди крутой поворот налево.', 'Впереди ДТП.',
+    ]);
+    assert.ok(+said[0].split(':')[0] >= 380, said[0]);
+    // At night, no word about schools; with bends turned off, none about them.
+    const night = new RoadAlerts();
+    const quiet = [];
+    for (let d = 0; d <= 6000; d += 10) {
+        const t = night.update({ along: d }, 15, hazards, undefined, 10, { hour: 23, kinds: new Set(['bump', 'rail', 'school', 'crash']) });
+        if (t) quiet.push(t);
+    }
+    assert.deepEqual(quiet, ['Лежачий полицейский.', 'Впереди железнодорожный переезд.', 'Впереди ДТП.']);
+    // Crawling, a bump is no news, and a bend at 30 km/h neither.
+    assert.equal(new RoadAlerts().update({ along: 450 }, 3, hazards.slice(0, 1), undefined), null);
+    assert.equal(new RoadAlerts().update({ along: 3900 }, 8, hazards.slice(4, 5), undefined), null);
 });

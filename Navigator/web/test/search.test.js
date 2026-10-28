@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { distance } from '../src/js/geo.js';
-import { areaAround, boxAround, houseIn, normalizeQuery, search, searchUrl } from '../src/js/services.js';
+import { areaAround, boxAround, houseIn, nominatimUrl, normalizeQuery, placeFromNominatim, search, searchUrl, SERVERS, thinLine, useServers } from '../src/js/services.js';
 
 const KRASNODAR = [38.9769, 45.0355];
 const RED_120 = [38.9746, 45.0402];
@@ -108,4 +108,61 @@ test('a town\'s name typed alone goes to that town', async () => {
     assert.ok(found.places.some((p) => p.title === 'Сочинская улица'), 'the street named for it is still there, after');
     const coords = await search(http, '45.04, 38.97', KRASNODAR, area);
     assert.equal(coords.scope, 'coords');
+});
+
+/** Nominatim played: it knows the house Photon does not. */
+function withNominatim(log = []) {
+    const photon = fakePhoton(log);
+    const house = {
+        lat: '45.0601', lon: '38.9912', name: '', category: 'building', type: 'apartments', osm_type: 'way', osm_id: 777,
+        address: { road: 'Северная улица', house_number: '324А', city: 'Краснодар', suburb: 'Центральный округ' },
+        display_name: '324А, Северная улица, Краснодар',
+    };
+    return async (url, options) => {
+        if (!url.includes('nominatim')) return photon(url, options);
+        log.push(url);
+        const q = new URL(url).searchParams.get('q').toLowerCase();
+        return { status: 200, text: JSON.stringify(q.includes('северная') && q.includes('324') ? [house] : []) };
+    };
+}
+
+test('a house Photon does not know is asked of Nominatim, only when the search is sent', async () => {
+    const log = [];
+    const http = withNominatim(log);
+    const area = await areaAround(http, KRASNODAR);
+    const typing = await search(http, 'Северная 324а', KRASNODAR, area);
+    assert.equal(typing.exact, false);
+    assert.ok(!log.some((u) => u.includes('nominatim')), 'never while typing');
+    const sent = await search(http, 'ул. Северная, д. 324а', KRASNODAR, area, { precise: true }, );
+    assert.equal(sent.exact, true);
+    assert.equal(sent.places[0].title, 'Северная улица, 324А');
+    assert.equal(sent.places[0].subtitle, 'Центральный округ, Краснодар');
+    assert.equal(sent.places[0].kind, 'Жилой дом');
+    assert.equal(sent.places[0].id, 'W777');
+    assert.equal(sent.scope, 'local');
+    const asked = log.find((u) => u.includes('nominatim'));
+    assert.match(asked, /viewbox=38\.\d+%2C45\.\d+%2C39\.\d+%2C44\.\d+&bounded=1/);
+    // A house Photon has: Nominatim is left alone.
+    log.length = 0;
+    const known = await search(http, 'Красная 120', KRASNODAR, area, { precise: true });
+    assert.equal(known.exact, true);
+    assert.ok(!log.some((u) => u.includes('nominatim')));
+    assert.match(nominatimUrl('Красная 120', null), /^https:\/\/nominatim\.openstreetmap\.org\/search\?q=/);
+    assert.equal(placeFromNominatim({ lat: '1', lon: '2', name: 'Кафе', address: { road: 'Мира', house_number: '5' }, category: 'amenity', type: 'cafe', osm_type: 'node', osm_id: 1 }).subtitle, 'Мира, 5');
+});
+
+test('the app\'s server can name other search and route servers; odd addresses are ignored', () => {
+    useServers({ photon: 'https://ice-rust.store/photon/', valhalla: 'http://plain.example', overpass: ['https://o.example/api', 'javascript:x'] });
+    assert.equal(SERVERS.photon, 'https://ice-rust.store/photon');
+    assert.equal(SERVERS.valhalla, 'https://valhalla1.openstreetmap.de', 'not https: the default stays');
+    assert.deepEqual(SERVERS.overpass, ['https://o.example/api']);
+    assert.match(searchUrl('x', null), /^https:\/\/ice-rust\.store\/photon\/api\?/);
+    useServers({});
+    assert.equal(SERVERS.photon, 'https://photon.komoot.io');
+    assert.equal(SERVERS.overpass.length, 2);
+    const line = Array.from({ length: 1000 }, (_, i) => [i / 1000, 0.123456789]);
+    const thin = thinLine(line, 100);
+    assert.equal(thin.length, 100);
+    assert.deepEqual(thin[0], [0, 0.12346]);
+    assert.deepEqual(thin[99], [0.999, 0.12346]);
 });

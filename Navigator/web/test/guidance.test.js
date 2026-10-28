@@ -41,8 +41,9 @@ test('a drive through town is told turn by turn', () => {
     const texts = said.map((s) => s.text);
     assert.ok(texts.includes('Поверните направо.'), texts.join(' | '));
     // The right turn 80 m after the left comes with it.
-    assert.ok(texts.some((t) => /^Через \d+ метров поверните налево, затем направо\.$/.test(t)), texts.join(' | '));
-    assert.ok(texts.includes('Через 250 метров поверните направо.'), texts.join(' | '));
+    assert.ok(texts.some((t) => /^Через \d+ метров поверните налево на Садовую улицу, затем направо\.$/.test(t)), texts.join(' | '));
+    // The street a turn leads onto is named, as it goes after "на".
+    assert.ok(texts.includes('Через 250 метров поверните направо на улицу Ленина.'), texts.join(' | '));
     assert.ok(texts.some((t) => /на круговом движении второй съезд/.test(t)), texts.join(' | '));
     assert.equal(texts[texts.length - 1], 'Вы приехали.');
     // Nothing is said twice in a row, and every turn is told before it, not after.
@@ -136,6 +137,19 @@ test('walking directions use short distances', () => {
     ], 'foot');
     const { said } = drive(route);
     const texts = said.map((s) => s.text);
-    assert.ok(texts.includes('Через 50 метров поверните направо.'), texts.join(' | '));
+    assert.ok(texts.includes('Через 50 метров поверните направо на Камергерский переулок.'), texts.join(' | '));
     assert.ok(texts.includes('Поверните направо.'), texts.join(' | '));
+});
+
+test('with street names off, only the turns are told', () => {
+    const route = cityRoute();
+    const tracker = new Tracker(route);
+    const voice = new Announcer(route, { streets: false });
+    const said = [];
+    for (let d = 0; d <= route.length; d += 10) {
+        const text = voice.update({ ...tracker.progressAt(d), arrived: false }, 10);
+        if (text) said.push(text);
+    }
+    assert.ok(said.includes('Через 250 метров поверните направо.'), said.join(' | '));
+    assert.ok(!said.some((t) => / на улицу /.test(t)), said.join(' | '));
 });

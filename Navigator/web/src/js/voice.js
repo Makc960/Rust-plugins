@@ -1,8 +1,8 @@
 // What the voice says and when: each manoeuvre is announced far off (on fast roads), near, and as
-// it comes, and a turn close behind another is added with "затем".
+// it comes, with the street it leads onto, and a turn close behind another is added with "затем".
+// Warnings about the road (cameras, bumps, crossings, bends, drivers' reports) come between.
 
-import { cameraAhead } from './roadinfo.js';
-import { capital, forDistance, forTime, inDistance, roundSpoken, stepSaid, thenSaid } from './words.js';
+import { capital, forDistance, forTime, inDistance, roundSpoken, stepSaid, streetAfterNa, thenSaid } from './words.js';
 
 const STAGE = { none: 0, far: 1, near: 2, now: 3 };
 
@@ -22,9 +22,13 @@ export function thresholds(mode, v) {
     return { now: Math.max(30, v * 4.5), near: roundSpoken(clamp(v * 20, 250, 700)), far, then: Math.max(150, v * 7), slowest: 8 };
 }
 
+// Manoeuvres whose announcement names the street they lead onto.
+const ONTO = new Set(['turn', 'ramp', 'exit', 'fork', 'roundabout']);
+
 export class Announcer {
-    constructor(route) {
+    constructor(route, { streets = true } = {}) {
         this.route = route;
+        this.streets = streets;
         this.stages = new Map();
         this.lastStep = -1;
         this.arrivedSaid = false;
@@ -89,6 +93,8 @@ export class Announcer {
             text = `${distance} ${s.type === 'arrive' ? 'место назначения' : 'промежуточная точка'}${side}`;
         } else {
             text = distance ? `${distance} ${stepSaid(s)}` : stepSaid(s);
+            const onto = distance ? this.onto(j) : '';
+            if (onto) text += ` на ${onto}`;
             const k = r.nextSpoken(j);
             const next = r.steps[k];
             if (k !== j && next.at - s.at <= t.then) {
@@ -101,24 +107,97 @@ export class Announcer {
         }
         return `${capital(text.trim())}.`;
     }
+
+    /** The street step [j] leads onto, as said after "на", or '' when there is nothing new to name. */
+    onto(j) {
+        if (!this.streets) return '';
+        const s = this.route.steps[j];
+        if (!s.street || !ONTO.has(s.type) || s.modifier === 'uturn' || s.modifier === 'straight') return '';
+        const before = this.route.steps[j - 1];
+        if (before && before.street === s.street) return '';
+        return streetAfterNa(s.street);
+    }
 }
 
+// What each warning says.
+const SAID = {
+    mobile: 'Водители сообщают: впереди камера.',
+    bump: 'Лежачий полицейский.',
+    rail: 'Впереди железнодорожный переезд.',
+    school: 'Осторожно, рядом школа.',
+    crash: 'Впереди ДТП.',
+    works: 'Впереди ремонт дороги.',
+    police: 'Впереди пост ДПС.',
+    jam: 'Впереди пробка.',
+    danger: 'Внимание, впереди опасность.',
+};
+
+/** How far ahead a warning of [kind] comes at [v] metres a second. */
+export function warnAt(kind, v) {
+    switch (kind) {
+        case 'camera':
+        case 'mobile':
+            return clamp(v * 18, 250, 500);
+        case 'bump':
+            return clamp(v * 7, 70, 180);
+        case 'rail':
+            return clamp(v * 15, 200, 500);
+        case 'school':
+            return clamp(v * 10, 120, 300);
+        case 'curve':
+            return clamp(v * 12, 200, 450);
+        default:
+            return clamp(v * 20, 300, 700);
+    }
+}
+
+// Slower than this (m/s), a warning of the kind is no news: a bump at walking pace, a bend in town.
+const SLOWEST = { bump: 5, curve: 13, school: 6 };
+const FURTHEST = 700;
+
 /**
- * Warnings about the road rather than the route: a speed camera ahead, with its limit, and a word
- * to slow down when going faster than [tolerance] km/h over it.
+ * Warnings about the road rather than the route: a speed camera ahead with its limit, and a word to
+ * slow down when going faster than [tolerance] km/h over it; bumps, railway crossings, schools
+ * (by day), sharp bends, and what other drivers reported. Each is told once; a row of bumps, once.
  */
 export class RoadAlerts {
     constructor() {
         this.told = new Set();
+        this.lastBump = -Infinity;
     }
 
-    update(progress, speed, cameras, limit, tolerance = 10) {
-        if (!cameras || !cameras.length) return null;
+    /**
+     * What to say now about [hazards] ahead of [progress], if anything. [kinds]: the kinds to tell
+     * (all when not given); [hour]: the hour of the day, for schools.
+     */
+    update(progress, speed, hazards, limit, tolerance = 10, { kinds = null, hour = new Date().getHours() } = {}) {
+        if (!hazards || !hazards.length) return null;
         const v = Math.max(speed || 0, 8);
-        const camera = cameraAhead(cameras, progress.along, clamp(v * 18, 250, 500));
-        if (!camera || this.told.has(camera.id)) return null;
-        this.told.add(camera.id);
-        const max = camera.limit ?? limit;
+        const real = speed || 0;
+        for (const h of hazards) {
+            const ahead = h.at - progress.along;
+            if (ahead > FURTHEST) break;
+            if (ahead < -5 || this.told.has(h.id)) continue;
+            const kind = h.kind || 'camera';
+            if (kinds && !kinds.has(kind)) continue;
+            if (ahead > warnAt(kind, v)) continue;
+            if (real < (SLOWEST[kind] || 0)) continue;
+            this.told.add(h.id);
+            if (kind === 'school' && (hour < 7 || hour >= 21)) continue;
+            if (kind === 'bump') {
+                const row = h.at - this.lastBump < 300;
+                this.lastBump = h.at;
+                if (row) continue;
+            }
+            return this.phrase(h, kind, speed, limit, tolerance);
+        }
+        return null;
+    }
+
+    phrase(h, kind, speed, limit, tolerance) {
+        if (kind === 'curve') return `Впереди крутой поворот ${h.side === 'left' ? 'налево' : 'направо'}.`;
+        if (kind !== 'camera') return SAID[kind] || null;
+        const max = h.limit ?? limit;
         let text = 'Впереди камера';
         if (max) text += `, ограничение ${max}`;
         if (max && speed != null && speed * 3.6 > max + tolerance) text += '. Сбавьте скорость';
