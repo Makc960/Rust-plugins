@@ -34,6 +34,7 @@ export function makePally({ token, shopId, api = DEFAULT_API, fetch = globalThis
                 headers: {
                     authorization: `Bearer ${token}`,
                     accept: 'application/json',
+                    'user-agent': 'BaseDefenseShop/1.0',
                     ...(form ? { 'content-type': 'application/x-www-form-urlencoded' } : {}),
                 },
                 body: form ? new URLSearchParams(form).toString() : undefined,
@@ -87,17 +88,20 @@ export function makePally({ token, shopId, api = DEFAULT_API, fetch = globalThis
         },
 
         /**
-         * Whether Pally takes the token: asks about a bill that is not there. 'ok' (Pally answers
-         * "no such bill"), 'bad-token' (401), 'banned' (403) or 'unreachable'.
+         * Whether Pally takes the token: asks about a bill that is not there. {state, detail}: state
+         * is 'ok' (Pally answers "no such bill"), 'bad-token' (401), 'banned' (403) or 'unreachable';
+         * detail is what Pally said, for whoever sets the shop up.
          */
         async checkToken() {
             try {
                 await call('/bill/status?id=basedefense-check', { needSuccess: false });
-                return 'ok';
+                return { state: 'ok', detail: '' };
             } catch (e) {
-                if (e.status === 401) return 'bad-token';
-                if (e.status === 403) return 'banned';
-                return e.status >= 400 && e.status < 500 ? 'ok' : 'unreachable';
+                const said = String(e.message || e);
+                const detail = token ? said.replaceAll(token, '***') : said;
+                if (e.status === 401) return { state: 'bad-token', detail };
+                if (e.status === 403) return { state: 'banned', detail };
+                return { state: e.status >= 400 && e.status < 500 ? 'ok' : 'unreachable', detail };
             }
         },
 

@@ -227,12 +227,16 @@ test("a bill's status counts even where Pally's \"success\" is false for an unpa
 
 test('the token check tells a wrong token from a right one', async () => {
     const answering = (status) => makePally({ token: TOKEN, shopId: 'S1', fetch: async () => ({ ok: status < 300, status, text: async () => '{"success":false}' }) });
-    assert.equal(await answering(422).checkToken(), 'ok', 'no such bill: the token is fine');
-    assert.equal(await answering(401).checkToken(), 'bad-token');
-    assert.equal(await answering(403).checkToken(), 'banned');
-    assert.equal(await answering(502).checkToken(), 'unreachable');
+    assert.equal((await answering(422).checkToken()).state, 'ok', 'no such bill: the token is fine');
+    assert.equal((await answering(401).checkToken()).state, 'bad-token');
+    assert.equal((await answering(403).checkToken()).state, 'banned');
+    const down = await answering(502).checkToken();
+    assert.equal(down.state, 'unreachable');
+    assert.match(down.detail, /502/, 'what Pally said is shown');
     const offline = makePally({ token: TOKEN, shopId: 'S1', fetch: async () => { throw new TypeError('fetch failed'); } });
-    assert.equal(await offline.checkToken(), 'unreachable');
+    assert.deepEqual(await offline.checkToken(), { state: 'unreachable', detail: 'fetch failed' });
+    const echoing = makePally({ token: 'secret-token', shopId: 'S1', fetch: async (url, init) => ({ ok: false, status: 401, text: async () => init.headers.authorization }) });
+    assert.doesNotMatch((await echoing.checkToken()).detail, /secret-token/, 'the token never shows');
     assert.deepEqual(readEnv('# note\nPALLY_TOKEN="a=b"\n\nPALLY_SHOP_ID=XY\n# PORT=1\n'), { PALLY_TOKEN: 'a=b', PALLY_SHOP_ID: 'XY' });
 });
 

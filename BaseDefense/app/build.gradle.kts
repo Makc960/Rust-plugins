@@ -22,10 +22,11 @@ if (store == "rustore") require(rustoreAppId.isNotEmpty()) { "A RuStore build ne
 // RuStore builds only. Empty, the default, shows no adverts; demo-rewarded-yandex plays Yandex's test videos.
 val rewardedAdUnit = if (store == "rustore") (findProperty("rewardedAdUnit") as String?).orEmpty().trim() else ""
 
-// The game's own shop server (BaseDefense/server), like https://shop.example.ru: set, the game sells
+// The game's own shop server (BaseDefense/server), like https://shop.example.ru or a path of a site,
+// like https://example.ru/basedefense: set, the game sells
 // through it, paid on Pally's page, instead of through RuStore Pay. Never in the Google Play bundle.
 val shopServer = if (store == "play") "" else (findProperty("shopServer") as String?).orEmpty().trim().trimEnd('/')
-require(shopServer.isEmpty() || shopServer.matches(Regex("https://[A-Za-z0-9.-]+(:\\d+)?"))) { "shopServer must be https://host, not $shopServer" }
+require(shopServer.isEmpty() || shopServer.matches(Regex("https://[A-Za-z0-9.-]+(:\\d+)?(/[A-Za-z0-9_-]+)*"))) { "shopServer must be https://host or https://host/path, not $shopServer" }
 
 // The page where players can support the author; empty hides the button in the settings.
 val supportUrl = "https://pay.cloudtips.ru/p/5b9bb7e3"

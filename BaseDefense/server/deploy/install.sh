@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Installs or updates the Base Defense shop server on Ubuntu or Debian:
 #
-#   sudo bash install.sh shop.example.ru
+#   sudo bash install.sh shop.example.ru            the shop is the whole site
+#   sudo bash install.sh example.ru/basedefense     the shop lives under a path of a site
+#   sudo bash install.sh --pally                    asks for the Pally shop ID and token again
 #
-# Without a domain it uses <ip>.sslip.io, a name that always points at this server's address.
+# Without a domain it uses <ip>.sslip.io, a name that always points at this server's address. When
+# the domain is already a site of the nginx on this machine, the shop joins it under /basedefense.
 # Asks for the Pally shop ID and API token once and keeps them in /etc/basedefense-shop/shop.env.
 # Run it again to update the server: settings and purchases are kept.
 set -euo pipefail
@@ -46,21 +49,35 @@ set_var() {
 	rm -f "$tmp"
 }
 
-DOMAIN=${1:-}
-DOMAIN=${DOMAIN#https://}
-DOMAIN=${DOMAIN%%/*}
+ADDRESS=
+ASK_PALLY=0
+for a in "$@"; do
+	case "$a" in
+	--pally) ASK_PALLY=1 ;;
+	*) ADDRESS=$a ;;
+	esac
+done
+# The shop's address: a domain, maybe with a path, as typed or as set up before.
+[ -n "$ADDRESS" ] || ADDRESS=$(get_var PUBLIC_URL)
+ADDRESS=${ADDRESS#https://}
+ADDRESS=${ADDRESS#http://}
+ADDRESS=${ADDRESS%/}
+DOMAIN=${ADDRESS%%/*}
+PREFIX=
+[ "$ADDRESS" = "$DOMAIN" ] || PREFIX="/${ADDRESS#*/}"
+[ "$DOMAIN" = shop.example.ru ] && DOMAIN= && PREFIX=
+MY_IP=$(curl -4 -fsS --max-time 10 https://api.ipify.org || true)
 if [ -z "$DOMAIN" ]; then
-	DOMAIN=$(get_var PUBLIC_URL | sed -n 's#^https://\([^/]*\).*#\1#p')
-	[ "$DOMAIN" = shop.example.ru ] && DOMAIN=
-fi
-if [ -z "$DOMAIN" ]; then
-	IP=$(curl -4 -fsS --max-time 10 https://api.ipify.org || true)
-	[ -n "$IP" ] || die "Не удалось узнать IP сервера. Укажите домен: sudo bash $0 shop.ваш-домен.ru"
-	DOMAIN="${IP//./-}.sslip.io"
+	[ -n "$MY_IP" ] || die "Не удалось узнать IP сервера. Укажите домен: sudo bash $0 shop.ваш-домен.ru"
+	DOMAIN="${MY_IP//./-}.sslip.io"
 fi
 case "$DOMAIN" in *[!a-zA-Z0-9.-]* | "") die "Странный домен: $DOMAIN" ;; esac
-set_var PUBLIC_URL "https://$DOMAIN"
+[[ "$PREFIX" =~ ^(/[A-Za-z0-9_-]+)?$ ]] || die "Странный путь: $PREFIX (нужно вроде /basedefense)"
 
+if [ "$ASK_PALLY" = 1 ]; then
+	set_var PALLY_SHOP_ID ""
+	set_var PALLY_TOKEN ""
+fi
 if [ -t 0 ]; then
 	if [ -z "$(get_var PALLY_SHOP_ID)" ]; then
 		read -rp "ID магазина (shop_id) из кабинета Pally: " v
@@ -74,6 +91,7 @@ if [ -t 0 ]; then
 fi
 CONFIGURED=1
 TOKEN_BAD=0
+CHECK=
 [ -n "$(get_var PALLY_SHOP_ID)" ] && [ -n "$(get_var PALLY_TOKEN)" ] || CONFIGURED=0
 
 # ---- Node.js ----
@@ -111,7 +129,8 @@ if [ "$CONFIGURED" = 1 ]; then
 	curl -fsS --max-time 2 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 ||
 		die "Сервер не запустился. Журнал: journalctl -u basedefense-shop -n 50"
 	echo "работает на 127.0.0.1:$PORT"
-	"$NODE" "$APP/src/check.mjs" "$ENV_FILE" || TOKEN_BAD=1
+	CHECK=$("$NODE" "$APP/src/check.mjs" "$ENV_FILE") || TOKEN_BAD=1
+	echo "$CHECK"
 fi
 
 # A copy of the purchases every day, the last 30 kept.
@@ -135,29 +154,96 @@ fi
 BUSY=$(ss -ltnpH '( sport = :80 or sport = :443 )' 2>/dev/null | grep -v '"caddy"' || true)
 WEB=caddy
 if [ -n "$BUSY" ] && ! printf '%s\n' "$BUSY" | grep -qv '"nginx"'; then
-	# nginx already serves this machine's sites: the shop becomes one more site of it, with its
-	# certificate from Let's Encrypt through certbot (which renews it by itself).
+	# nginx already serves this machine's sites. A site of it on the shop's domain gets the shop
+	# under a path; otherwise the shop becomes one more site, its certificate from Let's Encrypt
+	# through certbot (which renews it by itself).
 	WEB=nginx
 	echo "На сервере уже работает nginx: подключаю магазин через него."
-	NC=/etc/nginx/conf.d/basedefense-shop.conf
-	if [ ! -f "$NC" ]; then
+	install -d -m 700 /var/backups/basedefense-shop
+	DOMAIN_RE=$(printf '%s' "$DOMAIN" | sed 's/[.]/\\./g')
+	NAMED="^[[:space:]]*server_name[[:space:]]([^;]*[[:space:]])?$DOMAIN_RE([[:space:];]|\$)"
+	# The files nginx loads, and which of them name the domain: the site's own, or the shop's.
+	LOADED=$(nginx -T 2>/dev/null | sed -n 's/^# configuration file \(.*\):$/\1/p' | sort -u)
+	SITE_FILES=
+	OWN_FILE=
+	for f in $LOADED; do
+		grep -qE "$NAMED" "$f" 2>/dev/null || continue
+		case "$f" in */basedefense-shop*) OWN_FILE=$f ;; *) SITE_FILES="$SITE_FILES $f" ;; esac
+	done
+	SITE_FILES=${SITE_FILES# }
+	location_block() {
+		cat <<LOC
+location ^~ $1/ {
+    proxy_pass http://127.0.0.1:$PORT/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    client_max_body_size 16k;
+}
+LOC
+	}
+	EDITED=
+	NEED_CERT=0
+	if [ -n "$SITE_FILES" ]; then
+		# The domain is a site already: the shop goes under a path of it, the site untouched.
+		[ -n "$PREFIX" ] || PREFIX=/basedefense
+		echo "$DOMAIN уже есть в nginx ($SITE_FILES): магазин будет на https://$DOMAIN$PREFIX"
+		SNIPPET=/etc/nginx/snippets/basedefense-shop.conf
+		install -d -m 755 /etc/nginx/snippets
+		{
+			echo "# The Base Defense shop under $PREFIX, put here by install.sh and included by the $DOMAIN site."
+			location_block "$PREFIX"
+		} >"$SNIPPET"
+		for f in $SITE_FILES; do
+			grep -qF "include $SNIPPET;" "$f" && continue
+			cp -p "$f" "/var/backups/basedefense-shop/nginx-$(basename "$f").$(date +%s).bak"
+			EDITED="$EDITED $f"
+			tmp=$(mktemp)
+			D="$DOMAIN_RE" INC="include $SNIPPET;" awk '
+				{ print }
+				$0 ~ ("^[ \t]*server_name[ \t]([^;]*[ \t])?" ENVIRON["D"] "([ \t;]|$)") {
+					match($0, /^[ \t]*/)
+					print substr($0, 1, RLENGTH) ENVIRON["INC"]
+				}' "$f" >"$tmp"
+			cat "$tmp" >"$f"
+			rm -f "$tmp"
+		done
+		# Its certificate is the site's; a site without one gets one.
+		grep -qE 'listen[^;]*443|ssl_certificate' $SITE_FILES || NEED_CERT=1
+	elif [ -z "$OWN_FILE" ]; then
+		OWN_FILE=/etc/nginx/conf.d/basedefense-shop-$DOMAIN.conf
 		{
 			echo "# The Base Defense shop, put here by install.sh; certbot adds HTTPS below."
-			sed -e "s/shop\.example\.ru/$DOMAIN/" -e '/^#/d' "$HERE/nginx.conf"
-		} >"$NC"
-		if ! nginx -t >/dev/null 2>&1; then
-			rm -f "$NC"
-			nginx -t || true
-			die "nginx не принял настройки магазина (см. выше)."
-		fi
-		systemctl reload nginx
+			echo "server {"
+			echo "    listen 80;"
+			echo "    server_name $DOMAIN;"
+			location_block "$PREFIX" | sed 's/^/    /'
+			echo "}"
+		} >"$OWN_FILE"
+		EDITED=$OWN_FILE
 	fi
-	curl -fsS --max-time 5 -H "Host: $DOMAIN" http://127.0.0.1/health >/dev/null 2>&1 ||
-		echo "nginx не отдаёт магазин по http://$DOMAIN: проверьте, что он читает /etc/nginx/conf.d/*.conf."
-	if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-		apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
-		certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect ||
-			echo "certbot не получил сертификат (см. выше). Если дело в лимитах Let's Encrypt для sslip.io, возьмите свой домен: sudo bash $0 shop.ваш-домен.ru"
+	if ! nginx -t >/dev/null 2>&1; then
+		nginx -t || true
+		for f in $EDITED; do
+			b=$(ls -1t /var/backups/basedefense-shop/nginx-"$(basename "$f")".*.bak 2>/dev/null | head -n 1 || true)
+			if [ -n "$b" ]; then cat "$b" >"$f"; else rm -f "$f"; fi
+		done
+		die "nginx не принял настройки магазина (см. выше), всё возвращено как было."
+	fi
+	systemctl reload nginx
+	curl -fsS --max-time 5 -H "Host: $DOMAIN" "http://127.0.0.1$PREFIX/health" >/dev/null 2>&1 ||
+		curl -fsSk --max-time 5 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN$PREFIX/health" >/dev/null 2>&1 ||
+		echo "nginx пока не отдаёт магазин по адресу $DOMAIN$PREFIX/health."
+	DNS_IP=$(getent ahostsv4 "$DOMAIN" | awk 'NR == 1 { print $1 }' || true)
+	if [ -n "$MY_IP" ] && [ "$DNS_IP" != "$MY_IP" ]; then
+		echo "Внимание: $DOMAIN указывает на ${DNS_IP:-ничто}, а этот сервер — $MY_IP. В DNS домена нужна A-запись на $MY_IP."
+	fi
+	if [ -z "$SITE_FILES" ] || [ "$NEED_CERT" = 1 ]; then
+		if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ] || [ "$NEED_CERT" = 1 ]; then
+			apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
+			certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect ||
+				echo "certbot не получил сертификат (см. выше). Проверьте, что домен смотрит на этот сервер."
+		fi
 	fi
 elif [ -n "$BUSY" ]; then
 	WEB=manual
@@ -165,6 +251,8 @@ elif [ -n "$BUSY" ]; then
 	echo "$BUSY"
 	echo "Подключите магазин через него, пример для nginx: $HERE/nginx.conf"
 else
+	[ -z "$PREFIX" ] || die "Путь в адресе ($PREFIX) нужен только для сайта на nginx; укажите просто домен."
+
 	if ! command -v caddy >/dev/null; then
 		if ! apt-get install -y -qq caddy >/dev/null 2>&1; then
 			curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key |
@@ -187,13 +275,19 @@ else
 	systemctl reload-or-restart caddy
 fi
 
+BASE="https://$DOMAIN$PREFIX"
+if [ "$(get_var PUBLIC_URL)" != "$BASE" ]; then
+	set_var PUBLIC_URL "$BASE"
+	[ "$CONFIGURED" = 1 ] && systemctl restart basedefense-shop
+fi
+
 # ---- Done ----
 
 OK=0
 if [ "$CONFIGURED" = 1 ] && [ "$WEB" != manual ]; then
 	echo "Жду сертификат..."
 	for _ in $(seq 1 30); do
-		curl -fsS --max-time 5 "https://$DOMAIN/health" >/dev/null 2>&1 && OK=1 && break
+		curl -fsS --max-time 5 "$BASE/health" >/dev/null 2>&1 && OK=1 && break
 		sleep 2
 	done
 fi
@@ -203,24 +297,24 @@ if [ "$CONFIGURED" = 0 ]; then
 	echo "Не заданы PALLY_SHOP_ID и PALLY_TOKEN. Впишите их в $ENV_FILE и выполните:"
 	echo "  systemctl restart basedefense-shop"
 elif [ "$TOKEN_BAD" = 1 ]; then
-	echo "Pally не принял настройки (см. выше). Исправьте $ENV_FILE и выполните:"
-	echo "  systemctl restart basedefense-shop && basedefense-shop check"
+	echo "$CHECK"
+	echo "Ввести ID магазина и токен заново: sudo bash $0 --pally"
 elif [ "$OK" = 1 ]; then
-	echo "Магазин отвечает: https://$DOMAIN/health"
+	echo "Магазин отвечает: $BASE/health"
 elif [ "$WEB" = nginx ]; then
-	echo "https://$DOMAIN пока не отвечает. Проверьте вывод certbot выше и журнал: journalctl -u nginx -n 50"
+	echo "$BASE пока не отвечает. Проверьте вывод certbot выше и журнал: journalctl -u nginx -n 50"
 elif [ "$WEB" = caddy ]; then
-	echo "https://$DOMAIN пока не отвечает. Проверьте, что домен смотрит на этот сервер и порты 80/443 открыты"
+	echo "$BASE пока не отвечает. Проверьте, что домен смотрит на этот сервер и порты 80/443 открыты"
 	echo "у хостинга. Журнал Caddy: journalctl -u caddy -n 50"
 fi
 cat <<EOF
 
 В кабинете Pally, в настройках магазина, укажите:
-  Result URL:   https://$DOMAIN/pally/result   (метод POST)
-  Success URL:  https://$DOMAIN/return?result=success
-  Fail URL:     https://$DOMAIN/return?result=fail
+  Result URL:   $BASE/pally/result   (метод POST)
+  Success URL:  $BASE/return?result=success
+  Fail URL:     $BASE/return?result=fail
 
-Адрес магазина для сборки игры (SHOP_SERVER): https://$DOMAIN
+Адрес магазина для сборки игры (SHOP_SERVER): $BASE
 
 Покупки игроков: $DATA/db.json (копия каждый день в /var/backups/basedefense-shop)
 Журнал сервера:  journalctl -u basedefense-shop -f

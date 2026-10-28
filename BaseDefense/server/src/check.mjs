@@ -19,7 +19,7 @@ export function readEnv(text) {
 const MESSAGES = {
     ok: 'Pally принял токен.',
     'bad-token': 'Pally не принял токен (401): проверьте PALLY_TOKEN в кабинете Pally, раздел API.',
-    banned: 'Pally ответил 403: магазин или аккаунт заблокирован, напишите в поддержку Pally.',
+    banned: 'Pally ответил 403: доступ запрещён. Так бывает, когда токен от другого кабинета, магазин ещё не одобрен или заблокирован. Проверьте токен, если он верный — спросите поддержку Pally.',
     unreachable: 'Pally не отвечает: проверьте, что с сервера открывается https://pal24.pro.',
 };
 
@@ -30,7 +30,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         process.exit(1);
     }
     const pally = makePally({ token: env.PALLY_TOKEN, shopId: env.PALLY_SHOP_ID, api: env.PALLY_API || DEFAULT_API });
-    const state = await pally.checkToken();
+    const { state, detail } = await pally.checkToken();
     console.log(MESSAGES[state]);
+    if (state !== 'ok' && detail) console.log(`Ответ Pally: ${detail}`);
     process.exit(state === 'ok' ? 0 : 1);
 }

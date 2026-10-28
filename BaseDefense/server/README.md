@@ -34,6 +34,14 @@ git clone --depth 1 -b ccr-bdac1a50-wqgotp https://github.com/Makc960/Rust-plugi
 sudo bash Rust-plugins/BaseDefense/server/deploy/install.sh shop.ваш-сайт.ru
 ```
 
+Если домен — это уже работающий сайт на nginx этого сервера (например `ice-rust.store`), скрипт не
+трогает сам сайт, а добавляет магазин по пути: `https://ice-rust.store/basedefense`. В конфигурацию сайта
+вписывается одна строка `include /etc/nginx/snippets/basedefense-shop.conf;`, копия прежнего файла
+сохраняется в `/var/backups/basedefense-shop`. Если nginx не примет новые настройки, всё вернётся как было.
+Свой путь можно задать так: `install.sh ice-rust.store/shop`.
+
+Ввести ID магазина и токен Pally заново: `sudo bash install.sh --pally`.
+
 Скрипт:
 
 1. ставит Node.js 22 (если нет Node 20 или новее) и Caddy, который сам получает и продлевает сертификат;
