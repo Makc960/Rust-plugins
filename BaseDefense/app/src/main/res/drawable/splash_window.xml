@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   What Android 8 to 11 show while the game starts, laid out like the launch screen
-  of Android 12: the emblem on its disc in the middle, the title at the bottom.
+  of Android 12: the soldier's emblem on its disc in the middle, the title at the bottom.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/background" />
@@ -16,7 +16,7 @@
     <item
         android:width="240dp"
         android:height="240dp"
-        android:drawable="@drawable/ic_launcher_foreground"
+        android:drawable="@drawable/splash_emblem"
         android:gravity="center" />
     <item
         android:width="200dp"
