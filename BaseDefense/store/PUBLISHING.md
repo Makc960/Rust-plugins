@@ -74,9 +74,9 @@ keytool -genkeypair -v -keystore upload.jks -keyalg RSA -keysize 2048 -validity 
    «Оплата сейчас недоступна» вместо окна с ошибкой.
 
    **Другой путь — свой сервер магазина с оплатой через Pally** (`BaseDefense/server`, инструкция в
-   `server/README.md`). Сервер ставится на VPS одной командой. Потом в GitHub → Settings → Secrets and
-   variables → Actions → Variables нужно завести переменную `BASEDEFENSE_SHOP_SERVER` с адресом сервера
-   (`https://…`). После этого версии для RuStore и GitHub продают через Pally: игрок платит картой или
+   `server/README.md`). Сервер ставится на VPS одной командой и стоит на `https://ice-rust.store/basedefense`;
+   другой адрес задаётся в GitHub → Settings → Secrets and variables → Actions → Variables переменной
+   `BASEDEFENSE_SHOP_SERVER`. Версии для RuStore и GitHub продают через Pally: игрок платит картой или
    через СБП на странице Pally, а покупки хранятся на сервере под кодом покупок, который виден на экране VIP.
    VIP на месяц здесь — это 30 дней без автопродления. Товары в RuStore Консоли при этом не нужны.
 3. **Товары**: в разделе приложения о платежах создать их с такими ID (ID должны совпадать точно):

@@ -284,7 +284,7 @@ fi
 # ---- Done ----
 
 OK=0
-if [ "$CONFIGURED" = 1 ] && [ "$WEB" != manual ]; then
+if [ "$WEB" != manual ]; then
 	echo "Жду сертификат..."
 	for _ in $(seq 1 30); do
 		curl -fsS --max-time 5 "$BASE/health" >/dev/null 2>&1 && OK=1 && break
@@ -294,12 +294,14 @@ fi
 
 say "Готово"
 if [ "$CONFIGURED" = 0 ]; then
-	echo "Не заданы PALLY_SHOP_ID и PALLY_TOKEN. Впишите их в $ENV_FILE и выполните:"
-	echo "  systemctl restart basedefense-shop"
+	echo "Не заданы ID магазина и токен Pally. Задать их: sudo bash $0 --pally"
 elif [ "$TOKEN_BAD" = 1 ]; then
 	echo "$CHECK"
 	echo "Ввести ID магазина и токен заново: sudo bash $0 --pally"
-elif [ "$OK" = 1 ]; then
+else
+	echo "$CHECK"
+fi
+if [ "$OK" = 1 ]; then
 	echo "Магазин отвечает: $BASE/health"
 elif [ "$WEB" = nginx ]; then
 	echo "$BASE пока не отвечает. Проверьте вывод certbot выше и журнал: journalctl -u nginx -n 50"

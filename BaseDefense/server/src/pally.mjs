@@ -89,8 +89,9 @@ export function makePally({ token, shopId, api = DEFAULT_API, fetch = globalThis
 
         /**
          * Whether Pally takes the token: asks about a bill that is not there. {state, detail}: state
-         * is 'ok' (Pally answers "no such bill"), 'bad-token' (401), 'banned' (403) or 'unreachable';
-         * detail is what Pally said, for whoever sets the shop up.
+         * is 'ok' (Pally answers "no such bill", which it does with a 403 and bill_not_found),
+         * 'bad-token' (401), 'banned' (another 403) or 'unreachable'; detail is what Pally said, for
+         * whoever sets the shop up.
          */
         async checkToken() {
             try {
@@ -100,6 +101,7 @@ export function makePally({ token, shopId, api = DEFAULT_API, fetch = globalThis
                 const said = String(e.message || e);
                 const detail = token ? said.replaceAll(token, '***') : said;
                 if (e.status === 401) return { state: 'bad-token', detail };
+                if (/bill_not_found/.test(said)) return { state: 'ok', detail: '' };
                 if (e.status === 403) return { state: 'banned', detail };
                 return { state: e.status >= 400 && e.status < 500 ? 'ok' : 'unreachable', detail };
             }

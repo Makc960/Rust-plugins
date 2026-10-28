@@ -86,8 +86,8 @@ sudo bash Rust-plugins/BaseDefense/server/deploy/install.sh shop.ваш-сайт
 ```
 
 В GitHub Actions адрес берётся из переменной репозитория `BASEDEFENSE_SHOP_SERVER`
-(Settings → Secrets and variables → Actions → Variables). Это не секрет, а просто адрес. Пока
-переменная не задана, игра покупает как раньше.
+(Settings → Secrets and variables → Actions → Variables). Это не секрет, а просто адрес. Без этой
+переменной сборки идут с магазином на `https://ice-rust.store/basedefense`.
 
 ## Обслуживание
 

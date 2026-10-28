@@ -230,6 +230,9 @@ test('the token check tells a wrong token from a right one', async () => {
     assert.equal((await answering(422).checkToken()).state, 'ok', 'no such bill: the token is fine');
     assert.equal((await answering(401).checkToken()).state, 'bad-token');
     assert.equal((await answering(403).checkToken()).state, 'banned');
+    // What Pally really answers for a bill that is not there, with a good token.
+    const notFound = makePally({ token: TOKEN, shopId: 'S1', fetch: async () => ({ ok: false, status: 403, text: async () => '{"success":false,"message":"api:error.bill_not_found"}' }) });
+    assert.deepEqual(await notFound.checkToken(), { state: 'ok', detail: '' });
     const down = await answering(502).checkToken();
     assert.equal(down.state, 'unreachable');
     assert.match(down.detail, /502/, 'what Pally said is shown');
