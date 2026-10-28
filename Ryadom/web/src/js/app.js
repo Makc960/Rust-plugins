@@ -477,6 +477,11 @@ ${platform.isNative && !bg.unrestricted ? `<button data-action="battery">${icon(
 <p class="label">Карта</p>
 <div class="segmented">${[['hybrid', 'Гибрид'], ['satellite', 'Спутник'], ['scheme', 'Схема']].map(([k, t]) => `<button class="${settings.style === k ? 'on' : ''}" data-action="style" data-style="${k}">${t}</button>`).join('')}</div>
 </section>
+${platform.isNative ? `<section class="panel">
+<p class="label">Навигатор</p>
+<button data-action="toNavigator">${icon('route')}Показать друзей в «Навигаторе»</button>
+<p class="small">Друзья появятся на карте «Навигатора». Он сможет только смотреть, где они, — ничего не изменит.</p>
+</section>` : ''}
 <section class="panel">
 <p class="label">Код для друзей: <b>${escape(me.code)}</b></p>
 <button data-action="newCode">${icon('refresh')}Новый код</button>
@@ -670,6 +675,16 @@ const actions = {
     },
     askNotifications: () => platform.requestNotifications(),
     battery: () => platform.openBatterySettings(),
+    async toNavigator() {
+        let token;
+        try {
+            token = (await api.viewer()).token;
+        } catch (e) {
+            toast('Нет связи с сервером');
+            return;
+        }
+        if (!platform.showInNavigator(info.server, token, state.me?.name)) toast('Поставьте «Навигатор», чтобы видеть друзей в нём');
+    },
     async newCode() {
         if (!(await confirmDialog('Сделать новый код? Старая ссылка и старый код перестанут работать.', 'Новый код'))) return;
         await act(async () => {

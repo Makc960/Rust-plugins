@@ -217,9 +217,22 @@ export function openUrl(url) {
 }
 
 /** Opens a place in the phone's maps or navigator app, for a route there. */
+/** A route to a friend: in «Навигатор» when the phone has it, in any navigator otherwise. */
 export function openPlace(lat, lon, name) {
-    if (bridge) bridge.openUrl(`geo:${lat},${lon}?q=${lat},${lon}(${encodeURIComponent(name)})`);
+    const geo = `geo:${lat},${lon}?q=${lat},${lon}(${encodeURIComponent(name)})`;
+    if (bridge && bridge.openRoute) bridge.openRoute(geo);
+    else if (bridge) bridge.openUrl(geo);
     else window.open(`https://yandex.ru/maps/?pt=${lon},${lat}&z=17&l=map`, '_blank');
+}
+
+/**
+ * Hands «Навигатор» a key that only reads friends' places, so it shows them on its map.
+ * False when the phone has no «Навигатор» (its page opens instead).
+ */
+export function showInNavigator(server, token, name) {
+    if (!bridge || !bridge.openNavigator) return false;
+    const q = new URLSearchParams({ server, token, name: name || '' });
+    return bridge.openNavigator(`shturman://friends?${q}`);
 }
 
 export function vibrate(ms) {

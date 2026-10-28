@@ -2,6 +2,7 @@ package com.makc.shturman
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -9,6 +10,8 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -16,25 +19,30 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.Settings
+import android.speech.RecognizerIntent
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
 
 /**
- * What the page can ask of the phone, as window.ShturmanNative: position, voice, network, keeping
- * the screen on, sharing. Calls come on WebView's own thread; answers go back through
- * window.__shturman (see web/src/js/platform.js).
+ * What the page can ask of the phone, as window.ShturmanNative: position, voice both ways, network,
+ * the map kept for offline, keeping the screen on and bright, sharing. Calls come on WebView's own
+ * thread; answers go back through window.__shturman (see web/src/js/platform.js).
  */
-class Bridge(private val activity: MainActivity, private val web: WebView) {
+class Bridge(private val activity: MainActivity, private val web: WebView, private val tiles: TileCache) {
     private val locations = activity.getSystemService(LocationManager::class.java)
     private val voice = Voice(activity) { status -> activity.js("voiceStatus(${JSONObject.quote(status)})") }
     private val network = Executors.newFixedThreadPool(3)
+
+    /** "nav": a position every second; "browse": now and then, to spare the battery. */
+    private var locationMode = "browse"
 
     /** The page wants positions; they stop while the app is out of sight, unless driving. */
     private var wanted = false
@@ -50,9 +58,16 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         if (granted.values.any { it }) listen() else activity.js("locationStatus('denied')")
     }
 
-    // Every method spelled out: before Android 11 the system calls them all and has no defaults.
     private val notifications = activity.registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
     private var askedNotifications = false
+
+    // The phone's own listening window, for a destination said aloud.
+    private val speech = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val text = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        activity.js("heard(${if (text.isNullOrBlank()) "null" else JSONObject.quote(text)})")
+    }
+
+    // Every method spelled out: before Android 11 the system calls them all and has no defaults.
 
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) = onLocation(location)
@@ -127,11 +142,13 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                 .filter { System.currentTimeMillis() - it.time < 120_000 }
                 .minByOrNull { it.accuracy }
                 ?.let { onLocation(it) }
+            // Driving: every second. Looking at the map: every few seconds, and only after a move.
+            val driving = locationMode == "nav"
             if (LocationManager.GPS_PROVIDER in locations.allProviders) {
-                locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, listener, Looper.getMainLooper())
+                locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, if (driving) 1000L else 3000L, if (driving) 0f else 4f, listener, Looper.getMainLooper())
             }
             if (LocationManager.NETWORK_PROVIDER in locations.allProviders) {
-                locations.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 3000L, 0f, listener, Looper.getMainLooper())
+                locations.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, if (driving) 3000L else 10_000L, 0f, listener, Looper.getMainLooper())
             }
             listening = true
         } catch (e: SecurityException) {
@@ -160,6 +177,17 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         activity.js("location($fix)")
     }
 
+    /** How often to ask for positions: "nav" while driving, "browse" otherwise. */
+    @JavascriptInterface
+    fun setLocationMode(mode: String) = activity.runOnUiThread {
+        if (mode == locationMode) return@runOnUiThread
+        locationMode = mode
+        if (listening) {
+            stopListening()
+            listen()
+        }
+    }
+
     /** The activity coming into sight or leaving it. */
     fun onVisible(shown: Boolean) {
         visible = shown
@@ -179,11 +207,37 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     @JavascriptInterface
     fun stopSpeaking() = voice.stop()
 
+    /** Whether the phone can listen: some phones have no speech recognition at all. */
+    @JavascriptInterface
+    fun canListen(): Boolean = try {
+        activity.packageManager.queryIntentActivities(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH), 0).isNotEmpty()
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Opens the phone's listening window; what was said comes back through heard(). */
+    @JavascriptInterface
+    fun listen(prompt: String) = activity.runOnUiThread {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        try {
+            speech.launch(intent)
+        } catch (e: ActivityNotFoundException) {
+            activity.js("heard(null)")
+        }
+    }
+
     // ---- Network ----
 
-    /** Fetches [url] off the main thread and hands the page {status, text}, or status -1 on no answer; [type] is the body's. */
+    /**
+     * Fetches [url] off the main thread and hands the page {status, text}, or status -1 on no answer.
+     * [headers] is a JSON object of request headers (Content-Type for the body among them).
+     */
     @JavascriptInterface
-    fun http(id: Int, method: String, url: String, body: String, timeout: Int, type: String) {
+    fun http(id: Int, method: String, url: String, body: String, timeout: Int, headers: String) {
         network.execute {
             var status = -1
             var text = ""
@@ -194,9 +248,20 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
                 c.readTimeout = timeout
                 c.setRequestProperty("User-Agent", USER_AGENT)
                 c.setRequestProperty("Accept-Language", "ru")
+                var type = "application/json"
+                try {
+                    val json = JSONObject(headers.ifEmpty { "{}" })
+                    for (key in json.keys()) {
+                        if (key.equals("Content-Type", ignoreCase = true)) type = json.getString(key)
+                        else c.setRequestProperty(key, json.getString(key))
+                    }
+                } catch (e: Exception) {
+                    // An old page passing just the body's type.
+                    if (headers.contains('/')) type = headers
+                }
                 if (body.isNotEmpty()) {
                     c.doOutput = true
-                    c.setRequestProperty("Content-Type", type.ifEmpty { "application/json" })
+                    c.setRequestProperty("Content-Type", type)
                     c.outputStream.use { it.write(body.toByteArray()) }
                 }
                 status = c.responseCode
@@ -240,6 +305,54 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
     @JavascriptInterface
     fun setTheme(theme: String) = activity.runOnUiThread { activity.setDark(theme == "night") }
 
+    /** The windscreen view: the screen at full brightness, or back to what the phone chooses. */
+    @JavascriptInterface
+    fun hud(on: Boolean) = activity.runOnUiThread { activity.setBright(on) }
+
+    /** {online, metered}: a network, and whether it is paid by the megabyte. */
+    @JavascriptInterface
+    fun network(): String {
+        val cm = activity.getSystemService(ConnectivityManager::class.java)
+            ?: return JSONObject().put("online", true).put("metered", true).toString()
+        val active = cm.activeNetwork
+        val caps = if (active != null) cm.getNetworkCapabilities(active) else null
+        val online = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        return JSONObject().put("online", online).put("metered", cm.isActiveNetworkMetered).toString()
+    }
+
+    // ---- The map kept on the phone ----
+
+    @JavascriptInterface
+    fun prefetch(tag: String, urls: String, keep: Boolean) {
+        val list = try {
+            val json = JSONArray(urls)
+            List(json.length()) { json.getString(it) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        if (list.isNotEmpty()) tiles.prefetch(tag, list, keep)
+    }
+
+    @JavascriptInterface
+    fun cancelPrefetch(tag: String) = tiles.cancel(tag)
+
+    @JavascriptInterface
+    fun storage(): String {
+        val (cache, offline) = tiles.sizes()
+        return JSONObject().put("cache", cache).put("offline", offline).toString()
+    }
+
+    @JavascriptInterface
+    fun clearMaps(which: String) = tiles.clear(which)
+
+    /** «Рядом», if it is on the phone; the page to get it otherwise. */
+    @JavascriptInterface
+    fun openRyadom() = activity.runOnUiThread {
+        val launch = activity.packageManager.getLaunchIntentForPackage(RYADOM)
+        if (launch != null) activity.startActivity(launch)
+        else activity.openExternal(Uri.parse("https://github.com/Makc960/Rust-plugins/releases/tag/ryadom"))
+    }
+
     @JavascriptInterface
     fun share(text: String) = activity.runOnUiThread {
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
@@ -277,7 +390,8 @@ class Bridge(private val activity: MainActivity, private val web: WebView) {
         network.shutdownNow()
     }
 
-    private companion object {
+    companion object {
         val USER_AGENT = "Navigator-ru/${BuildConfig.VERSION_NAME} (Android navigator; +https://github.com/Makc960/Rust-plugins)"
+        private const val RYADOM = "com.makc.ryadom"
     }
 }

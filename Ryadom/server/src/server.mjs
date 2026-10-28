@@ -4,6 +4,8 @@
 //   GET    /api/me                                     -> me
 //   PATCH  /api/me                {name?, color?, sharing?}
 //   POST   /api/me/code                                -> me with a new friend code
+//   POST   /api/me/viewer                              -> {token}: a key that only reads friends' places
+//   DELETE /api/me/viewer                              takes that key back
 //   DELETE /api/me                                     deletes the account for good
 //   GET    /api/friends                                -> {me, friends, incoming, outgoing, now}
 //   POST   /api/friends           {code}               -> {result: requested|friends|already, name}
@@ -15,7 +17,8 @@
 //   GET    /privacy               the privacy policy
 //   GET    /health
 //
-// Everything under /api but register wants "Authorization: Bearer <token>".
+// Everything under /api but register wants "Authorization: Bearer <token>"; GET /api/friends also
+// takes the read-only key (for the Navigator app, which shows friends on its map).
 // Settings come from the environment (see deploy/ryadom.env.example).
 
 import { createServer } from 'node:http';
@@ -73,7 +76,11 @@ export function makeHandler(friends, { log = console, download = 'https://github
 
             const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
             const user = friends.auth(token);
-            if (!user) throw new FriendsError(401, 'who are you');
+            if (!user) {
+                const viewer = req.method === 'GET' && path === '/api/friends' && friends.authViewer(token);
+                if (viewer) return json(res, 200, friends.friendsOnly(viewer));
+                throw new FriendsError(401, 'who are you');
+            }
 
             if (path === '/api/me') {
                 if (req.method === 'GET') return json(res, 200, friends.me(user));
@@ -84,6 +91,13 @@ export function makeHandler(friends, { log = console, download = 'https://github
                 }
             }
             if (req.method === 'POST' && path === '/api/me/code') return json(res, 200, friends.newCode(user));
+            if (path === '/api/me/viewer') {
+                if (req.method === 'POST') return json(res, 200, { token: friends.viewerToken(user) });
+                if (req.method === 'DELETE') {
+                    friends.dropViewer(user);
+                    return json(res, 200, { dropped: true });
+                }
+            }
             if (req.method === 'GET' && path === '/api/friends') return json(res, 200, friends.view(user));
             if (req.method === 'POST' && path === '/api/friends') {
                 if (!adds(user.id)) throw new FriendsError(429, 'too many requests');

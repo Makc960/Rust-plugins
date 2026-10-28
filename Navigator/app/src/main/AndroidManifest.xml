@@ -13,11 +13,16 @@
 
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
-    <!-- Android 11 and later show apps only what they ask for: the voice comes from a speech engine. -->
+    <!-- Android 11 and later show apps only what they ask for: the voice comes from a speech engine,
+         a destination said aloud goes to the phone's speech recognition, and «Рядом» is opened by name. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+        <package android:name="com.makc.ryadom" />
     </queries>
 
     <application
@@ -64,5 +69,18 @@
             android:name=".NavService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- The home screen row: search, home, work, the car. -->
+        <receiver
+            android:name=".NavWidget"
+            android:exported="false"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
     </application>
 </manifest>

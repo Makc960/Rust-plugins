@@ -25,7 +25,7 @@ android {
         targetSdk = 36
         // Every CI build counts up, so each one installs over the last and the stores accept it.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "1.2"
+        versionName = "1.3"
         buildConfigField("String", "STORE", "\"$store\"")
         buildConfigField("String", "SUPPORT_URL", "\"${if (store == "play") "" else supportUrl}\"")
     }

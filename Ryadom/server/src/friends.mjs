@@ -60,7 +60,7 @@ export class Friends {
      * Either null keeps them in memory only.
      */
     constructor({ file = null, placesFile = null, now = () => Date.now() } = {}) {
-        this.store = new JsonFile(file, { users: {}, codes: {}, tokens: {} });
+        this.store = new JsonFile(file, { users: {}, codes: {}, tokens: {}, viewers: {} });
         this.placesFile = new JsonFile(placesFile, { places: {} });
         this.places = new Map(Object.entries(this.placesFile.data.places));
         this.placesChanged = false;
@@ -110,6 +110,36 @@ export class Friends {
         return { id: user.id, name: user.name, color: user.color, code: showCode(user.code), sharing: user.sharing };
     }
 
+    /**
+     * A second key for [user] that only reads where their friends are: for the Navigator app to
+     * show them on its map. One at a time; a new one replaces the old.
+     */
+    viewerToken(user) {
+        this.dropViewer(user, false);
+        const token = randomBytes(32).toString('base64url');
+        this.store.data.viewers[hashToken(token)] = user.id;
+        this.store.save();
+        return token;
+    }
+
+    /** The account a read-only key belongs to, or null. */
+    authViewer(token) {
+        if (!token) return null;
+        const id = this.store.data.viewers[hashToken(token)];
+        return (id && this.users[id]) || null;
+    }
+
+    dropViewer(user, save = true) {
+        for (const [hash, id] of Object.entries(this.store.data.viewers)) if (id === user.id) delete this.store.data.viewers[hash];
+        if (save) this.store.save();
+    }
+
+    /** What a read-only key sees: the friends and where each is, nothing about requests or codes. */
+    friendsOnly(user) {
+        const { me, friends, now } = this.view(user);
+        return { me: { name: me.name, color: me.color }, friends, now };
+    }
+
     /** Changes the name, the color or whether friends see where [user] is. */
     update(user, { name, color, sharing } = {}) {
         if (name !== undefined) {
@@ -146,6 +176,7 @@ export class Friends {
         }
         delete this.store.data.codes[user.code];
         for (const [hash, id] of Object.entries(this.store.data.tokens)) if (id === user.id) delete this.store.data.tokens[hash];
+        this.dropViewer(user, false);
         delete this.users[user.id];
         this.places.delete(user.id);
         this.placesChanged = true;

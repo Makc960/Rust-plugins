@@ -58,6 +58,11 @@ export class Api {
         return this.call('POST', '/api/me/code', {});
     }
 
+    /** {token}: a key that only reads friends' places, for «Навигатор». */
+    viewer() {
+        return this.call('POST', '/api/me/viewer', {});
+    }
+
     remove() {
         return this.call('DELETE', '/api/me');
     }

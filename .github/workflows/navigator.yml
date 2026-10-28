@@ -47,6 +47,11 @@ jobs:
           npm ci
           npm test
 
+      # The app's own server (road reports, shared drives, search notes): no packages to install.
+      - name: Test the navigator's server
+        working-directory: Navigator/server
+        run: node --test test/*.test.mjs
+
       - name: Build the APK
         run: ./gradlew --no-daemon :app:assembleRelease
 

@@ -17,6 +17,11 @@
 
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
+    <!-- «Навигатор» is looked for by name: routes to friends open in it, and it gets the friends' key. -->
+    <queries>
+        <package android:name="com.makc.shturman" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:appCategory="social"

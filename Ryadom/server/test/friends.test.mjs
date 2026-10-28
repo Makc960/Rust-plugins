@@ -201,6 +201,13 @@ test('the HTTP side: register, add by code, accept, positions, invite page, priv
         const seen = (await call('GET', '/api/friends', a.token)).body;
         assert.equal(seen.friends[0].place.lat, 55.75);
         assert.equal(seen.friends[0].sharing, true);
+        // The Navigator's read-only key: friends' places, and nothing it could change.
+        const viewer = (await call('POST', '/api/me/viewer', a.token, {})).body.token;
+        assert.equal((await call('GET', '/api/friends', viewer)).body.friends[0].place.lat, 55.75);
+        assert.equal((await call('GET', '/api/me', viewer)).status, 401);
+        assert.equal((await call('POST', '/api/location', viewer, { lat: 1, lon: 1 })).status, 401);
+        assert.deepEqual((await call('DELETE', '/api/me/viewer', a.token)).body, { dropped: true });
+        assert.equal((await call('GET', '/api/friends', viewer)).status, 401);
         assert.equal((await call('PATCH', '/api/me', b.token, { sharing: false })).body.sharing, false);
         assert.equal((await call('GET', '/api/friends', a.token)).body.friends[0].place, null);
         assert.equal((await call('POST', '/api/friends', a.token, { code: 'ZZZZ-ZZZZ' })).status, 404);
@@ -219,4 +226,23 @@ test('the HTTP side: register, add by code, accept, positions, invite page, priv
     } finally {
         server.close();
     }
+});
+
+test('a read-only key sees friends\' places and nothing else; a new one replaces it', () => {
+    const { friends } = world();
+    const { a, userA, userB } = pair(friends);
+    friends.locate(userB, { lat: 45.04, lon: 38.97, accuracy: 10 });
+    const key = friends.viewerToken(userA);
+    assert.equal(friends.auth(key), null, 'not a key to the account');
+    assert.equal(friends.authViewer(key).id, userA.id);
+    const seen = friends.friendsOnly(friends.authViewer(key));
+    assert.deepEqual(seen.friends.map((f) => f.name), ['Боря']);
+    assert.equal(seen.friends[0].place.lat, 45.04);
+    assert.ok(!('incoming' in seen) && !('code' in seen.me), 'no requests, no friend code');
+    const next = friends.viewerToken(userA);
+    assert.equal(friends.authViewer(key), null, 'the old key stops');
+    assert.equal(friends.authViewer(next).id, userA.id);
+    assert.ok(!JSON.stringify(friends.store.data).includes(next), 'kept only as a hash');
+    friends.remove(friends.auth(a.token));
+    assert.equal(friends.authViewer(next), null, 'gone with the account');
 });

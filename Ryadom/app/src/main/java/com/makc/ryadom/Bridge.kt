@@ -295,6 +295,43 @@ class Bridge(private val activity: MainActivity) {
     @JavascriptInterface
     fun openUrl(url: String) = activity.runOnUiThread { activity.openExternal(Uri.parse(url)) }
 
+    /** A route to [geo]: straight into «Навигатор» when the phone has it, else any navigator. */
+    @JavascriptInterface
+    fun openRoute(geo: String) = activity.runOnUiThread {
+        val uri = Uri.parse(geo)
+        if (hasNavigator()) {
+            try {
+                activity.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage(NAVIGATOR))
+                return@runOnUiThread
+            } catch (e: Exception) {
+                // On to any navigator.
+            }
+        }
+        activity.openExternal(uri)
+    }
+
+    /**
+     * Hands «Навигатор» its link with the read-only key, to it and no other app. False, and its
+     * page opened, when the phone does not have it.
+     */
+    @JavascriptInterface
+    fun openNavigator(link: String): Boolean {
+        if (!hasNavigator()) {
+            activity.runOnUiThread { activity.openExternal(Uri.parse("https://github.com/Makc960/Rust-plugins/releases/tag/navigator")) }
+            return false
+        }
+        activity.runOnUiThread {
+            try {
+                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(NAVIGATOR).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (e: Exception) {
+                activity.openExternal(Uri.parse("https://github.com/Makc960/Rust-plugins/releases/tag/navigator"))
+            }
+        }
+        return true
+    }
+
+    private fun hasNavigator(): Boolean = activity.packageManager.getLaunchIntentForPackage(NAVIGATOR) != null
+
     @JavascriptInterface
     fun vibrate(ms: Int) {
         val v = activity.getSystemService(Vibrator::class.java) ?: return
@@ -314,5 +351,9 @@ class Bridge(private val activity: MainActivity) {
     fun release() {
         stopListening()
         network.shutdownNow()
+    }
+
+    private companion object {
+        const val NAVIGATOR = "com.makc.shturman"
     }
 }

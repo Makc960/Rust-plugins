@@ -30,6 +30,7 @@ import kotlin.math.max
 class MainActivity : ComponentActivity() {
     private lateinit var web: WebView
     private lateinit var bridge: Bridge
+    private lateinit var tiles: TileCache
     private var loaded = false
     private var pendingLink: String? = null
 
@@ -60,8 +61,12 @@ class MainActivity : ComponentActivity() {
             textZoom = 100
             setGeolocationEnabled(false)
         }
+        // The map's tiles go through the phone's own store of them (see TileCache).
+        tiles = TileCache(this) { tag, done, total, failed -> js("download(${JSONObject.quote(tag)}, $done, $total, $failed)") }
+
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (request.method == "GET" && tiles.handles(request.url)) return tiles.intercept(request.url)
                 val response = assets.shouldInterceptRequest(request.url) ?: return null
                 // Module scripts load only with a script type, and Android does not know ".mjs".
                 typeOf(request.url.path.orEmpty())?.let {
@@ -99,7 +104,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        bridge = Bridge(this, web)
+        bridge = Bridge(this, web, tiles)
         web.addJavascriptInterface(bridge, "ShturmanNative")
 
         // The page draws under the status and navigation bars and keeps its buttons clear of them.
@@ -162,6 +167,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         bridge.release()
+        tiles.release()
         web.destroy()
         super.onDestroy()
     }
@@ -169,6 +175,13 @@ class MainActivity : ComponentActivity() {
     fun keepScreenOn(on: Boolean) {
         if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    /** The screen as bright as it goes (the windscreen view), or as the phone sets it. */
+    fun setBright(on: Boolean) {
+        val attrs = window.attributes
+        attrs.screenBrightness = if (on) 1f else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        window.attributes = attrs
     }
 
     /** Dark status bar icons over the day map, light ones at night. */
