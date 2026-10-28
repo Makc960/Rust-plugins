@@ -49,11 +49,11 @@ class Bridge(private val activity: MainActivity) {
         activity.js("resume()")
     }
 
-    private val background = activity.registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+    private val backgroundPermission = activity.registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         activity.js("resume()")
     }
 
-    private val notifications = activity.registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+    private val notificationsPermission = activity.registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         activity.js("resume()")
     }
 
@@ -205,7 +205,7 @@ class Bridge(private val activity: MainActivity) {
             !Sharing.granted(activity, Manifest.permission.POST_NOTIFICATIONS)
         ) {
             askedNotifications = true
-            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            notificationsPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -233,7 +233,7 @@ class Bridge(private val activity: MainActivity) {
             !Sharing.hasLocation(activity) -> requestLocation()
             Build.VERSION.SDK_INT >= 29 && !Sharing.hasBackgroundLocation(activity) ->
                 try {
-                    background.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    backgroundPermission.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
                 } catch (e: Exception) {
                     openAppSettings()
                 }
@@ -247,7 +247,7 @@ class Bridge(private val activity: MainActivity) {
             activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS).let { it || !askedNotifications }
         ) {
             askedNotifications = true
-            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            notificationsPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
             try {
                 activity.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName))
