@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- ESP box corners -->
+    <path
+        android:pathData="M34,46 L34,34 L46,34 M62,34 L74,34 L74,46 M74,62 L74,74 L62,74 M46,74 L34,74 L34,62"
+        android:strokeWidth="4"
+        android:strokeColor="#39FF6A"
+        android:strokeLineCap="square" />
+    <!-- crosshair -->
+    <path
+        android:pathData="M54,44 L54,49 M54,59 L54,64 M44,54 L49,54 M59,54 L64,54"
+        android:strokeWidth="2.5"
+        android:strokeColor="#E6FFEE"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#FF3B3B"
+        android:pathData="M54,51 A3,3 0 1,1 54,57 A3,3 0 1,1 54,51 Z" />
+</vector>

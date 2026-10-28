@@ -1,0 +1,175 @@
+name: Base Defense APK
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "BaseDefense/**"
+      - ".github/workflows/base-defense.yml"
+    # A tag rustore-check-… tries the RuStore API key; rustore-draft-… builds the commit and uploads its
+    # RuStore APK as a draft version; rustore-submit-… sends that version to moderation too.
+    tags: ["rustore-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: base-defense-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: ${{ !startsWith(github.ref, 'refs/tags/rustore-check') }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BaseDefense
+    env:
+      # The private upload key is optional: without these secrets only the GitHub APK is built.
+      HAS_UPLOAD_KEY: ${{ secrets.UPLOAD_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test the shop server
+        working-directory: BaseDefense/server
+        run: node --test test/*.test.mjs
+
+      - name: Test the game and build the APK
+        env:
+          # The game's own shop server (BaseDefense/server): the repository variable, or the one on ice-rust.store.
+          SHOP_SERVER: ${{ vars.BASEDEFENSE_SHOP_SERVER || 'https://ice-rust.store/basedefense' }}
+        run: ./gradlew --no-daemon :engine:test :app:assembleRelease -PshopServer="$SHOP_SERVER"
+
+      - name: Name APK
+        run: cp app/build/outputs/apk/release/app-release.apk BaseDefense.apk
+
+      - name: Build the Google Play bundle
+        if: env.HAS_UPLOAD_KEY == 'true'
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+        run: |
+          echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:bundleRelease -Pstore=play
+          cp app/build/outputs/bundle/release/app-release.aab BaseDefense.aab
+          rm "$RUNNER_TEMP/upload.jks"
+
+      - name: Build the RuStore APK
+        if: env.HAS_UPLOAD_KEY == 'true'
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+          # The rewarded video unit from the Yandex Advertising Network (a repository variable); unset, no adverts.
+          REWARDED_AD_UNIT: ${{ vars.YANDEX_REWARDED_AD_UNIT }}
+          # The RuStore APK sells through the game's own shop server (Pally) instead of RuStore Pay.
+          SHOP_SERVER: ${{ vars.BASEDEFENSE_SHOP_SERVER || 'https://ice-rust.store/basedefense' }}
+        run: |
+          echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks" ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore -PrewardedAdUnit="$REWARDED_AD_UNIT" -PshopServer="$SHOP_SERVER"
+          cp app/build/outputs/apk/release/app-release.apk BaseDefense-RuStore.apk
+          rm "$RUNNER_TEMP/upload.jks"
+          # RuStore keeps the first upload's certificate for good; show which one this APK carries.
+          apksigner="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          "$apksigner" verify --print-certs BaseDefense-RuStore.apk | grep 'SHA-256' | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BaseDefense
+          path: BaseDefense/BaseDefense.apk
+
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_UPLOAD_KEY == 'true'
+        with:
+          name: BaseDefense-GooglePlay
+          path: BaseDefense/BaseDefense.aab
+
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_UPLOAD_KEY == 'true'
+        with:
+          name: BaseDefense-RuStore
+          path: BaseDefense/BaseDefense-RuStore.apk
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: BaseDefense-screens
+          path: |
+            BaseDefense/engine/build/screens
+            BaseDefense/engine/build/store
+
+      - name: Publish to the base-defense release
+        if: github.ref_type == 'branch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
+          # The RuStore build, signed with the upload key, goes up too, for loading into RuStore Console by hand.
+          FILES="BaseDefense.apk"
+          [ -f BaseDefense-RuStore.apk ] && FILES="$FILES BaseDefense-RuStore.apk"
+          gh release delete base-defense --yes --cleanup-tag || true
+          gh release create base-defense $FILES \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Оборона базы $VERSION" \
+            --notes "Сборка из ${GITHUB_SHA::7}. Скачай BaseDefense.apk на телефон и установи поверх старой версии (прогресс сохранится). BaseDefense-RuStore.apk — сборка для загрузки в RuStore. Поддержать автора: https://pay.cloudtips.ru/p/5b9bb7e3"
+
+  # RuStore builds pull in RuStore's Pay SDK; this checks they still compile against it,
+  # even without the upload key secrets (the APK is signed with the shared key and thrown away).
+  rustore-check:
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BaseDefense
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # With Yandex's test unit, so the advert code is built the way a real unit builds it.
+      - name: Build a RuStore APK
+        run: ./gradlew --no-daemon :app:assembleRelease -Pstore=rustore -PrewardedAdUnit=demo-rewarded-yandex
+
+  # Talks to the RuStore API with the key from RuStore Console (secrets RUSTORE_KEY_ID and RUSTORE_PRIVATE_KEY).
+  rustore:
+    needs: build
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/rustore-') && (needs.build.result == 'success' || startsWith(github.ref, 'refs/tags/rustore-check')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/rustore-check') }}
+        with:
+          name: BaseDefense-RuStore
+          path: rustore-build
+
+      - name: RuStore
+        env:
+          RUSTORE_KEY_ID: ${{ secrets.RUSTORE_KEY_ID }}
+          RUSTORE_PRIVATE_KEY: ${{ secrets.RUSTORE_PRIVATE_KEY }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          case "$TAG" in
+            rustore-check*) python3 BaseDefense/store/rustore.py check ;;
+            rustore-submit*) python3 BaseDefense/store/rustore.py upload rustore-build/BaseDefense-RuStore.apk --submit ;;
+            *) python3 BaseDefense/store/rustore.py upload rustore-build/BaseDefense-RuStore.apk ;;
+          esac

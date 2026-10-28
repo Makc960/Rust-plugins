@@ -1,0 +1,18 @@
+#!/bin/sh
+# Support for the Base Defense shop, put in /usr/local/bin by install.sh:
+#   basedefense-shop orders [CODE] | player CODE | grant CODE PRODUCT | check
+set -e
+APP=/opt/basedefense-shop
+NODE=node
+[ "$(id -u)" = 0 ] || { echo "Запустите через sudo: sudo basedefense-shop $*"; exit 1; }
+case "$1" in
+check)
+	exec "$NODE" "$APP/src/check.mjs" /etc/basedefense-shop/shop.env
+	;;
+grant)
+	# The service keeps the records in memory and writes them whole: it stops while the file changes.
+	systemctl stop basedefense-shop
+	trap 'chown -R basedefense-shop: /var/lib/basedefense-shop; systemctl start basedefense-shop' EXIT
+	;;
+esac
+"$NODE" "$APP/src/admin.mjs" "$@"

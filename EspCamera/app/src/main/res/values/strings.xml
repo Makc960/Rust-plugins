@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ESP Camera</string>
+    <string name="no_permission">Нужен доступ к камере.\nНажми сюда, чтобы открыть настройки приложения, и разреши «Камера».</string>
+    <string name="camera_failed">Не удалось открыть камеру: %1$s</string>
+    <string name="model_failed">Не удалось загрузить нейросеть: %1$s</string>
+    <string name="no_front_camera">На этом телефоне нет второй камеры</string>
+    <string name="gpu_failed">Видеокарта не потянула нейросеть, работаю на процессоре</string>
+    <string name="no_storage">Без доступа к памяти не получится сохранить в галерею</string>
+    <string name="photo_saved">Снимок сохранён в галерею (Pictures/ESP Camera)</string>
+    <string name="photo_failed">Не удалось сохранить снимок</string>
+    <string name="photo_not_ready">Камера ещё не готова</string>
+    <string name="video_saved">Видео сохранено в галерею (Movies/ESP Camera)</string>
+    <string name="video_failed">Запись прервалась, код ошибки %1$d</string>
+    <string name="video_unsupported">Этот телефон не умеет записывать видео вместе с рамками</string>
+
+    <string name="caption_vision">ВИД</string>
+    <string name="caption_photo">ФОТО</string>
+    <string name="caption_record">ВИДЕО</string>
+    <string name="caption_camera">КАМЕРА</string>
+    <string name="caption_menu">МЕНЮ</string>
+
+    <string name="caption_filter">ФИЛЬТР</string>
+    <string name="caption_boxes">РАМКИ</string>
+    <string name="caption_lines">ЛИНИИ</string>
+    <string name="caption_skeleton">СКЕЛЕТ</string>
+    <string name="caption_trails">СЛЕДЫ</string>
+    <string name="caption_radar">РАДАР</string>
+    <string name="caption_markers">МЕТКИ ЗА СПИНОЙ</string>
+    <string name="caption_alert">СИГНАЛ ЗАХВАТА</string>
+    <string name="caption_model">НЕЙРОСЕТЬ</string>
+    <string name="caption_gpu">УСКОРЕНИЕ</string>
+
+    <string name="photo_action">СНЯТЬ</string>
+    <string name="record_start">● REC</string>
+    <string name="record_stop">■ СТОП</string>
+    <string name="menu_open">▲</string>
+    <string name="menu_close">▼</string>
+    <string name="boxes_corners">УГЛЫ</string>
+    <string name="boxes_full">ПОЛНЫЕ</string>
+    <string name="on">ВКЛ</string>
+    <string name="off">ВЫКЛ</string>
+    <string name="no_sensor">НЕТ ГИРОСКОПА</string>
+    <string name="model_fast">БЫСТРАЯ</string>
+    <string name="model_accurate">ТОЧНАЯ</string>
+    <string name="gpu_off">ПРОЦЕССОР</string>
+    <string name="gpu_on">ВИДЕОКАРТА</string>
+    <string name="camera_back">ЗАДНЯЯ</string>
+    <string name="camera_front">ФРОНТ</string>
+</resources>

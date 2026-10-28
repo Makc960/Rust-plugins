@@ -1,0 +1,31 @@
+[Unit]
+Description=Ryadom server (friends on the map)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ryadom
+Group=ryadom
+EnvironmentFile=/etc/ryadom/ryadom.env
+ExecStart=/usr/bin/env node /opt/ryadom/src/server.mjs
+Restart=on-failure
+RestartSec=3
+# /var/lib/ryadom: accounts, friends and positions. The only place it may write.
+StateDirectory=ryadom
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

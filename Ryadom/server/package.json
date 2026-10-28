@@ -1,0 +1,11 @@
+{
+  "name": "ryadom-server",
+  "private": true,
+  "type": "module",
+  "description": "The server of Рядом: accounts, friends and where each one is.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

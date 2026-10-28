@@ -1,0 +1,35 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+html, body { margin: 0; background: transparent; }
+.icon { width: 512px; height: 512px; position: relative; overflow: hidden;
+  background: linear-gradient(135deg, #2f6fed, #17b3c8); }
+.feature { width: 1024px; height: 500px; position: relative; overflow: hidden;
+  background: linear-gradient(120deg, #13233a 0%, #1d3f7a 55%, #17b3c8 130%); font-family: system-ui, Roboto, sans-serif; color: #fff; }
+svg { position: absolute; inset: 0; }
+.feature h1 { position: absolute; left: 330px; top: 150px; margin: 0; font-size: 92px; font-weight: 800; letter-spacing: -.02em; }
+.feature p { position: absolute; left: 334px; top: 270px; margin: 0; font-size: 34px; white-space: nowrap; font-weight: 500; opacity: .9; }
+</style></head><body>
+<div class="icon" id="icon">
+  <svg viewBox="0 0 108 108" width="512" height="512">
+    <path d="M-10,78 C30,64 60,90 118,52" stroke="rgba(255,255,255,.15)" stroke-width="7" fill="none"/>
+    <path d="M30,-10 C40,30 70,50 64,118" stroke="rgba(255,255,255,.12)" stroke-width="5" fill="none"/>
+    <path d="M54,32 L73,77 L54,67.5 L35,77 Z" fill="rgba(0,0,0,.2)" stroke="rgba(0,0,0,.2)" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M54,29 L73,74 L54,64.5 L35,74 Z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M54,29 L54,64.5 L35,74 Z" fill="#dce7ff"/>
+  </svg>
+</div>
+<div class="feature" id="feature">
+  <svg viewBox="0 0 1024 500" width="1024" height="500">
+    <path d="M-20,420 C260,330 520,470 1060,250" stroke="rgba(255,255,255,.10)" stroke-width="40" fill="none"/>
+    <path d="M610,-20 C650,160 840,260 800,540" stroke="rgba(255,255,255,.08)" stroke-width="28" fill="none"/>
+    <path d="M-20,420 C260,330 520,470 1060,250" stroke="#4f8dff" stroke-width="10" fill="none" stroke-dasharray="1 0"/>
+    <g transform="translate(70 95) scale(2.6)">
+      <path d="M54,32 L73,77 L54,67.5 L35,77 Z" fill="rgba(0,0,0,.25)" transform="translate(-35 -29)"/>
+      <path d="M54,29 L73,74 L54,64.5 L35,74 Z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round" transform="translate(-35 -29)"/>
+      <path d="M54,29 L54,64.5 L35,74 Z" fill="#dce7ff" transform="translate(-35 -29)"/>
+    </g>
+  </svg>
+  <h1>Навигатор</h1>
+  <p>Бесплатный навигатор с голосом</p>
+</div>
+</body></html>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A long press on the app's icon: home, work, back to the car, search. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_home"
+        android:shortcutId="home"
+        android:shortcutShortLabel="@string/shortcut_home">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="shturman://home"
+            android:targetClass="com.makc.shturman.MainActivity"
+            android:targetPackage="com.makc.shturman" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_work"
+        android:shortcutId="work"
+        android:shortcutShortLabel="@string/shortcut_work">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="shturman://work"
+            android:targetClass="com.makc.shturman.MainActivity"
+            android:targetPackage="com.makc.shturman" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_car"
+        android:shortcutId="car"
+        android:shortcutShortLabel="@string/shortcut_car">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="shturman://car"
+            android:targetClass="com.makc.shturman.MainActivity"
+            android:targetPackage="com.makc.shturman" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_search"
+        android:shortcutId="search"
+        android:shortcutShortLabel="@string/shortcut_search">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="shturman://search"
+            android:targetClass="com.makc.shturman.MainActivity"
+            android:targetPackage="com.makc.shturman" />
+    </shortcut>
+</shortcuts>

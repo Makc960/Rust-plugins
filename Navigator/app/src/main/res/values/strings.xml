@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Навигатор</string>
+    <string name="nav_running">Ведение по маршруту</string>
+    <string name="nav_channel">Ведение по маршруту</string>
+    <string name="nav_end">Завершить</string>
+    <string name="shortcut_home">Домой</string>
+    <string name="shortcut_work">На работу</string>
+    <string name="shortcut_car">К машине</string>
+    <string name="shortcut_search">Поиск</string>
+    <string name="widget_search">Куда едем?</string>
+    <string name="widget_description">Поиск, дом, работа и машина в одно касание</string>
+</resources>

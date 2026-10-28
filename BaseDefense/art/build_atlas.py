@@ -1,0 +1,1808 @@
+#!/usr/bin/env python3
+"""
+Builds the game's sprite atlas from Kenney's CC0 asset packs (kenney.nl).
+
+The vector sheets of "Tower Defense (top-down)" and "Top-down Shooter" are
+rendered at 4x with headless Chromium (render_svg.js), every named sprite is
+found in those renders, turned to face right, recoloured where a world needs
+it (snow, sandstone, a purple ghost...) and packed with a few pieces drawn
+here in the same flat style. The towers are squads of the shooter pack's
+soldier, each squad in its own colour, each job with its own weapon. Output: engine/src/main/resources/sprites/
+atlas.png and atlas.txt (name x y w h per line).
+
+usage: build_atlas.py KENNEY_ROOT WORK_DIR OUT_DIR [--preview FILE]
+KENNEY_ROOT is a checkout of github.com/ETdoFresh/kenney.nl, a mirror of the packs.
+"""
+import argparse
+import json
+import math
+import subprocess
+import sys
+from pathlib import Path
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter
+
+PX = 128          # atlas pixels per map cell
+HI = 4            # custom drawings are made this many times larger, then shrunk
+U = HI            # one atlas pixel on a drawing canvas
+
+ap = argparse.ArgumentParser()
+ap.add_argument('kenney')
+ap.add_argument('work')
+ap.add_argument('out')
+ap.add_argument('--preview')
+args = ap.parse_args()
+K = Path(args.kenney)
+W = Path(args.work)
+W.mkdir(parents=True, exist_ok=True)
+OUT = Path(args.out)
+OUT.mkdir(parents=True, exist_ok=True)
+HERE = Path(__file__).resolve().parent
+
+
+# --- sources ----------------------------------------------------------------------------
+
+def render(svg, name, scale, w, h):
+    out = W / name
+    if not out.exists():
+        subprocess.run(['node', str(HERE / 'render_svg.js'), str(svg), str(out), str(scale), str(w), str(h)], check=True)
+    return Image.open(out).convert('RGBA')
+
+
+TD_DIR = K / 'tower-defense-top-down'
+td_sheet = render(TD_DIR / 'Vector/towerDefense_vector.svg', 'td4x.png', 4, 1472, 832)
+chars_sheet = render(K / 'topdown-shooter/Vector/vector_characters.svg', 'chars4x.png', 4, 400, 700)
+TANKS = K / 'kenney_topdowntanksredux/PNG/Retina'
+
+
+def premul(a):
+    return np.concatenate([a[..., :3] * a[..., 3:4] / 255.0, a[..., 3:4]], axis=-1)
+
+
+def td_cells():
+    """Where each numbered tile of the pack sits in the vector sheet (23 x 13 cells)."""
+    cache = W / 'td4x.json'
+    if cache.exists():
+        return {int(k): v for k, v in json.loads(cache.read_text()).items()}
+    small = np.asarray(td_sheet.resize((1472, 832), Image.LANCZOS)).astype(np.float32)
+    cells = np.stack([small[r * 64:(r + 1) * 64, c * 64:(c + 1) * 64] for r in range(13) for c in range(23)])
+    cells = premul(cells)
+    out = {}
+    for k in range(1, 300):
+        f = TD_DIR / ('PNG/Default size/towerDefense_tile%03d.png' % k)
+        if not f.exists():
+            continue
+        t = premul(np.asarray(Image.open(f).convert('RGBA')).astype(np.float32))
+        i = int(np.abs(cells - t[None]).mean(axis=(1, 2, 3)).argmin())
+        out[k] = [i % 23, i // 23]
+    cache.write_text(json.dumps(out))
+    return out
+
+
+def char_boxes():
+    """Bounding box of every named character in the vector render, at 4x."""
+    cache = W / 'chars4x.json'
+    if cache.exists():
+        return json.loads(cache.read_text())
+    small = np.asarray(chars_sheet.resize((chars_sheet.width // 4, chars_sheet.height // 4), Image.LANCZOS)).astype(float)
+    alpha = small[:, :, 3] > 8
+
+    def bands(profile, gap=3):
+        out, start, empty = [], None, 0
+        for i, v in enumerate(profile):
+            if v:
+                if start is None:
+                    start = i
+                empty = 0
+            elif start is not None:
+                empty += 1
+                if empty > gap:
+                    out.append((start, i - empty + 1))
+                    start, empty = None, 0
+        if start is not None:
+            out.append((start, len(profile)))
+        return out
+
+    cells = []
+    for (r0, r1) in bands(alpha.any(axis=1)):
+        for (c0, c1) in bands(alpha[r0:r1].any(axis=0)):
+            cells.append((c0, r0, c1 - c0, r1 - r0))
+    out = {}
+    for f in sorted((K / 'topdown-shooter/PNG').glob('*/*.png')):
+        if f.parent.name == 'Tiles':
+            continue
+        t = np.asarray(Image.open(f).convert('RGBA')).astype(float)
+        th, tw = t.shape[:2]
+        best = None
+        for (x, y, w, h) in cells:
+            x0, y0 = int(round(x + w / 2 - tw / 2)), int(round(y + h / 2 - th / 2))
+            for dx in range(-4, 5):
+                for dy in range(-4, 5):
+                    xx, yy = x0 + dx, y0 + dy
+                    if xx < 0 or yy < 0 or xx + tw > small.shape[1] or yy + th > small.shape[0]:
+                        continue
+                    d = np.abs(small[yy:yy + th, xx:xx + tw] - t).mean()
+                    if best is None or d < best[0]:
+                        best = (d, xx, yy, tw, th)
+        out[f.stem] = [best[1] * 4, best[2] * 4, best[3] * 4, best[4] * 4]
+    cache.write_text(json.dumps(out))
+    return out
+
+
+TD = td_cells()
+CHARS = char_boxes()
+
+
+def td(k):
+    """Tower defense tile k as a cell-sized picture (PX square)."""
+    c, r = TD[k]
+    return td_sheet.crop((c * 256, r * 256, c * 256 + 256, r * 256 + 256)).resize((PX, PX), Image.LANCZOS)
+
+
+def tanks(name):
+    return Image.open(TANKS / (name + '.png')).convert('RGBA')
+
+
+def character(name, k=1.0):
+    """A character from the shooter pack, centred on its head, facing right."""
+    x, y, w, h = CHARS[name]
+    px, py = x + 66, y + 86      # the head: the arms and guns stick out to the right
+    m = 6
+    half = max(px - x, x + w - px, py - y, y + h - py) + m + 2
+    # Only this character's own box, so a neighbour on the sheet never leaks in.
+    body = chars_sheet.crop((x - m, y - m, x + w + m, y + h + m))
+    im = Image.new('RGBA', (2 * half, 2 * half))
+    im.alpha_composite(body, (x - m - (px - half), y - m - (py - half)))
+    size = int(round(2 * half * PX / 256 * k))
+    return im.resize((size, size), Image.LANCZOS)
+
+
+def face_right_from_up(im):
+    return im.transpose(Image.Transpose.ROTATE_270)
+
+
+def face_right_from_down(im):
+    return im.transpose(Image.Transpose.ROTATE_90)
+
+
+def trim(im, pad=2):
+    box = im.getchannel('A').point(lambda a: 255 if a > 4 else 0).getbbox()
+    if not box:
+        return im
+    l, t, r, b = box
+    return im.crop((max(0, l - pad), max(0, t - pad), min(im.width, r + pad), min(im.height, b + pad)))
+
+
+def square(im, size=None):
+    """Centres [im] on a transparent square, so it can turn around its middle."""
+    s = size or max(im.width, im.height)
+    out = Image.new('RGBA', (s, s))
+    out.alpha_composite(im, ((s - im.width) // 2, (s - im.height) // 2))
+    return out
+
+
+def scale(im, k):
+    return im.resize((max(1, int(round(im.width * k))), max(1, int(round(im.height * k)))), Image.LANCZOS)
+
+
+def shadowed(im, dx=4, dy=6, blur=3, alpha=0.3):
+    """Adds a soft shadow down and to the right, keeping the picture centred."""
+    pad = max(abs(dx), abs(dy)) + blur * 2
+    out = Image.new('RGBA', (im.width + 2 * pad, im.height + 2 * pad))
+    sh = Image.new('RGBA', im.size, (0, 0, 0, 255))
+    sh.putalpha(im.getchannel('A').point(lambda v: int(v * alpha)))
+    layer = Image.new('RGBA', out.size)
+    layer.alpha_composite(sh, (pad + dx, pad + dy))
+    out.alpha_composite(layer.filter(ImageFilter.GaussianBlur(blur)))
+    out.alpha_composite(im, (pad, pad))
+    return out
+
+
+# --- colour --------------------------------------------------------------------------
+
+def rgb_to_hsv(rgb):
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    mx, mn = rgb.max(-1), rgb.min(-1)
+    d = mx - mn
+    nz = d > 1e-6
+    rc = np.where(nz, (mx - r) / np.where(nz, d, 1), 0)
+    gc = np.where(nz, (mx - g) / np.where(nz, d, 1), 0)
+    bc = np.where(nz, (mx - b) / np.where(nz, d, 1), 0)
+    h = np.where(r == mx, bc - gc, np.where(g == mx, 2.0 + rc - bc, 4.0 + gc - rc))
+    h = np.where(nz, (h / 6.0) % 1.0, 0)
+    s = np.where(mx > 1e-6, d / np.where(mx > 1e-6, mx, 1), 0)
+    return h, s, mx
+
+
+def hsv_to_rgb(h, s, v):
+    i = np.floor(h * 6.0)
+    f = h * 6.0 - i
+    p, q, t = v * (1 - s), v * (1 - s * f), v * (1 - s * (1 - f))
+    i = i.astype(int) % 6
+    r = np.choose(i, [v, q, p, p, t, v])
+    g = np.choose(i, [t, v, v, q, p, p])
+    b = np.choose(i, [p, p, t, v, v, q])
+    return np.stack([r, g, b], axis=-1)
+
+
+def recolor(im, fn):
+    a = np.asarray(im).astype(np.float32) / 255.0
+    h, s, v = rgb_to_hsv(a[..., :3])
+    h2, s2, v2 = fn(h, s, v)
+    rgb = hsv_to_rgb(np.clip(h2, 0, 1) % 1.0, np.clip(s2, 0, 1), np.clip(v2, 0, 1))
+    out = np.concatenate([rgb, a[..., 3:4]], axis=-1)
+    return Image.fromarray((out * 255 + 0.5).astype(np.uint8), 'RGBA')
+
+
+def greens(h, s):
+    return (h > 0.2) & (h < 0.5) & (s > 0.2)
+
+
+def snow(im):
+    """Grass into snow: the same light and shade, white with a cold tint."""
+    def fn(h, s, v):
+        m = greens(h, s)
+        v2 = np.clip(0.9 + (v - 0.72) * 1.1, 0.72, 0.99)
+        return np.where(m, 0.58, h), np.where(m, 0.035 + (0.99 - v2) * 0.35, s), np.where(m, v2, v)
+    return recolor(im, fn)
+
+
+def ash(im):
+    """Grass into volcanic ash: dark grey-brown with the same light and shade."""
+    def fn(h, s, v):
+        m = greens(h, s)
+        return np.where(m, 0.06, h), np.where(m, 0.2, s), np.where(m, np.clip(0.26 + (v - 0.7) * 0.7, 0.14, 0.42), v)
+    return recolor(im, fn)
+
+
+def cinder(im):
+    """The grey asphalt of a road into a warm cinder track; the grass around stays for [ash]."""
+    def fn(h, s, v):
+        m = s < 0.2
+        return np.where(m, 0.07, h), np.where(m, 0.16, s), np.where(m, v * 0.78, v)
+    return recolor(im, fn)
+
+
+def charred(im):
+    """A tree burnt black."""
+    def fn(h, s, v):
+        m = s > 0.12
+        return np.where(m, 0.05, h), np.where(m, 0.3, s * 0.5), np.where(m, v * 0.3, v * 0.45)
+    return recolor(im, fn)
+
+
+def basalt(im):
+    def fn(h, s, v):
+        return np.full_like(h, 0.62), s * 0.2 + 0.08, v * 0.45
+    return recolor(im, fn)
+
+
+def embers(im, seed, cracks=4, sparks=6):
+    """Glowing cracks and embers, only where [im] is drawn."""
+    rng = np.random.default_rng(seed)
+    layer = Image.new('RGBA', im.size)
+    d = ImageDraw.Draw(layer)
+    w, h = im.size
+    for _ in range(cracks):
+        x, y = rng.uniform(0.15, 0.85) * w, rng.uniform(0.15, 0.85) * h
+        pts = [(x, y)]
+        for _k in range(3):
+            x += rng.uniform(-0.08, 0.08) * w
+            y += rng.uniform(-0.08, 0.08) * h
+            pts.append((x, y))
+        d.line(pts, fill=(255, 110, 30, 210), width=max(2, w // 60))
+    for _ in range(sparks):
+        x, y = rng.uniform(0.08, 0.92) * w, rng.uniform(0.08, 0.92) * h
+        r = rng.uniform(0.008, 0.018) * w
+        d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 176, 64, 230))
+    keep = np.minimum(np.asarray(layer.getchannel('A')), np.asarray(im.getchannel('A')))
+    layer.putalpha(Image.fromarray(keep))
+    out = im.copy()
+    out.alpha_composite(layer)
+    return out
+
+
+def concrete(im):
+    """Grass into grey city concrete, keeping its light and shade."""
+    def fn(h, s, v):
+        m = greens(h, s)
+        return np.where(m, 0.09, h), np.where(m, 0.05, s), np.where(m, np.clip(0.56 + (v - 0.7) * 0.6, 0.42, 0.68), v)
+    return recolor(im, fn)
+
+
+def asphalt(im):
+    """The road's grey a shade darker, as old asphalt; the grass around stays for [concrete]."""
+    def fn(h, s, v):
+        m = s < 0.2
+        return h, np.where(m, s * 0.4, s), np.where(m, v * 0.62, v)
+    return recolor(im, fn)
+
+
+def rubble(im, seed, cracks=3, chips=5):
+    """Dark cracks and chips of brick and concrete, only where [im] is drawn."""
+    rng = np.random.default_rng(seed)
+    layer = Image.new('RGBA', im.size)
+    d = ImageDraw.Draw(layer)
+    w, h = im.size
+    for _ in range(cracks):
+        x, y = rng.uniform(0.15, 0.85) * w, rng.uniform(0.15, 0.85) * h
+        pts = [(x, y)]
+        for _k in range(3):
+            x += rng.uniform(-0.1, 0.1) * w
+            y += rng.uniform(-0.1, 0.1) * h
+            pts.append((x, y))
+        d.line(pts, fill=(62, 60, 58, 190), width=max(2, w // 80))
+    for _ in range(chips):
+        x, y = rng.uniform(0.08, 0.92) * w, rng.uniform(0.08, 0.92) * h
+        r = rng.uniform(0.012, 0.024) * w
+        col = [(150, 84, 62, 235), (112, 108, 102, 235), (184, 178, 168, 235)][rng.integers(3)]
+        d.rectangle((x - r, y - r * 0.6, x + r, y + r * 0.6), fill=col)
+    keep = np.minimum(np.asarray(layer.getchannel('A')), np.asarray(im.getchannel('A')))
+    layer.putalpha(Image.fromarray(keep))
+    out = im.copy()
+    out.alpha_composite(layer)
+    return out
+
+
+def slab(im):
+    """A rock into a broken block of pale concrete."""
+    def fn(h, s, v):
+        return np.full_like(h, 0.08), s * 0.15 + 0.03, np.clip(v * 0.8 + 0.16, 0, 0.9)
+    return recolor(im, fn)
+
+
+def rebar(im, seed, rods=4):
+    """Bent rusty rods sticking out of a broken slab."""
+    rng = np.random.default_rng(seed)
+    out = im.copy()
+    d = ImageDraw.Draw(out)
+    w, h = im.size
+    for _ in range(rods):
+        a = rng.uniform(0, 2 * math.pi)
+        x0, y0 = w / 2 + math.cos(a) * w * 0.12, h / 2 + math.sin(a) * h * 0.12
+        x1, y1 = w / 2 + math.cos(a) * w * 0.34, h / 2 + math.sin(a) * h * 0.34
+        bend = a + rng.uniform(-0.8, 0.8)
+        x2, y2 = x1 + math.cos(bend) * w * 0.08, y1 + math.sin(bend) * h * 0.08
+        d.line((x0, y0, x1, y1, x2, y2), fill=(132, 72, 42, 255), width=max(2, w // 50), joint='curve')
+    return out
+
+
+def sandstone(im):
+    def fn(h, s, v):
+        m = s < 0.4
+        return np.where(m, 0.07, h), np.where(m, 0.3 + s * 0.6, s), np.where(m, v * 0.97, v)
+    return recolor(im, fn)
+
+
+def snowcap(im):
+    def fn(h, s, v):
+        light = v > 0.72
+        return np.where(light, 0.58, 0.6), np.where(light, 0.04, 0.12), np.where(light, 0.98, v * 0.85)
+    return recolor(im, fn)
+
+
+def pine(im):
+    """A summer tree into a dark winter one."""
+    def fn(h, s, v):
+        m = greens(h, s)
+        return np.where(m, 0.42, h), np.where(m, 0.55, s), np.where(m, v * 0.5, v)
+    return recolor(im, fn)
+
+
+def snow_on(im, dx=-5, dy=-6, blobs=0):
+    """White snow on the sunny side: where the shape, moved up-left, still covers itself."""
+    a = np.asarray(im.getchannel('A')).astype(np.float32) / 255.0
+    moved = np.zeros_like(a)
+    h, w = a.shape
+    moved[max(0, -dy):h - max(0, dy), max(0, -dx):w - max(0, dx)] = \
+        a[max(0, dy):h - max(0, -dy), max(0, dx):w - max(0, -dx)]
+    cap = np.clip(a - moved, 0, 1)
+    cap = np.asarray(Image.fromarray((cap * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1.2))).astype(np.float32) / 255
+    cap = np.clip(cap * 2.2, 0, 1) * a
+    snow_layer = Image.new('RGBA', im.size, (244, 248, 252, 255))
+    snow_layer.putalpha(Image.fromarray((cap * 255).astype(np.uint8)))
+    out = im.copy()
+    out.alpha_composite(snow_layer)
+    if blobs:
+        d = ImageDraw.Draw(out)
+        rng = np.random.default_rng(blobs)
+        cx, cy = im.width / 2, im.height / 2
+        for _ in range(blobs):
+            r = rng.uniform(2.5, 5)
+            x = cx + rng.uniform(-0.3, 0.2) * im.width
+            y = cy + rng.uniform(-0.3, 0.2) * im.height
+            if a[int(y), int(x)] > 0.9:
+                d.ellipse((x - r, y - r, x + r, y + r), fill=(244, 248, 252, 255))
+    return out
+
+
+def hue(im, target, sat=None, light=1.0, only_saturated=True):
+    """Moves every coloured pixel to [target] hue; greys stay unless only_saturated is False."""
+    def fn(h, s, v):
+        m = s > 0.18 if only_saturated else np.ones_like(s, dtype=bool)
+        s2 = s if sat is None else np.where(m, sat, s)
+        return np.where(m, target, h), np.where(m, s2, s), np.where(m, v * light, v)
+    return recolor(im, fn)
+
+
+def ghostly(im):
+    def fn(h, s, v):
+        dark = v < 0.5
+        return np.where(dark, 0.76, h), np.where(dark, 0.5, s), np.where(dark, v * 1.2 + 0.18, v)
+    return recolor(im, fn)
+
+
+def fire_suit(im):
+    """An aluminised fire suit: the clothes silver, the face behind a gold visor."""
+    def fn(h, s, v):
+        skin = (h > 0.02) & (h < 0.12) & (s > 0.25) & (v > 0.55)
+        return (np.where(skin, 0.1, 0.58), np.where(skin, 0.9, s * 0.15 + 0.04),
+                np.where(skin, np.minimum(1.0, v * 1.05), np.clip(v * 0.55 + 0.45, 0, 0.95)))
+    return recolor(im, fn)
+
+
+def glow(im, colour=(255, 120, 30), radius=7):
+    """A hot orange glow around [im]."""
+    pad = radius * 3
+    out = Image.new('RGBA', (im.width + 2 * pad, im.height + 2 * pad))
+    g = Image.new('RGBA', im.size, colour + (255,))
+    g.putalpha(im.getchannel('A'))
+    layer = Image.new('RGBA', out.size)
+    layer.alpha_composite(g, (pad, pad))
+    a = np.asarray(layer.filter(ImageFilter.GaussianBlur(radius))).astype(np.float32)
+    a[..., 3] = np.minimum(255, a[..., 3] * 1.9)
+    out.alpha_composite(Image.fromarray(a.astype(np.uint8)))
+    out.alpha_composite(im, (pad, pad))
+    return out
+
+
+def white_coat(im):
+    """The old man's black coat into a doctor's white one."""
+    def fn(h, s, v):
+        dark = (v < 0.42) & (s < 0.35)
+        return np.where(dark, 0.58, h), np.where(dark, 0.06, s), np.where(dark, 0.78 + v * 0.5, v)
+    return recolor(im, fn)
+
+
+def rgba(hexcode, a=255):
+    return ((hexcode >> 16) & 255, (hexcode >> 8) & 255, hexcode & 255, a)
+
+
+def darker(c, k=0.62):
+    return tuple(int(v * k) for v in c[:3]) + (255,)
+
+
+def lighter(c, k=0.35):
+    return tuple(int(v + (255 - v) * k) for v in c[:3]) + (255,)
+
+
+# --- drawing in the packs' flat style ----------------------------------------------------
+
+def canvas(cells=1.0):
+    s = int(PX * HI * cells)
+    im = Image.new('RGBA', (s, s))
+    return im, ImageDraw.Draw(im), s / 2
+
+
+def shrink(im):
+    return im.resize((im.width // HI, im.height // HI), Image.LANCZOS)
+
+
+def box(c, l, t, r, b):
+    """A box in atlas pixels around the canvas middle."""
+    return (c + l * U, c + t * U, c + r * U, c + b * U)
+
+
+def part(d, kind, xy, fill, edge=None, width=4, radius=None):
+    """A shape with the darker rim every pack sprite has; [width] in atlas pixels."""
+    edge = edge or darker(fill)
+    l, t, r, b = xy
+    w = width * U
+    if kind == 'round':
+        rad = (radius if radius is not None else 4) * U
+        d.rounded_rectangle((l, t, r, b), radius=rad, fill=edge)
+        d.rounded_rectangle((l + w, t + w, r - w, b - w), radius=max(0, rad - w), fill=fill)
+    else:
+        getattr(d, kind)((l, t, r, b), fill=edge)
+        getattr(d, kind)((l + w, t + w, r - w, b - w), fill=fill)
+
+
+def disc(d, c, x, y, r, fill, edge=None, width=4):
+    part(d, 'ellipse', box(c, x - r, y - r, x + r, y + r), fill, edge, width)
+
+
+STEEL = (128, 136, 146, 255)
+STEEL_DARK = (66, 72, 80, 255)
+GOLD = (255, 200, 40, 255)
+
+
+def radar_dish(dish=(214, 224, 230, 255)):
+    """A dish on a turning mount, seen from above, facing right."""
+    im, d, c = canvas()
+    disc(d, c, 0, 0, 16, (88, 96, 104, 255), width=4)
+    # Struts from the rim to the feed in front.
+    for y in (-30, 30):
+        d.line(box(c, 6, y, 34, 0)[:4], fill=STEEL_DARK, width=int(3 * U))
+    part(d, 'ellipse', box(c, -10, -44, 22, 44), dish, (112, 124, 134, 255), width=4)
+    d.ellipse(box(c, -2, -35, 17, 35), fill=(186, 198, 208, 255))
+    disc(d, c, 36, 0, 6, (230, 72, 60, 255), width=2)
+    return shrink(im)
+
+
+def jammer():
+    im, d, c = canvas()
+    disc(d, c, 0, 0, 23, (80, 150, 142, 255), width=4)
+    for r in (37, 29):
+        for start in (-40, 140):
+            d.arc(box(c, -r, -r, r, r), start, start + 80, fill=(95, 168, 160, 255), width=int(3.2 * U))
+    disc(d, c, 0, 0, 8, (60, 66, 72, 255), width=2)
+    d.ellipse(box(c, -3.5, -3.5, 3.5, 3.5), fill=(255, 70, 60, 255))
+    return shrink(im)
+
+
+def mine_cart():
+    """The quarry: a cart of gold ore on a short stretch of rails."""
+    im, d, c = canvas()
+    for x in range(-44, 45, 15):
+        part(d, 'round', box(c, x - 4, -34, x + 4, 34), (128, 88, 54, 255), width=2, radius=1)
+    for y in (-24, 24):
+        part(d, 'round', box(c, -52, y - 3, 52, y + 3), (150, 156, 164, 255), width=1.5, radius=1)
+    part(d, 'round', box(c, -34, -30, 34, 30), (158, 98, 58, 255), width=4, radius=6)
+    d.rounded_rectangle(box(c, -25, -21, 25, 21), radius=4 * U, fill=(78, 50, 32, 255))
+    rng = np.random.default_rng(7)
+    for _ in range(16):
+        x, y = rng.uniform(-19, 19), rng.uniform(-15, 15)
+        disc(d, c, x, y, rng.uniform(4.5, 7), GOLD, (190, 132, 20, 255), width=1.6)
+    return shrink(im)
+
+
+def derrick():
+    """The mine shaft: a steel frame over a dark hole."""
+    im, d, c = canvas()
+    disc(d, c, 0, 0, 22, (40, 30, 24, 255), (26, 20, 16, 255), width=4)
+    frame = (92, 100, 110, 255)
+    for (x0, y0, x1, y1) in ((-34, -34, 34, -34), (34, -34, 34, 34), (34, 34, -34, 34), (-34, 34, -34, -34),
+                             (-34, -34, 34, 34), (34, -34, -34, 34)):
+        d.line(box(c, x0, y0, x1, y1), fill=STEEL_DARK, width=int(8 * U))
+        d.line(box(c, x0, y0, x1, y1), fill=frame, width=int(4.5 * U))
+    for (x, y) in ((-34, -34), (34, -34), (34, 34), (-34, 34)):
+        disc(d, c, x, y, 7, (110, 118, 128, 255), width=2.5)
+    return shrink(im)
+
+
+def drill_bit():
+    im, d, c = canvas(0.4)
+    for k in range(3):
+        a = math.radians(k * 120)
+        pts = []
+        for (r, da) in ((5, -50), (19, -12), (19, 12), (5, 50)):
+            pts.append(box(c, math.cos(a + math.radians(da)) * r, math.sin(a + math.radians(da)) * r, 0, 0)[:2])
+        d.polygon(pts, fill=(60, 64, 70, 255))
+        inner = [((x - c) * 0.78 + c, (y - c) * 0.78 + c) for (x, y) in pts]
+        d.polygon(inner, fill=(232, 186, 60, 255))
+    disc(d, c, 0, 0, 7, (176, 186, 196, 255), width=2)
+    return shrink(im)
+
+
+def vault_dial():
+    im, d, c = canvas(0.4)
+    disc(d, c, 0, 0, 16, GOLD, (176, 120, 20, 255), width=3)
+    for k in range(3):
+        a = math.radians(k * 120)
+        d.line(box(c, 0, 0, math.cos(a) * 21, math.sin(a) * 21), fill=(176, 120, 20, 255), width=int(4.5 * U))
+        disc(d, c, math.cos(a) * 21, math.sin(a) * 21, 3.5, GOLD, (176, 120, 20, 255), width=1.5)
+    disc(d, c, 0, 0, 6, (220, 160, 30, 255), (176, 120, 20, 255), width=1.5)
+    return shrink(im)
+
+
+def cactus():
+    """A barrel cactus with two arms, seen from above."""
+    im, d, c = canvas()
+    green = (79, 158, 70, 255)
+    dark = (44, 100, 40, 255)
+    for (x, y, r) in ((-36, 20, 19), (34, -23, 17)):
+        d.line(box(c, 0, 0, x, y), fill=dark, width=int(21 * U))
+        d.line(box(c, 0, 0, x * 0.9, y * 0.9), fill=green, width=int(13 * U))
+        disc(d, c, x, y, r, green, dark, width=3.5)
+        for a in range(0, 360, 60):
+            d.line(box(c, x, y, x + math.cos(math.radians(a)) * (r - 5), y + math.sin(math.radians(a)) * (r - 5)),
+                   fill=(64, 134, 58, 255), width=int(2 * U))
+    disc(d, c, 0, 0, 32, green, dark, width=4)
+    for a in range(0, 360, 30):
+        d.line(box(c, 0, 0, math.cos(math.radians(a)) * 26, math.sin(math.radians(a)) * 26),
+               fill=(64, 134, 58, 255), width=int(2.2 * U))
+    disc(d, c, 0, 0, 9, (240, 110, 150, 255), (190, 60, 100, 255), width=2)
+    disc(d, c, 0, 0, 3, (255, 220, 120, 255), width=0.5)
+    return trim(shrink(im))
+
+
+def heli_body():
+    """A helicopter seen from above, nose to the right; the rotor is drawn by the game."""
+    im, d, c = canvas(1.7)
+    body = (88, 104, 70, 255)
+    dark = darker(body, 0.6)
+    # Tail boom with the tail rotor.
+    part(d, 'round', box(c, -96, -6, -20, 6), body, dark, width=2.5, radius=4)
+    part(d, 'round', box(c, -100, -20, -90, 20), (70, 76, 82, 255), width=2, radius=3)
+    part(d, 'round', box(c, -78, -12, -70, 12), body, dark, width=2, radius=2)
+    # Skids and the stub wings with rockets.
+    for y in (-30, 30):
+        part(d, 'round', box(c, -26, y - 3, 38, y + 3), (70, 76, 82, 255), width=1.5, radius=2)
+    part(d, 'round', box(c, -10, -42, 6, 42), body, dark, width=3, radius=3)
+    for y in (-40, 40):
+        part(d, 'round', box(c, -8, y - 4.5, 16, y + 4.5), (230, 232, 236, 255), (120, 124, 130, 255), width=1.5, radius=4)
+        disc(d, c, 16, y, 3, (220, 64, 52, 255), width=1)
+    # Fuselage and the glass.
+    part(d, 'ellipse', box(c, -36, -24, 52, 24), body, dark, width=4)
+    d.ellipse(box(c, -30, -18, 10, 0), fill=lighter(body, 0.2))
+    part(d, 'ellipse', box(c, 18, -15, 50, 15), (150, 205, 236, 255), (60, 90, 110, 255), width=2.5)
+    d.ellipse(box(c, 28, -11, 40, -3), fill=(225, 245, 255, 255))
+    disc(d, c, -4, 0, 7, (50, 56, 62, 255), width=2)
+    return shrink(im)
+
+
+def riot_shield(im):
+    """Puts a riot shield in front of a character (facing right)."""
+    big = Image.new('RGBA', (im.width * HI, im.height * HI))
+    d = ImageDraw.Draw(big)
+    c = big.width / 2
+    k = im.width / 138          # characters are about 138 atlas pixels across at natural size
+    q = HI * k
+    x0 = c + 20 * q
+    d.rounded_rectangle((x0, c - 33 * q, x0 + 11 * q, c + 33 * q), radius=int(5 * q), fill=(36, 48, 62, 255))
+    d.rounded_rectangle((x0 + 2.5 * q, c - 30 * q, x0 + 8.5 * q, c + 30 * q), radius=int(3.5 * q), fill=(96, 140, 186, 255))
+    d.line((x0 + 5.5 * q, c - 22 * q, x0 + 5.5 * q, c + 22 * q), fill=(170, 210, 240, 255), width=max(1, int(2 * q)))
+    out = im.copy()
+    out.alpha_composite(shrink(big))
+    return out
+
+
+def red_cross(im):
+    big = Image.new('RGBA', (im.width * HI, im.height * HI))
+    d = ImageDraw.Draw(big)
+    c = big.width / 2
+    q = HI * im.width / 138
+    cx = c - 3 * q
+    d.ellipse((cx - 12 * q, c - 12 * q, cx + 12 * q, c + 12 * q), fill=(250, 250, 250, 255), outline=(200, 200, 200, 255), width=int(1.5 * q))
+    d.rectangle((cx - 8 * q, c - 2.8 * q, cx + 8 * q, c + 2.8 * q), fill=(211, 47, 47, 255))
+    d.rectangle((cx - 2.8 * q, c - 8 * q, cx + 2.8 * q, c + 8 * q), fill=(211, 47, 47, 255))
+    out = im.copy()
+    out.alpha_composite(shrink(big))
+    return out
+
+
+def egg_sacs(im):
+    big = Image.new('RGBA', (im.width * HI, im.height * HI))
+    d = ImageDraw.Draw(big)
+    c = big.width / 2
+    q = HI * im.width / 138
+    for (dx, dy, r) in ((-20, -11, 9), (-20, 11, 8.5), (-31, 0, 8), (-10, 0, 6.5), (-29, -15, 5.5), (-29, 15, 5.5)):
+        d.ellipse((c + (dx - r) * q, c + (dy - r) * q, c + (dx + r) * q, c + (dy + r) * q), fill=(112, 96, 48, 255))
+        d.ellipse((c + (dx - r + 1.8) * q, c + (dy - r + 1.8) * q, c + (dx + r - 1.8) * q, c + (dy + r - 2.6) * q), fill=(226, 212, 146, 255))
+        d.ellipse((c + (dx - r * 0.5) * q, c + (dy - r * 0.6) * q, c + (dx - r * 0.1) * q, c + (dy - r * 0.2) * q), fill=(250, 244, 210, 255))
+    out = Image.new('RGBA', im.size)
+    out.alpha_composite(im)
+    out.alpha_composite(shrink(big))
+    return out
+
+
+def aerial(im):
+    """A radio pack's aerial trailing behind a character."""
+    big = Image.new('RGBA', (im.width * HI, im.height * HI))
+    d = ImageDraw.Draw(big)
+    c = big.width / 2
+    q = HI * im.width / 138
+    d.line((c - 14 * q, c - 6 * q, c - 36 * q, c - 22 * q), fill=(50, 54, 60, 255), width=int(2.6 * q))
+    d.ellipse((c - 40 * q, c - 26 * q, c - 32 * q, c - 18 * q), fill=(255, 210, 60, 255), outline=(150, 110, 20, 255), width=int(1.4 * q))
+    out = im.copy()
+    out.alpha_composite(shrink(big))
+    return out
+
+
+# --- soldiers ---------------------------------------------------------------------------
+#
+# Every tower is a squad in a sandbag pit. A soldier is the shooter pack's soldier
+# at the 4x render (256 pixels a cell), dressed in his squad's colour, with the
+# weapon of his job drawn in his own frame: (0, 0) is his head and he faces +x.
+
+CELL4 = 256
+
+
+def trooper_canvas(pose, half=236):
+    x, y, w, h = CHARS[pose]
+    px, py = x + 66, y + 86
+    m = 6
+    body = chars_sheet.crop((x - m, y - m, x + w + m, y + h + m))
+    im = Image.new('RGBA', (2 * half, 2 * half))
+    im.alpha_composite(body, (x - m - (px - half), y - m - (py - half)))
+    return im
+
+
+def uniform(im, colour):
+    """The pack soldier's green helmet and uniform into [colour], keeping their light and shade."""
+    th, ts, tv = (float(v[0, 0]) for v in rgb_to_hsv(np.array([[colour[:3]]], dtype=np.float32) / 255.0))
+
+    def fn(h, s, v):
+        m = greens(h, s)
+        return np.where(m, th, h), np.where(m, ts, s), np.where(m, np.clip(tv + (v - 0.55) * 0.9, 0, 1), v)
+    return recolor(im, fn)
+
+
+def ghillie(im, seed=3):
+    """A sniper's shaggy camouflage over his body."""
+    rng = np.random.default_rng(seed)
+    layer = Image.new('RGBA', im.size)
+    d = ImageDraw.Draw(layer)
+    c = im.width / 2
+    for _ in range(46):
+        x, y, r = rng.uniform(-74, 24), rng.uniform(-64, 64), rng.uniform(5, 11)
+        col = [(66, 82, 44, 235), (112, 122, 70, 235), (92, 76, 50, 235)][rng.integers(3)]
+        d.ellipse((c + x - r, c + y - r, c + x + r, c + y + r), fill=col)
+    body = np.asarray(im.getchannel('A')) > 100
+    keep = np.minimum(np.asarray(layer.getchannel('A')), (body * 255).astype(np.uint8))
+    out = im.copy()
+    out.paste(layer, (0, 0), Image.fromarray(keep))
+    return out
+
+
+def rr(d, c, x0, y0, x1, y1, fill, w=5, r=6, edge=None):
+    """A rounded box with a darker rim, in the soldier's frame."""
+    edge = edge or darker(fill)
+    d.rounded_rectangle((c + x0, c + y0, c + x1, c + y1), radius=r, fill=edge)
+    d.rounded_rectangle((c + x0 + w, c + y0 + w, c + x1 - w, c + y1 - w), radius=max(0, r - w), fill=fill)
+
+
+def dot(d, c, x, y, r, fill, w=4, edge=None):
+    edge = edge or darker(fill)
+    d.ellipse((c + x - r, c + y - r, c + x + r, c + y + r), fill=edge)
+    d.ellipse((c + x - r + w, c + y - r + w, c + x + r - w, c + y + r - w), fill=fill)
+
+
+def tri(d, c, pts, fill):
+    d.polygon([(c + x, c + y) for (x, y) in pts], fill=fill)
+
+
+GUN = (52, 56, 62, 255)
+GUNMETAL = (96, 102, 110, 255)
+WOOD = (150, 98, 56, 255)
+OLIVE = (104, 118, 64, 255)
+WHITE = (226, 230, 224, 255)
+RED = (211, 47, 47, 255)
+
+
+def trooper(pose, colour, front=None, back=None, camo=False):
+    """One soldier at atlas size: [back] is drawn under him, [front] over him."""
+    im = uniform(trooper_canvas(pose), colour)
+    if camo:
+        im = ghillie(im)
+    c = im.width / 2
+    if back:
+        layer = Image.new('RGBA', im.size)
+        back(ImageDraw.Draw(layer), c)
+        layer.alpha_composite(im)
+        im = layer
+    if front:
+        layer = Image.new('RGBA', im.size)
+        front(ImageDraw.Draw(layer), c)
+        im.alpha_composite(layer)
+    # Square around the head, as small as what shows allows, then down to atlas size.
+    l, t, r, b = im.getchannel('A').point(lambda a: 255 if a > 8 else 0).getbbox()
+    half = int(max(c - l, r - c, c - t, b - c)) + 6
+    im = im.crop((int(c - half), int(c - half), int(c + half), int(c + half)))
+    return im.resize((im.width * PX // CELL4, im.height * PX // CELL4), Image.LANCZOS)
+
+
+# The weapons, each a painter for trooper().
+
+def gatling(d, c):
+    for (y, a) in ((0, 0), (0, 38), (0, -38)):
+        d.line((c + 96, c + y, c + 96 + 50 * math.cos(math.radians(a)), c + 50 * math.sin(math.radians(a)) * 1.2), fill=GUN, width=8)
+    rr(d, c, 20, -17, 98, 17, GUNMETAL)
+    for y in (-9, 0, 9):
+        rr(d, c, 92, y - 4, 198, y + 4, GUN, w=2, r=3)
+    rr(d, c, 182, -15, 194, 15, GUN, w=3, r=3)
+    dot(d, c, 50, 32, 17, OLIVE)
+
+
+def anti_tank(d, c):
+    rr(d, c, 16, -11, 82, 11, WOOD)
+    rr(d, c, 76, -6, 218, 6, GUN, w=3, r=3)
+    rr(d, c, 204, -12, 224, 12, GUN, w=3, r=3)
+    d.line((c + 150, c - 6, c + 168, c - 36), fill=GUN, width=6)
+    d.line((c + 150, c + 6, c + 168, c + 36), fill=GUN, width=6)
+
+
+def shotgun(d, c):
+    rr(d, c, 18, -13, 72, 13, WOOD)
+    rr(d, c, 64, -13, 146, 0, GUN, w=3, r=3)
+    rr(d, c, 64, 0, 146, 13, GUN, w=3, r=3)
+
+
+def auto_shotgun(d, c):
+    rr(d, c, 18, -13, 92, 13, GUNMETAL)
+    rr(d, c, 86, -7, 156, 7, GUN, w=3, r=3)
+    rr(d, c, 146, -10, 160, 10, GUN, w=3, r=3)
+    dot(d, c, 58, 26, 20, GUN)
+    dot(d, c, 58, 26, 8, GUNMETAL, w=2)
+
+
+def slug_gun(d, c):
+    rr(d, c, 16, -12, 72, 12, WOOD)
+    rr(d, c, 66, -9, 184, 9, GUN, w=3, r=4)
+    rr(d, c, 172, -12, 188, 12, GUN, w=3, r=3)
+
+
+def rpg(d, c):
+    rr(d, c, -64, 10, 122, 38, OLIVE, r=12)
+    tri(d, c, [(120, 6), (170, 24), (120, 42)], (90, 100, 50, 255))
+    tri(d, c, [(126, 13), (160, 24), (126, 35)], (126, 140, 72, 255))
+    rr(d, c, 28, 36, 50, 54, GUN, w=3, r=3)
+
+
+def rocket_pod(d, c):
+    rr(d, c, -50, 2, 108, 50, (84, 96, 52, 255), r=8)
+    for y in (12, 26, 40):
+        tri(d, c, [(106, y - 6), (122, y), (106, y + 6)], RED)
+    rr(d, c, 30, 48, 50, 62, GUN, w=3, r=3)
+
+
+def atgm(d, c):
+    rr(d, c, -76, 6, 150, 44, (80, 90, 60, 255), r=14)
+    tri(d, c, [(148, 4), (196, 25), (148, 46)], (88, 98, 70, 255))
+    tri(d, c, [(156, 14), (186, 25), (156, 36)], RED)
+    rr(d, c, 20, -18, 62, 8, GUN, w=3, r=4)
+
+
+def flame_tanks(colour, stripes=False, frost=False):
+    def back(d, c):
+        for y in (-26, 26):
+            rr(d, c, -98, y - 22, -20, y + 22, colour, r=20)
+            if stripes:
+                for x in (-86, -66, -46):
+                    tri(d, c, [(x, y - 18), (x + 8, y - 18), (x + 2, y + 18), (x - 6, y + 18)], (40, 34, 30, 255))
+            d.rounded_rectangle((c - 88, c + y - 14, c - 40, c + y - 7), radius=4, fill=lighter(colour, 0.5))
+            if frost:
+                for x in (-76, -50):
+                    d.line((c + x - 7, c + y + 6, c + x + 7, c + y + 6), fill=(255, 255, 255, 255), width=4)
+                    d.line((c + x, c + y - 1, c + x, c + y + 13), fill=(255, 255, 255, 255), width=4)
+    return back
+
+
+def flame_gun(big=False, frost=False):
+    def front(d, c):
+        w = 11 if big else 9
+        rr(d, c, 22, -w, 136, w, GUNMETAL, w=3, r=4)
+        rr(d, c, 124, -w - 6, 146, w + 6, GUN, w=3, r=4)
+        d.ellipse((c + 144, c - 10, c + 164, c + 10), fill=(190, 240, 255, 255) if frost else (255, 190, 80, 255))
+    return front
+
+
+def manpads(d, c):
+    rr(d, c, -72, 8, 142, 34, (214, 218, 204, 255), r=12, edge=(92, 98, 82, 255))
+    tri(d, c, [(140, 8), (170, 21), (140, 34)], RED)
+    rr(d, c, 40, 32, 60, 52, GUN, w=3, r=3)
+
+
+def salvo_pack(d, c):
+    for (y, x0) in ((4, -60), (22, -66), (40, -60)):
+        rr(d, c, x0, y - 9, x0 + 190, y + 9, (214, 218, 204, 255), w=4, r=8, edge=(92, 98, 82, 255))
+        tri(d, c, [(x0 + 188, y - 8), (x0 + 210, y), (x0 + 188, y + 8)], RED)
+
+
+def longbow_tube(d, c):
+    rr(d, c, -84, 4, 168, 44, (176, 182, 168, 255), r=16, edge=(86, 92, 78, 255))
+    tri(d, c, [(166, 4), (212, 24), (166, 44)], RED)
+    rr(d, c, 24, -20, 64, 8, GUN, w=3, r=4)
+
+
+def tesla_gun(core, rings=2, big=False):
+    def front(d, c):
+        rr(d, c, 18, -12, 92, 12, GUN)
+        for k in range(rings):
+            x = 100 + k * 18
+            r = 22 if big else 18
+            d.ellipse((c + x - 7, c - r, c + x + 7, c + r), outline=(201, 125, 58, 255), width=6)
+        x = 104 + rings * 18
+        d.ellipse((c + x - 18, c - 18, c + x + 18, c + 18), fill=lighter(core, 0.15))
+        d.ellipse((c + x - 11, c - 11, c + x + 11, c + 11), fill=core)
+        d.ellipse((c + x - 9, c - 9, c + x - 1, c - 1), fill=(255, 255, 255, 230))
+    return front
+
+
+def sniper_rifle(thick=False, laser=False):
+    def front(d, c):
+        rr(d, c, 18, -10, 76, 10, (84, 98, 58, 255))
+        w = 8 if thick else 5
+        rr(d, c, 70, -w, 230, w, GUN, w=2, r=3)
+        if thick:
+            rr(d, c, 214, -13, 236, 13, GUN, w=3, r=3)
+            d.line((c + 170, c - 6, c + 186, c - 34), fill=GUN, width=6)
+            d.line((c + 170, c + 6, c + 186, c + 34), fill=GUN, width=6)
+        rr(d, c, 40, -26, 98, -13, GUN, w=3, r=4)
+        d.ellipse((c + 92, c - 25, c + 104, c - 13), fill=(127, 211, 255, 255))
+        if laser:
+            d.line((c + 100, c - 19, c + 250, c - 19), fill=(255, 60, 60, 190), width=4)
+            d.ellipse((c + 94, c - 25, c + 106, c - 13), fill=(255, 70, 60, 255))
+    return front
+
+
+RAIL_CORE = (111, 227, 255, 255)
+RAIL_DARK = (42, 45, 51, 255)
+COIL = (217, 169, 58, 255)
+
+
+def railgun(d, c):
+    """Twin rails with gold coils round a charged core, on a long dark body with a gold sight."""
+    rr(d, c, 16, -18, 104, 18, RAIL_DARK, r=7)
+    rr(d, c, 92, -17, 230, -6, GUNMETAL, w=3, r=3)
+    rr(d, c, 92, 6, 230, 17, GUNMETAL, w=3, r=3)
+    d.line((c + 98, c, c + 226, c), fill=RAIL_CORE, width=6)
+    for x in (118, 154, 190):
+        rr(d, c, x, -22, x + 12, 22, COIL, w=3, r=3)
+    rr(d, c, 40, -32, 96, -19, GUN, w=3, r=4)
+    d.ellipse((c + 90, c - 31, c + 102, c - 19), fill=(255, 210, 90, 255))
+    dot(d, c, 56, 0, 12, RAIL_CORE, w=3)
+
+
+def power_pack(d, c):
+    """The railgun's battery on his back, its cells aglow."""
+    rr(d, c, -104, -34, -28, 34, RAIL_DARK, r=10)
+    for y in (-18, 0, 18):
+        d.line((c - 94, c + y, c - 40, c + y), fill=RAIL_CORE, width=5)
+
+
+def radio_pack(d, c):
+    rr(d, c, -98, -30, -30, 30, (86, 92, 70, 255), r=8)
+    d.line((c - 82, c - 20, c - 136, c - 84), fill=GUN, width=5)
+    d.ellipse((c - 144, c - 92, c - 128, c - 76), fill=(255, 70, 60, 255))
+
+
+def handset(d, c):
+    rr(d, c, 30, -42, 54, -18, GUN, w=3, r=4)
+
+
+def binoculars(d, c):
+    for y in (-11, 11):
+        rr(d, c, 36, y - 8, 76, y + 8, GUN, w=3, r=5)
+    d.ellipse((c + 70, c - 18, c + 80, c - 4), fill=(127, 211, 255, 255))
+    d.ellipse((c + 70, c + 4, c + 80, c + 18), fill=(127, 211, 255, 255))
+
+
+def jam_pack(d, c):
+    rr(d, c, -104, -40, -26, 40, (60, 120, 112, 255), r=10)
+    for r in (34, 50):
+        d.arc((c - 64 - r, c - r, c - 64 + r, c + r), 140, 220, fill=(120, 200, 190, 255), width=6)
+    dot(d, c, -64, 0, 10, (255, 70, 60, 255), w=3)
+
+
+def detector(d, c):
+    d.line((c + 30, c + 6, c + 150, c + 6), fill=GUN, width=7)
+    d.ellipse((c + 140, c - 22, c + 196, c + 34), outline=(150, 156, 164, 255), width=8)
+    rr(d, c, 30, 14, 60, 34, (70, 76, 82, 255), w=3, r=4)
+
+
+def plunger(d, c):
+    rr(d, c, 40, -26, 92, 26, (126, 92, 52, 255))
+    d.line((c + 66, c - 26, c + 66, c - 44), fill=GUN, width=7)
+    rr(d, c, 50, -52, 82, -40, GUN, w=3, r=3)
+    d.line((c + 92, c, c + 150, c + 20), fill=(200, 60, 50, 255), width=4)
+
+
+def wire_coil(d, c):
+    for r, w in ((30, 7), (20, 5)):
+        d.ellipse((c + 74 - r, c - r, c + 74 + r, c + r), outline=(150, 156, 164, 255), width=w)
+    for a in range(0, 360, 30):
+        x = c + 74 + math.cos(math.radians(a)) * 30
+        y = c + math.sin(math.radians(a)) * 30
+        d.line((x - 5, y - 5, x + 5, y + 5), fill=(110, 114, 120, 255), width=3)
+
+
+def crate(d, c):
+    rr(d, c, 30, -34, 98, 34, WOOD, r=4)
+    d.line((c + 36, c - 28, c + 92, c + 28), fill=darker(WOOD, 0.75), width=6)
+    d.line((c + 36, c + 28, c + 92, c - 28), fill=darker(WOOD, 0.75), width=6)
+
+
+def jackhammer(d, c):
+    rr(d, c, 30, -36, 48, 36, GUN, w=3, r=6)
+    rr(d, c, 40, -10, 118, 10, GUNMETAL, w=3, r=4)
+    tri(d, c, [(116, -6), (140, 0), (116, 6)], (176, 186, 196, 255))
+    d.ellipse((c + 8, c - 8, c + 24, c + 8), fill=(255, 230, 120, 255))
+
+
+def money_bag(d, c):
+    dot(d, c, 64, 0, 28, (206, 176, 112, 255), w=4)
+    rr(d, c, 30, -8, 44, 8, (150, 120, 70, 255), w=3, r=3)
+    dot(d, c, 68, 0, 12, GOLD, w=3, edge=(176, 120, 20, 255))
+
+
+def vest(im):
+    """An enemy sapper's yellow hazard vest over the survivor's blue shirt."""
+    def fn(h, s, v):
+        m = (h > 0.55) & (h < 0.72) & (s > 0.15)
+        return np.where(m, 0.13, h), np.where(m, 0.8, s), np.where(m, np.clip(v * 1.5, 0, 0.95), v)
+    return recolor(im, fn)
+
+
+# --- commanders ------------------------------------------------------------------------
+#
+# A commander is a soldier too: his own uniform, a beret or a hard hat over the head
+# with a gold star, and a weapon of his own.
+
+def star_points(cx, cy, r, inner=0.42):
+    pts = []
+    for i in range(10):
+        a = -math.pi / 2 + i * math.pi / 5
+        rr_ = r if i % 2 == 0 else r * inner
+        pts.append((cx + rr_ * math.cos(a), cy + rr_ * math.sin(a)))
+    return pts
+
+
+def both(*painters):
+    def paint(d, c):
+        for p in painters:
+            p(d, c)
+    return paint
+
+
+def beret(colour):
+    """A beret pulled to one side over the head, a gold star on it."""
+    def front(d, c):
+        d.ellipse((c - 40, c - 38, c + 28, c + 34), fill=darker(colour))
+        d.ellipse((c - 35, c - 33, c + 22, c + 28), fill=colour)
+        d.ellipse((c - 28, c - 26, c + 4, c + 2), fill=lighter(colour, 0.18))
+        d.polygon(star_points(c - 8, c - 14, 15), fill=(120, 84, 10, 255))
+        d.polygon(star_points(c - 8, c - 14, 12), fill=GOLD)
+    return front
+
+
+def hard_hat(colour):
+    """An engineer's hard hat with a ridge and a star."""
+    def front(d, c):
+        d.ellipse((c - 40, c - 40, c + 36, c + 36), fill=darker(colour))
+        d.ellipse((c - 35, c - 35, c + 31, c + 31), fill=colour)
+        d.rounded_rectangle((c - 34, c - 5, c + 30, c + 3), radius=3, fill=darker(colour, 0.8))
+        d.polygon(star_points(c - 10, c - 18, 9), fill=(255, 255, 255, 235))
+    return front
+
+
+def tool_pack(d, c):
+    rr(d, c, -100, -34, -30, 34, (47, 156, 143, 255), r=8)
+    d.line((c - 86, c - 18, c - 46, c + 18), fill=STEEL, width=8)
+    d.ellipse((c - 52, c + 10, c - 36, c + 26), outline=STEEL, width=6)
+
+
+def ammo_pack(d, c):
+    rr(d, c, -98, -40, -28, 40, (70, 78, 60, 255), r=8)
+    for y in (-22, 0, 22):
+        dot(d, c, -64, y, 9, (196, 150, 60, 255), w=3)
+
+
+def grenade_launcher(d, c):
+    rr(d, c, 16, -14, 70, 14, GUNMETAL)
+    dot(d, c, 92, 0, 27, GUN, w=4)
+    for a in range(0, 360, 60):
+        dot(d, c, 92 + 15 * math.cos(math.radians(a)), 15 * math.sin(math.radians(a)), 6, GUNMETAL, w=2)
+    rr(d, c, 112, -11, 200, 11, GUN, w=3, r=4)
+    rr(d, c, 188, -16, 204, 16, GUN, w=3, r=3)
+
+
+def sentry_gun():
+    """The engineer's machine gun on a tripod, seen from above, facing right."""
+    im, d, c = canvas()
+    for a in (60, 180, 300):
+        x = c + math.cos(math.radians(a)) * 30 * U
+        y = c + math.sin(math.radians(a)) * 30 * U
+        d.line((c, c, x, y), fill=STEEL_DARK, width=int(4.5 * U))
+        disc(d, c, (x - c) / U, (y - c) / U, 4, STEEL_DARK, width=1.5)
+    part(d, 'round', box(c, -10, 6, 6, 22), (104, 118, 64, 255), width=2, radius=2)
+    part(d, 'round', box(c, -16, -11, 18, 11), (96, 102, 110, 255), width=3, radius=4)
+    part(d, 'round', box(c, 14, -4, 50, 4), (52, 56, 62, 255), width=1.5, radius=1)
+    part(d, 'round', box(c, 44, -6, 52, 6), (52, 56, 62, 255), width=1.5, radius=1)
+    disc(d, c, 0, 0, 5, (230, 180, 40, 255), width=1.5)
+    return shrink(im)
+
+
+# --- the squads' pits and props ------------------------------------------------------------
+
+PIT_FLOOR = {'green': (126, 94, 60, 255), 'desert': (194, 158, 108, 255), 'winter': (170, 162, 156, 255), 'volcano': (84, 66, 58, 255),
+             'ruins': (116, 110, 102, 255)}
+
+
+def pit(biome, elite):
+    """A dug-in position ringed with sandbags; an elite squad's bags are darker."""
+    n = int(PX * 1.1)
+    im = Image.new('RGBA', (n, n))
+    d = ImageDraw.Draw(im)
+    c = n / 2
+    r = 0.37 * PX
+    floor = PIT_FLOOR[biome]
+    d.ellipse((c - r - 3, c - r - 3, c + r + 3, c + r + 3), fill=darker(floor, 0.75))
+    d.ellipse((c - r + 4, c - r + 4, c + r, c + r), fill=floor)
+    bag = tanks('sandbagBrown' if elite else 'sandbagBeige')
+    count = 10
+    for i in range(count):
+        a = i * 360 / count + 9
+        b = scale(bag.rotate(-a - 90, expand=True, resample=Image.BICUBIC), 0.58)
+        x = c + math.cos(math.radians(a)) * 0.43 * PX - b.width / 2
+        y = c + math.sin(math.radians(a)) * 0.43 * PX - b.height / 2
+        im.alpha_composite(b, (int(x), int(y)))
+    if biome == 'winter':
+        im = snow_on(im, -3, -4)
+    return shadowed(im, 2, 3, 2, 0.3)
+
+
+def map_table():
+    im, d, c = canvas(0.6)
+    part(d, 'round', box(c, -26, -18, 26, 18), (150, 112, 70, 255), width=3, radius=3)
+    d.rectangle(box(c, -20, -13, 20, 13), fill=(232, 222, 190, 255))
+    for (x0, y0, x1, y1) in ((-16, -6, 4, 8), (4, 8, 16, -4), (-14, 6, -4, -10)):
+        d.line(box(c, x0, y0, x1, y1), fill=(120, 150, 110, 255), width=int(1.6 * U))
+    disc(d, c, 6, -4, 3, (220, 50, 40, 255), width=1)
+    return shrink(im)
+
+
+def bunker():
+    """The base: a metal crate ringed with sandbags."""
+    s = PX
+    im = Image.new('RGBA', (s, s))
+    bag = tanks('sandbagBrown')
+    for k in range(8):
+        a = k * 45
+        b = bag.rotate(-a - 90, expand=True, resample=Image.BICUBIC)
+        b = scale(b, 0.62)
+        x = s / 2 + math.cos(math.radians(a)) * s * 0.36 - b.width / 2
+        y = s / 2 + math.sin(math.radians(a)) * s * 0.36 - b.height / 2
+        im.alpha_composite(b, (int(x), int(y)))
+    crate = scale(tanks('crateMetal'), 1.1)
+    im.alpha_composite(crate, ((s - crate.width) // 2, (s - crate.height) // 2))
+    return im
+
+
+# --- the sprites ------------------------------------------------------------------------
+
+S = {}
+
+# Ground and roads, opaque cell squares.
+S['ground.green.0'] = tanks('tileGrass1').resize((PX, PX), Image.LANCZOS)
+S['ground.green.1'] = tanks('tileGrass2').resize((PX, PX), Image.LANCZOS)
+S['ground.desert.0'] = tanks('tileSand1').resize((PX, PX), Image.LANCZOS)
+S['ground.desert.1'] = tanks('tileSand2').resize((PX, PX), Image.LANCZOS)
+S['ground.winter.0'] = snow(S['ground.green.0'])
+S['ground.winter.1'] = snow(S['ground.green.1'])
+S['ground.volcano.0'] = embers(ash(S['ground.green.0']), 1, cracks=2, sparks=3)
+S['ground.volcano.1'] = embers(ash(S['ground.green.1']), 2, cracks=1, sparks=4)
+S['ground.ruins.0'] = rubble(concrete(S['ground.green.0']), 7, cracks=2, chips=4)
+S['ground.ruins.1'] = rubble(concrete(S['ground.green.1']), 8, cracks=1, chips=6)
+
+N, E, SO, WE = 1, 2, 4, 8
+
+
+def road_mask(im, ground):
+    """Which edges of a road tile the road touches, from colours near the edge midpoints."""
+    a = np.asarray(im.convert('RGB')).astype(float)
+    g = np.asarray(ground.convert('RGB')).astype(float).reshape(-1, 3).mean(axis=0)
+    n = a.shape[0]
+    mask = 0
+    for bit, (y, x) in ((N, (3, n // 2)), (E, (n // 2, n - 4)), (SO, (n - 4, n // 2)), (WE, (n // 2, 3))):
+        patch = a[max(0, y - 3):y + 4, max(0, x - 3):x + 4].reshape(-1, 3).mean(axis=0)
+        if np.abs(patch - g).mean() > 28:
+            mask |= bit
+    return mask
+
+
+ROAD_TILES = ['roadEast', 'roadNorth', 'roadCornerLL', 'roadCornerLR', 'roadCornerUL', 'roadCornerUR',
+              'roadSplitE', 'roadSplitN', 'roadSplitS', 'roadSplitW', 'roadCrossing']
+for biome, prefix, ground, change in (('green', 'tileGrass_', 'tileGrass1', None), ('desert', 'tileSand_', 'tileSand1', None),
+                                      ('winter', 'tileGrass_', 'tileGrass1', snow),
+                                      ('volcano', 'tileGrass_', 'tileGrass1', lambda im: ash(cinder(im))),
+                                      ('ruins', 'tileGrass_', 'tileGrass1', lambda im: concrete(asphalt(im)))):
+    found = {}
+    for t in ROAD_TILES:
+        im = tanks(prefix + t).resize((PX, PX), Image.LANCZOS)
+        m = road_mask(im, tanks(ground).resize((PX, PX), Image.LANCZOS))
+        found[m] = change(im) if change else im
+    # A road that ends (at the base or the map edge) uses the straight piece.
+    for m in (N, SO):
+        found.setdefault(m, found[N | SO])
+    for m in (E, WE):
+        found.setdefault(m, found[E | WE])
+    for m, im in found.items():
+        S['road.%s.%d' % (biome, m)] = im
+    missing = [m for m in range(1, 16) if m not in found]
+    if missing:
+        sys.exit('no road tile for masks %s in %s' % (missing, biome))
+
+# Obstacles and decoration, with their shadows.
+S['tree.green.0'] = shadowed(trim(td(133)))
+S['tree.green.1'] = shadowed(trim(tanks('treeGreen_large')))
+S['tree.green.2'] = shadowed(trim(td(130)))
+S['tree.desert.0'] = shadowed(trim(td(134)))
+S['tree.desert.1'] = shadowed(trim(scale(td(132), 1.1)))
+S['tree.winter.0'] = shadowed(trim(snow_on(pine(tanks('treeGreen_large')), blobs=5)))
+S['tree.winter.1'] = shadowed(trim(snow_on(pine(td(130)), blobs=4)))
+S['rock.green.0'] = shadowed(trim(td(136)))
+S['rock.green.1'] = shadowed(trim(td(135)))
+S['rock.desert.0'] = shadowed(trim(sandstone(td(136))))
+S['rock.desert.1'] = shadowed(trim(sandstone(td(137))))
+S['rock.winter.0'] = shadowed(trim(snowcap(td(136))))
+S['rock.winter.1'] = shadowed(trim(snowcap(td(135))))
+S['tree.volcano.0'] = shadowed(trim(embers(charred(td(133)), 3, cracks=1, sparks=5)))
+S['tree.volcano.1'] = shadowed(trim(embers(charred(tanks('treeBrown_large')), 4, cracks=1, sparks=6)))
+S['rock.volcano.0'] = shadowed(trim(embers(basalt(td(136)), 5, cracks=3, sparks=2)))
+S['rock.volcano.1'] = shadowed(trim(embers(basalt(td(135)), 6, cracks=3, sparks=2)))
+
+
+def wreck(body, seed):
+    """A burnt-out car from above, nose to the right: rust and soot over its paint, the glass gone."""
+    rng = np.random.default_rng(seed)
+    im, d, c = canvas(1.0)
+    tyre = (34, 32, 30, 255)
+    for (x, y) in ((-30, -26), (22, -26), (-30, 20), (22, 20)):
+        d.rounded_rectangle(box(c, x, y, x + 14, y + 6), radius=2 * U, fill=tyre)
+    part(d, 'round', box(c, -46, -23, 46, 23), body, width=3, radius=10)
+    part(d, 'round', box(c, -24, -18, 16, 18), darker(body, 0.8), width=2.5, radius=6)
+    hole = (36, 33, 31, 255)
+    d.rounded_rectangle(box(c, 16, -16, 29, 16), radius=3 * U, fill=hole)
+    d.rounded_rectangle(box(c, -35, -15, -25, 15), radius=3 * U, fill=hole)
+    for _ in range(9):
+        x, y, r = rng.uniform(-40, 40), rng.uniform(-18, 18), rng.uniform(3, 8)
+        col = [(46, 40, 36, 150), (150, 76, 40, 170), (90, 52, 34, 160)][rng.integers(3)]
+        layer = Image.new('RGBA', im.size)
+        ImageDraw.Draw(layer).ellipse(box(c, x - r, y - r, x + r, y + r), fill=col)
+        keep = np.minimum(np.asarray(layer.getchannel('A')), np.asarray(im.getchannel('A')))
+        layer.putalpha(Image.fromarray(keep))
+        im.alpha_composite(layer)
+    return shrink(im)
+
+
+S['tree.ruins.0'] = shadowed(trim(wreck((122, 70, 50, 255), 11)))
+S['tree.ruins.1'] = shadowed(trim(wreck((84, 98, 112, 255), 12).rotate(28, expand=True, resample=Image.BICUBIC)))
+S['rock.ruins.0'] = shadowed(trim(rubble(rebar(slab(td(136)), 13), 14, cracks=2, chips=2)))
+S['rock.ruins.1'] = shadowed(trim(rubble(rebar(slab(td(135)), 15, rods=3), 16, cracks=2, chips=3)))
+S['cactus'] = shadowed(cactus())
+S['base'] = shadowed(bunker(), alpha=0.35)
+S['scorch'] = trim(td(19))
+S['debris'] = trim(td(20))
+S['oil'] = trim(tanks('oilSpill_large'))
+for k, n in enumerate((295, 296, 298)):
+    S['fire.%d' % k] = trim(td(n))
+for k in range(5):
+    S['blast.%d' % k] = trim(tanks('explosion%d' % (k + 1)))
+    S['smoke.%d' % k] = trim(tanks('explosionSmoke%d' % (k + 1)))
+S['coin'] = trim(td(272))
+S['flash'] = trim(face_right_from_up(tanks('shotOrange')))
+S['flash.big'] = trim(face_right_from_up(tanks('shotLarge')))
+
+# Squads. Each tower type has its uniform, each job its weapon; a specialisation
+# puts one special soldier at the front of the squad.
+TEAL = rgba(0x2F9C8F)
+SQUAD = {
+    'turret': rgba(0x4E8C3A), 'shotgun': rgba(0xC9A060), 'rocket': rgba(0x9A3A36), 'flamer': rgba(0x43474E),
+    'sam': rgba(0x5D9BD6), 'tesla': rgba(0x8A5CC8), 'sniper': rgba(0x55643A), 'mines': rgba(0xE07B2E),
+    'radar': TEAL, 'quarry': rgba(0x3F4F8C), 'rail': rgba(0x30343C),
+}
+S['trooper.turret'] = trooper('soldier1_machine', SQUAD['turret'])
+S['trooper.minigun'] = trooper('soldier1_hold', SQUAD['turret'], gatling)
+S['trooper.piercer'] = trooper('soldier1_hold', SQUAD['turret'], anti_tank)
+S['trooper.shotgun'] = trooper('soldier1_hold', SQUAD['shotgun'], shotgun)
+S['trooper.assault'] = trooper('soldier1_hold', SQUAD['shotgun'], auto_shotgun)
+S['trooper.slug'] = trooper('soldier1_hold', SQUAD['shotgun'], slug_gun)
+S['trooper.rocket'] = trooper('soldier1_hold', SQUAD['rocket'], rpg)
+S['trooper.cluster'] = trooper('soldier1_hold', SQUAD['rocket'], rocket_pod)
+S['trooper.heavy'] = trooper('soldier1_hold', SQUAD['rocket'], atgm)
+S['trooper.flamer'] = trooper('soldier1_hold', SQUAD['flamer'], flame_gun(), flame_tanks(rgba(0xE0592B)))
+S['trooper.napalm'] = trooper('soldier1_hold', SQUAD['flamer'], flame_gun(big=True), flame_tanks(rgba(0xF0B020), stripes=True))
+S['trooper.cryo'] = trooper('soldier1_hold', rgba(0xE6EAEE), flame_gun(frost=True), flame_tanks(rgba(0x8FD3F5), frost=True))
+S['trooper.sam'] = trooper('soldier1_hold', SQUAD['sam'], manpads)
+S['trooper.salvo'] = trooper('soldier1_hold', SQUAD['sam'], salvo_pack)
+S['trooper.longbow'] = trooper('soldier1_hold', SQUAD['sam'], longbow_tube)
+S['trooper.tesla'] = trooper('soldier1_hold', SQUAD['tesla'], tesla_gun((111, 227, 255, 255)))
+S['trooper.storm'] = trooper('soldier1_hold', SQUAD['tesla'], tesla_gun((170, 210, 255, 255), rings=3, big=True))
+S['trooper.stun'] = trooper('soldier1_hold', SQUAD['tesla'], tesla_gun((255, 227, 107, 255)))
+S['trooper.sniper'] = trooper('soldier1_hold', SQUAD['sniper'], sniper_rifle(), camo=True)
+S['trooper.heavycal'] = trooper('soldier1_hold', SQUAD['sniper'], sniper_rifle(thick=True), camo=True)
+S['trooper.marker'] = trooper('soldier1_hold', SQUAD['sniper'], sniper_rifle(laser=True), camo=True)
+S['trooper.mines'] = trooper('soldier1_hold', SQUAD['mines'], detector)
+S['trooper.landmine'] = trooper('soldier1_hold', SQUAD['mines'], plunger)
+S['trooper.spikes'] = trooper('soldier1_hold', SQUAD['mines'], wire_coil)
+S['trooper.radar'] = trooper('soldier1_hold', SQUAD['radar'], handset, radio_pack)
+S['trooper.command'] = trooper('soldier1_hold', SQUAD['radar'], binoculars, radio_pack)
+S['trooper.jammer'] = trooper('soldier1_hold', SQUAD['radar'], handset, jam_pack)
+S['trooper.quarry'] = trooper('soldier1_hold', SQUAD['quarry'], crate)
+S['trooper.drill'] = trooper('soldier1_hold', SQUAD['quarry'], jackhammer)
+S['trooper.bank'] = trooper('soldier1_hold', SQUAD['quarry'], money_bag)
+S['trooper.rail'] = trooper('soldier1_hold', SQUAD['rail'], railgun, power_pack)
+for biome in ('green', 'desert', 'winter', 'volcano', 'ruins'):
+    S['pit.%s' % biome] = pit(biome, False)
+    S['pit.%s.elite' % biome] = pit(biome, True)
+
+
+# Camouflage for the squads: the pit's sandbags in the set's colours, drawn over the pit.
+CAMO_BAGS = {
+    'desert': (0xD9B978, 0xA9874F), 'winter': (0xEEF1F4, 0xB7C2CC), 'night': (0x4A4F57, 0x2C2F35),
+    'urban': (0x8E99A6, 0x5E6977), 'parade': (0xB73A33, 0x86241F),
+}
+
+
+def tinted(im, colour):
+    """[im] in [colour], keeping its light and shade."""
+    a = np.asarray(im).astype(np.float32)
+    light = (0.30 * a[..., 0] + 0.59 * a[..., 1] + 0.11 * a[..., 2]) / 255.0
+    k = np.clip(0.45 + 0.75 * light, 0, 1.25)[..., None]
+    rgb = np.clip(np.array(colour[:3], dtype=np.float32) * k, 0, 255)
+    out = np.concatenate([rgb, a[..., 3:4]], axis=2).astype(np.uint8)
+    return Image.fromarray(out, 'RGBA')
+
+
+def camo_pit(name, elite):
+    """The ring of bags alone, laid out as in pit(), so it covers the pit's own bags."""
+    n = int(PX * 1.1)
+    im = Image.new('RGBA', (n, n))
+    d = ImageDraw.Draw(im)
+    c = n / 2
+    bag = tinted(tanks('sandbagBeige'), rgba(CAMO_BAGS[name][1 if elite else 0]))
+    count = 10
+    for i in range(count):
+        a = i * 360 / count + 9
+        b = scale(bag.rotate(-a - 90, expand=True, resample=Image.BICUBIC), 0.58)
+        x = c + math.cos(math.radians(a)) * 0.43 * PX - b.width / 2
+        y = c + math.sin(math.radians(a)) * 0.43 * PX - b.height / 2
+        im.alpha_composite(b, (int(x), int(y)))
+    if name == 'parade':
+        r = 0.43 * PX
+        d.ellipse((c - r, c - r, c + r, c + r), outline=GOLD, width=4)
+    if name == 'night':
+        y0 = c - 0.43 * PX
+        d.ellipse((c - 5, y0 - 5, c + 5, y0 + 5), fill=(255, 64, 48, 255), outline=(110, 20, 14, 255), width=2)
+    if name == 'winter':
+        im = snow_on(im, -3, -4)
+    return shadowed(im, 2, 3, 2, 0.3)
+
+
+for name in CAMO_BAGS:
+    S['camo.' + name] = camo_pit(name, False)
+    S['camo.%s.elite' % name] = camo_pit(name, True)
+S['prop.dish'] = scale(radar_dish(), 0.7)
+S['prop.table'] = map_table()
+S['prop.jammer'] = scale(jammer(), 0.62)
+S['mine'] = shadowed(scale(tanks('barrelBlack_top'), 0.78), 2, 3, 2, 0.35)
+S['mine.big'] = shadowed(scale(tanks('barrelGreen_top'), 1.1), 2, 3, 2, 0.35)
+S['spikes'] = shadowed(trim(tanks('barricadeMetal')), 2, 3, 2, 0.35)
+S['quarry'] = mine_cart()
+S['quarry.drill'] = derrick()
+S['quarry.bit'] = drill_bit()
+S['quarry.bank'] = scale(tanks('crateMetal'), 1.45)
+S['quarry.dial'] = vault_dial()
+
+def field_cap(colour):
+    """A medic's field cap with a red cross on a white patch."""
+    def front(d, c):
+        d.ellipse((c - 38, c - 36, c + 30, c + 32), fill=darker(colour))
+        d.ellipse((c - 33, c - 31, c + 25, c + 27), fill=colour)
+        d.rounded_rectangle((c - 9, c - 30, c - 3, c + 26), radius=3, fill=lighter(colour, 0.14))
+        dot(d, c, -6, -2, 13, WHITE, w=3, edge=(150, 154, 150, 255))
+        d.rectangle((c - 9, c - 10, c - 3, c + 6), fill=RED)
+        d.rectangle((c - 14, c - 5, c + 2, c + 1), fill=RED)
+    return front
+
+
+def medic_bag(d, c):
+    rr(d, c, -100, -32, -30, 32, WHITE, r=8, edge=(150, 154, 150, 255))
+    d.rectangle((c - 71, c - 18, c - 59, c + 18), fill=RED)
+    d.rectangle((c - 83, c - 6, c - 47, c + 6), fill=RED)
+
+
+# Commanders: their own uniforms, headgear and weapons.
+S['commander.sergeant'] = trooper('soldier1_machine', rgba(0x4C6B32), beret(rgba(0xB3302B)))
+S['commander.engineer'] = trooper('womanGreen_hold', rgba(0xD9822B), both(tesla_gun((255, 227, 107, 255)), hard_hat(rgba(0xF2C230))), tool_pack)
+S['commander.grom'] = trooper('soldier1_hold', rgba(0x3E4654), both(grenade_launcher, beret(rgba(0x22262C))), ammo_pack)
+S['commander.sokolova'] = trooper('womanGreen_hold', rgba(0x3F6B5E), both(sniper_rifle(), field_cap(rgba(0x587F72))), medic_bag)
+
+
+def epaulettes(d, c):
+    """Gold shoulder boards for the parade uniform."""
+    for y in (-52, 40):
+        rr(d, c, -26, y, 6, y + 12, GOLD, w=3, r=4, edge=(150, 104, 16, 255))
+
+
+# Each commander in every camouflage: uniform and headgear colours.
+OUTFITS = {
+    'desert': {'sergeant': (0xC2A26A, 0x8C5A2B), 'engineer': (0xCDB07A, 0xE8D7A0), 'grom': (0xA88D5E, 0x6B5536), 'sokolova': (0xBFA470, 0xD9C795)},
+    'winter': {'sergeant': (0xE2E6EA, 0x8E9BA8), 'engineer': (0xE8ECEF, 0xF4F6F8), 'grom': (0xD8DDE2, 0x56626D), 'sokolova': (0xE6EAEE, 0xC9D1D8)},
+    'night': {'sergeant': (0x30343B, 0x15171A), 'engineer': (0x3A3F47, 0x23262B), 'grom': (0x26292E, 0x0F1012), 'sokolova': (0x2E333A, 0x1A1D21)},
+    'urban': {'sergeant': (0x6C7A89, 0x3D4D5E), 'engineer': (0x7A8796, 0xB7C0CA), 'grom': (0x5A6673, 0x2C3540), 'sokolova': (0x6E7C8A, 0x4A5866)},
+    'parade': {'sergeant': (0x23452B, 0xD9B342), 'engineer': (0x23452B, 0xD9B342), 'grom': (0x23452B, 0xD9B342), 'sokolova': (0x23452B, 0xD9B342)},
+}
+for camo, kit in OUTFITS.items():
+    extra = epaulettes if camo == 'parade' else None
+    u, h = kit['sergeant']
+    S['commander.sergeant.' + camo] = trooper('soldier1_machine', rgba(u), both(*(f for f in (beret(rgba(h)), extra) if f)))
+    u, h = kit['engineer']
+    S['commander.engineer.' + camo] = trooper(
+        'womanGreen_hold', rgba(u), both(*(f for f in (tesla_gun((255, 227, 107, 255)), hard_hat(rgba(h)), extra) if f)), tool_pack)
+    u, h = kit['grom']
+    S['commander.grom.' + camo] = trooper('soldier1_hold', rgba(u), both(*(f for f in (grenade_launcher, beret(rgba(h)), extra) if f)), ammo_pack)
+    u, h = kit['sokolova']
+    S['commander.sokolova.' + camo] = trooper(
+        'womanGreen_hold', rgba(u), both(*(f for f in (sniper_rifle(), field_cap(rgba(h)), extra) if f)), medic_bag)
+S['sentry'] = sentry_gun()
+
+# Enemies, facing right and centred on the body.
+S['enemy.bandit'] = character('manBrown_gun')
+S['enemy.runner'] = character('womanGreen_stand')
+S['enemy.swarm'] = character('zoimbie1_hold')
+S['enemy.brute'] = character('robot1_machine')
+S['enemy.medic'] = red_cross(white_coat(character('manOld_stand')))
+S['enemy.shield'] = riot_shield(character('manBlue_hold'))
+S['enemy.ghost'] = ghostly(character('hitman1_silencer'))
+S['enemy.sapper'] = aerial(vest(character('survivor1_stand')))
+S['enemy.mother'] = egg_sacs(hue(character('zoimbie1_stand', 1.45), 0.13, sat=0.5, light=0.85))
+S['enemy.drone'] = trim(td(271))
+S['shadow.drone'] = trim(td(294))
+S['enemy.apc'] = square(face_right_from_down(tanks('tank_huge')))
+S['enemy.heli'] = heli_body()
+
+
+ROBOTS = K / 'robot-pack/PNG/Top view'
+
+
+def robot(name):
+    return Image.open(ROBOTS / (name + '.png')).convert('RGBA')
+
+
+def drill_robot():
+    """The digger: a small tracked robot with a drill in front, facing right."""
+    im = Image.new('RGBA', (260, 200))
+    d = ImageDraw.Draw(im)
+    tracks = robot('track_short')
+    im.alpha_composite(tracks, (30, 20))
+    im.alpha_composite(tracks, (30, 126))
+    im.alpha_composite(robot('body_3Dgreen'), (10, 59))
+    d.polygon([(158, 64), (244, 100), (158, 136)], fill=(118, 124, 132, 255), outline=(52, 56, 62, 255))
+    for k in range(4):
+        x = 170 + k * 18
+        d.line((x, 70 + k * 7, x + 10, 130 - k * 7), fill=(70, 74, 82, 255), width=4)
+    d.ellipse((60, 84, 92, 116), fill=(255, 210, 90, 255), outline=(120, 90, 30, 255), width=3)
+    return trim(im)
+
+
+def armoured(im, plates):
+    """Dark armour plates bolted over a robot."""
+    d = ImageDraw.Draw(im)
+    for (x0, y0, x1, y1) in plates:
+        d.rounded_rectangle((x0, y0, x1, y1), radius=6, fill=(62, 66, 74, 255), outline=(30, 32, 36, 255), width=4)
+        for (bx, by) in ((x0 + 9, y0 + 9), (x1 - 9, y0 + 9), (x0 + 9, y1 - 9), (x1 - 9, y1 - 9)):
+            d.ellipse((bx - 3, by - 3, bx + 3, by + 3), fill=(150, 156, 164, 255))
+    return im
+
+
+def titan():
+    """The boss: a big yellow walker with hazard stripes, armour and two cannons, facing right."""
+    base = robot('robot_3Dyellow')
+    im = Image.new('RGBA', (300, 260))
+    im.alpha_composite(base.resize((base.width * 3 // 2, base.height * 3 // 2), Image.LANCZOS), (10, 14))
+    d = ImageDraw.Draw(im)
+    for y in (40, 196):
+        d.rounded_rectangle((150, y, 292, y + 24), radius=6, fill=(52, 56, 62, 255), outline=(24, 26, 30, 255), width=4)
+        d.rectangle((272, y - 4, 292, y + 28), fill=(36, 38, 44, 255))
+    for k in range(5):
+        x = 40 + k * 30
+        d.polygon([(x, 92), (x + 16, 92), (x + 2, 168), (x - 14, 168)], fill=(40, 40, 44, 255))
+    d.rounded_rectangle((176, 100, 214, 160), radius=8, fill=(214, 46, 40, 255), outline=(90, 16, 14, 255), width=4)
+    return trim(im)
+
+
+S['enemy.salamander'] = glow(fire_suit(character('hitman1_hold')))
+S['enemy.digger'] = scale(drill_robot(), 0.55)
+S['enemy.juggernaut'] = scale(trim(armoured(robot('robot_3Dred'), [(14, 60, 70, 94), (84, 60, 120, 94)])), 0.62)
+S['enemy.titan'] = scale(titan(), 0.75)
+
+
+def motorbike():
+    """A motorbike from above, front to the right."""
+    im, d, c = canvas(1.0)
+    tyre = (30, 32, 36, 255)
+    part(d, 'round', box(c, 24, -6, 50, 6), tyre, width=2, radius=5)
+    part(d, 'round', box(c, -50, -7, -24, 7), tyre, width=2, radius=5)
+    part(d, 'round', box(c, -40, 9, -12, 15), (172, 178, 186, 255), width=1.5, radius=3)
+    part(d, 'round', box(c, -32, -8, 30, 8), (62, 66, 72, 255), width=2, radius=4)
+    part(d, 'ellipse', box(c, 2, -11, 26, 11), (216, 67, 46, 255), width=2.5)
+    part(d, 'round', box(c, 25, -24, 31, 24), (40, 42, 46, 255), width=1.5, radius=3)
+    disc(d, c, 33, 0, 3.5, (255, 226, 120, 255), width=1)
+    return shrink(im)
+
+
+def biker():
+    """A raider on a motorbike, in a black helmet with a red stripe."""
+    im = motorbike()
+    rider = character('manBrown_stand', 0.82)
+    im.alpha_composite(rider, ((im.width - rider.width) // 2 - 8, (im.height - rider.height) // 2))
+    big = Image.new('RGBA', (im.width * HI, im.height * HI))
+    d = ImageDraw.Draw(big)
+    c = big.width / 2
+    disc(d, c, -8, 0, 11, (36, 36, 40, 255), width=1.5)
+    d.rectangle(box(c, -10, -11, -6, 11), fill=(216, 67, 46, 255))
+    im.alpha_composite(shrink(big))
+    return trim(im)
+
+
+def flame_tank():
+    """A tank with a flamethrower for a gun and fuel drums on its back, facing right."""
+    body = recolor(face_right_from_down(tanks('tankBody_darkLarge')), lambda h, s, v: (np.full_like(h, 0.07), np.maximum(s, 0.45), v * 0.95 + 0.05))
+    pad = 40
+    im = Image.new('RGBA', (body.width + 2 * pad, body.height + 2 * pad))
+    im.alpha_composite(body, (pad, pad))
+    big = Image.new('RGBA', (im.width * HI, im.height * HI))
+    d = ImageDraw.Draw(big)
+    c = big.width / 2
+    k = body.height / 128
+    for y in (-18, 18):
+        part(d, 'round', box(c, -46 * k, (y - 11) * k, -14 * k, (y + 11) * k), (224, 150, 54, 255), width=2.5, radius=10 * k)
+        d.line(box(c, -40 * k, y * k, -20 * k, y * k), fill=(150, 90, 30, 255), width=int(2 * U))
+    part(d, 'ellipse', box(c, -12 * k, -20 * k, 28 * k, 20 * k), (110, 74, 44, 255), width=3)
+    part(d, 'round', box(c, 20 * k, -7 * k, 66 * k, 7 * k), (58, 60, 64, 255), width=2, radius=4)
+    part(d, 'round', box(c, 58 * k, -10 * k, 70 * k, 10 * k), (40, 42, 46, 255), width=2, radius=3)
+    im.alpha_composite(shrink(big))
+    return trim(im)
+
+
+def airship():
+    """The airship boss from above, nose to the right; the game spins its propellers."""
+    im, d, c = canvas(2.0)
+    hull = (150, 160, 172, 255)
+    edge = darker(hull, 0.6)
+    red = (184, 51, 43, 255)
+    for sgn in (-1, 1):
+        d.polygon([box(c, -84, 0, -84, 0)[:2], box(c, -128, 52 * sgn, -128, 52 * sgn)[:2],
+                   box(c, -112, 52 * sgn, -112, 52 * sgn)[:2], box(c, -70, 18 * sgn, -70, 18 * sgn)[:2]], fill=red, outline=darker(red), width=2 * U)
+        part(d, 'round', box(c, -94, 46 * sgn - 8, -64, 46 * sgn + 8), (76, 82, 90, 255), width=2, radius=5)
+    part(d, 'ellipse', box(c, -112, -44, 112, 44), hull, edge, width=4)
+    d.ellipse(box(c, -84, -34, 64, -10), fill=lighter(hull, 0.25))
+    for x in (-72, -36, 0, 36, 72):
+        hh = 44 * math.sqrt(1 - (x / 112) ** 2) - 6
+        d.line(box(c, x, -hh, x, hh), fill=darker(hull, 0.85), width=int(2 * U))
+    d.rectangle(box(c, 30, -36, 42, 36), fill=red)
+    disc(d, c, 6, 0, 14, (40, 40, 44, 255), width=2)
+    disc(d, c, 6, 0, 7, red, width=1.5)
+    return shrink(im)
+
+
+S['enemy.biker'] = biker()
+S['enemy.flame_tank'] = scale(flame_tank(), 0.9)
+S['enemy.airship'] = trim(airship())
+S['plane'] = trim(td(270))
+S['shadow.plane'] = trim(td(293))
+S['rocket'] = trim(face_right_from_up(td(251)))
+S['rocket.big'] = trim(face_right_from_up(td(252)))
+
+
+# --- interface icons ---------------------------------------------------------------------
+
+# White pictures the game paints in any colour, on 100 px squares with the shape
+# about 64 px across, like Kenney's Game Icons. A few more are drawn here in that style.
+ICON = 100
+GAME_ICONS = K / 'gameicons/PNG/White/2x'
+MORE_ICONS = K / 'gameicons-expansion/PNG/White/2x'
+
+
+def kicon(name, folder=GAME_ICONS):
+    return Image.open(folder / (name + '.png')).convert('RGBA')
+
+
+def glyph(paint):
+    """[paint] draws white on a large mask, black cuts holes; returns the shrunk icon."""
+    n = ICON * HI
+    m = Image.new('L', (n, n), 0)
+    paint(ImageDraw.Draw(m), n / 100.0)
+    im = Image.new('RGBA', (ICON, ICON), (255, 255, 255, 0))
+    im.putalpha(m.resize((ICON, ICON), Image.LANCZOS))
+    return im
+
+
+def ib(k, l, t, r, b):
+    """A box on the 100-unit icon square, [k] mask pixels per unit."""
+    return (l * k, t * k, r * k, b * k)
+
+
+def heart_icon(d, k):
+    d.ellipse(ib(k, 17, 22, 53, 58), fill=255)
+    d.ellipse(ib(k, 47, 22, 83, 58), fill=255)
+    d.polygon([(19 * k, 47 * k), (81 * k, 47 * k), (50 * k, 82 * k)], fill=255)
+    d.rectangle(ib(k, 35, 34, 65, 55), fill=255)
+
+
+def skull_icon(d, k):
+    d.ellipse(ib(k, 20, 16, 80, 70), fill=255)
+    d.rounded_rectangle(ib(k, 32, 54, 68, 84), 6 * k, fill=255)
+    d.ellipse(ib(k, 29, 38, 47, 56), fill=0)
+    d.ellipse(ib(k, 53, 38, 71, 56), fill=0)
+    d.polygon([(50 * k, 57 * k), (45 * k, 66 * k), (55 * k, 66 * k)], fill=0)
+    for x in (41, 50, 59):
+        d.rectangle(ib(k, x - 1.6, 73, x + 1.6, 84), fill=0)
+
+
+def book_icon(d, k):
+    # An open book seen from above: two pages and a spine.
+    d.polygon([(16 * k, 24 * k), (47 * k, 30 * k), (47 * k, 82 * k), (16 * k, 76 * k)], fill=255)
+    d.polygon([(84 * k, 24 * k), (53 * k, 30 * k), (53 * k, 82 * k), (84 * k, 76 * k)], fill=255)
+    for y in (40, 51, 62):
+        d.line([(23 * k, (y - 4) * k), (40 * k, (y - 1) * k)], fill=0, width=int(4 * k))
+        d.line([(77 * k, (y - 4) * k), (60 * k, (y - 1) * k)], fill=0, width=int(4 * k))
+
+
+def calendar_icon(d, k):
+    d.rounded_rectangle(ib(k, 18, 24, 82, 84), 7 * k, fill=255)
+    d.rectangle(ib(k, 18, 38, 82, 42), fill=0)
+    for x in (34, 66):
+        d.rounded_rectangle(ib(k, x - 4, 14, x + 4, 31), 3 * k, fill=255)
+    for row in range(2):
+        for col in range(3):
+            x, y = 27 + col * 17, 50 + row * 15
+            d.rectangle(ib(k, x, y, x + 12, y + 10), fill=0)
+    d.rectangle(ib(k, 27, 50, 39, 60), fill=255)
+
+
+def infinity_icon(d, k):
+    # A lemniscate, traced with a round brush.
+    r = 5.5 * k
+    for i in range(720):
+        t = 2 * math.pi * i / 720
+        q = 1 + math.sin(t) ** 2
+        x, y = (50 + 36 * math.cos(t) / q) * k, (50 + 36 * math.sin(t) * math.cos(t) / q) * k
+        d.ellipse((x - r, y - r, x + r, y + r), fill=255)
+
+
+def ranks_icon(d, k):
+    # Three sergeant's chevrons pointing up.
+    for i in range(3):
+        y = 24 + i * 19
+        d.polygon([(50 * k, y * k), (84 * k, (y + 20) * k), (84 * k, (y + 31) * k), (50 * k, (y + 11) * k),
+                   (16 * k, (y + 31) * k), (16 * k, (y + 20) * k)], fill=255)
+
+
+def crown_icon(d, k):
+    # A band with three points, a ball on each, and three jewels cut out of the band.
+    d.polygon([(18 * k, 74 * k), (18 * k, 40 * k), (34 * k, 55 * k), (50 * k, 30 * k), (66 * k, 55 * k),
+               (82 * k, 40 * k), (82 * k, 74 * k)], fill=255)
+    d.rounded_rectangle(ib(k, 18, 77, 82, 85), 2 * k, fill=255)
+    for x, y, r in ((18, 36, 5.5), (50, 26, 6), (82, 36, 5.5)):
+        d.ellipse(ib(k, x - r, y - r, x + r, y + r), fill=255)
+    for x in (34, 50, 66):
+        d.ellipse(ib(k, x - 4, 61, x + 4, 69), fill=0)
+
+
+def commander_icon(d, k):
+    # A shoulder board with a star cut out of it.
+    d.rounded_rectangle(ib(k, 25, 10, 75, 90), 12 * k, fill=255)
+    d.polygon([(x * k, y * k) for (x, y) in star_points(50, 52, 21)], fill=0)
+
+
+def grenade_icon(d, k):
+    d.ellipse(ib(k, 24, 30, 76, 90), fill=255)
+    d.rectangle(ib(k, 47.5, 30, 52.5, 90), fill=0)
+    d.rectangle(ib(k, 24, 57, 76, 62), fill=0)
+    d.rounded_rectangle(ib(k, 39, 16, 61, 33), 3 * k, fill=255)
+    d.line([(58 * k, 20 * k), (82 * k, 44 * k)], fill=255, width=int(7 * k))
+    d.ellipse(ib(k, 18, 6, 38, 26), outline=255, width=int(5 * k))
+
+
+def bolt_icon(d, k):
+    d.polygon([(60 * k, 8 * k), (22 * k, 56 * k), (46 * k, 56 * k), (36 * k, 92 * k), (78 * k, 40 * k), (54 * k, 40 * k), (66 * k, 8 * k)], fill=255)
+
+
+def blast_icon(d, k):
+    pts = []
+    for i in range(16):
+        a = -math.pi / 2 + i * math.pi / 8
+        r = 44 if i % 2 == 0 else 22
+        pts.append(((50 + r * math.cos(a)) * k, (50 + r * math.sin(a)) * k))
+    d.polygon(pts, fill=255)
+    d.ellipse(ib(k, 40, 40, 60, 60), fill=0)
+
+
+def smoke_icon(d, k):
+    for (x, y, r) in ((32, 58, 20), (66, 60, 18), (50, 38, 22), (50, 66, 16)):
+        d.ellipse(ib(k, x - r, y - r, x + r, y + r), fill=255)
+
+
+def scope_icon(d, k):
+    d.ellipse(ib(k, 16, 16, 84, 84), outline=255, width=int(9 * k))
+    for (x0, y0, x1, y1) in ((50, 6, 50, 38), (50, 62, 50, 94), (6, 50, 38, 50), (62, 50, 94, 50)):
+        d.line([(x0 * k, y0 * k), (x1 * k, y1 * k)], fill=255, width=int(8 * k))
+    d.ellipse(ib(k, 45, 45, 55, 55), fill=255)
+
+
+for name, src in {
+    'back': 'arrowLeft', 'gear': 'gear', 'trophy': 'trophy', 'play': 'right', 'pause': 'pause', 'cross': 'cross',
+    'undo': 'return', 'lock': 'locked', 'star': 'star', 'medal': 'medal1', 'speed': 'fastForward',
+    'target': 'target', 'sound': 'audioOn', 'music': 'musicOn', 'warning': 'warning', 'home': 'home',
+    'check': 'checkmark', 'info': 'information',
+}.items():
+    S['icon.' + name] = kicon(src)
+S['icon.flag'] = kicon('flag', MORE_ICONS)
+S['icon.heart'] = glyph(heart_icon)
+S['icon.skull'] = glyph(skull_icon)
+S['icon.book'] = glyph(book_icon)
+S['icon.calendar'] = glyph(calendar_icon)
+S['icon.infinity'] = glyph(infinity_icon)
+S['icon.ranks'] = glyph(ranks_icon)
+S['icon.crown'] = glyph(crown_icon)
+S['icon.commander'] = glyph(commander_icon)
+S['icon.grenade'] = glyph(grenade_icon)
+S['icon.fist'] = kicon('fightFist', MORE_ICONS)
+S['icon.wrench'] = kicon('wrench')
+S['icon.bolt'] = glyph(bolt_icon)
+S['icon.blast'] = glyph(blast_icon)
+S['icon.cart'] = kicon('shoppingCart')
+S['icon.download'] = kicon('download', MORE_ICONS)
+S['icon.phone'] = kicon('phone')
+S['icon.video'] = kicon('video')
+S['icon.diamond'] = kicon('diamond', MORE_ICONS)
+S['icon.brush'] = kicon('toolBrush', MORE_ICONS)
+S['icon.smoke'] = glyph(smoke_icon)
+S['icon.scope'] = glyph(scope_icon)
+
+
+# --- packing -----------------------------------------------------------------------------
+
+def extrude(im, pad):
+    """Repeats the edge pixels into the padding so filtering never pulls in a neighbour."""
+    w, h = im.size
+    out = Image.new('RGBA', (w + 2 * pad, h + 2 * pad))
+    out.alpha_composite(im, (pad, pad))
+    a = np.asarray(out).copy()
+    a[:pad, pad:pad + w] = a[pad:pad + 1, pad:pad + w]
+    a[pad + h:, pad:pad + w] = a[pad + h - 1:pad + h, pad:pad + w]
+    a[:, :pad] = a[:, pad:pad + 1]
+    a[:, pad + w:] = a[:, pad + w - 1:pad + w]
+    return Image.fromarray(a, 'RGBA')
+
+
+PAD = 2
+items = sorted(S.items(), key=lambda kv: (-kv[1].height, -kv[1].width, kv[0]))
+width = 2048
+x = y = shelf = 0
+places = {}
+for name, im in items:
+    w, h = im.width + 2 * PAD, im.height + 2 * PAD
+    if x + w > width:
+        x, y, shelf = 0, y + shelf, 0
+    places[name] = (x, y)
+    x += w
+    shelf = max(shelf, h)
+height = (y + shelf + 3) // 4 * 4
+# Every phone the game runs on (Android 8 and later) takes 4096-pixel textures.
+if height > 4096:
+    sys.exit('atlas too tall: %d' % height)
+atlas = Image.new('RGBA', (width, height))
+lines = []
+for name, im in items:
+    px, py = places[name]
+    atlas.alpha_composite(extrude(im, PAD), (px, py))
+    l, t, r, b = im.getchannel('A').point(lambda a: 255 if a > 40 else 0).getbbox() or (0, 0, im.width, im.height)
+    lines.append('%s %d %d %d %d %d %d %d %d' % (name, px + PAD, py + PAD, im.width, im.height, l, t, r - l, b - t))
+atlas.save(OUT / 'atlas.png', optimize=True)
+(OUT / 'atlas.txt').write_text(
+    '# name x y w h, then the part that shows (x y w h inside it); %d atlas pixels per map cell\n' % PX
+    + '\n'.join(sorted(lines)) + '\n')
+print('atlas %dx%d, %d sprites, %.0f KB' % (width, height, len(S), (OUT / 'atlas.png').stat().st_size / 1024))
+
+if args.preview:
+    # Every sprite at its real size on a grass-coloured sheet, a cell grid behind it.
+    cell = 160
+    cols = 10
+    names = sorted(S)
+    rows = (len(names) + cols - 1) // cols
+    sheet = Image.new('RGBA', (cols * cell, rows * (cell + 14)), (88, 128, 88, 255))
+    d = ImageDraw.Draw(sheet)
+    for i, name in enumerate(names):
+        im = S[name].copy()
+        im.thumbnail((cell - 4, cell - 4))
+        cx, cy = (i % cols) * cell, (i // cols) * (cell + 14)
+        g = (cell - PX) // 2
+        d.rectangle((cx + g, cy + g, cx + g + PX, cy + g + PX), outline=(110, 150, 110, 255))
+        sheet.alpha_composite(im, (cx + (cell - im.width) // 2, cy + (cell - im.height) // 2))
+        d.text((cx + 3, cy + cell), name, fill=(255, 255, 255, 255))
+    sheet.convert('RGB').save(args.preview)

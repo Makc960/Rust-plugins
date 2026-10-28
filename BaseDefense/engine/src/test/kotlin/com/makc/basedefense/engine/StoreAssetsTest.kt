@@ -1,0 +1,220 @@
+package com.makc.basedefense.engine
+
+import java.awt.image.BufferedImage
+import java.io.File
+import javax.imageio.ImageIO
+import kotlin.math.abs
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+/**
+ * Pictures for the Google Play listing: the 1024x500 feature graphic and phone
+ * screenshots in both languages, all drawn by the game itself. They land in
+ * `build/store`; the ones in the repository's `store` folder are copies. (The 512 px
+ * icon is the launcher's picture, made by art/build_icon.py.) The title for Android's
+ * launch screen is made here too; the app's res folders keep copies.
+ */
+class StoreAssetsTest {
+    private val out = File(System.getProperty("screens.dir") ?: "build/screens").resolveSibling("store").apply { mkdirs() }
+
+    @AfterTest
+    fun russianAgain() {
+        I18n.lang = Language.RU
+    }
+
+    private fun save(img: BufferedImage, name: String) {
+        // Play wants plain RGB pictures without transparency.
+        val rgb = BufferedImage(img.width, img.height, BufferedImage.TYPE_INT_RGB)
+        rgb.createGraphics().apply {
+            drawImage(img, 0, 0, null)
+            dispose()
+        }
+        ImageIO.write(rgb, "png", File(out, "$name.png"))
+    }
+
+    /** The title as the menu draws it, 200x80 dp at 4 px per dp on a clear ground, under the launch screen's emblem. */
+    @Test
+    fun splashTitle() {
+        for (lang in Language.entries) {
+            I18n.lang = lang
+            val img = BufferedImage(800, 320, BufferedImage.TYPE_INT_ARGB)
+            val g = AwtGfx(img)
+            val ui = Ui { }
+            ui.w = 800f
+            ui.h = 320f
+            ui.dp = 4f
+            val big = 116f
+            val maxW = 680f
+            val ty = 16f + big * 0.74f
+            ui.text(g, Tx.TITLE_1.t, 400f + ui.d(2f), ty + ui.d(3f), big, Ui.EDGE, Align.CENTER, maxW, Font.DISPLAY)
+            ui.text(g, Tx.TITLE_1.t, 400f, ty, big, Ui.TEXT, Align.CENTER, maxW, Font.DISPLAY)
+            ui.tape(g, Tx.TITLE_2.t, 400f, ty + big * 0.8f, ui.fit(g, Tx.TITLE_2.t, big * 0.9f, maxW - big, Font.DISPLAY), -3f)
+            val box = assertNotNull(opaqueBox(img))
+            assertTrue(box[0] > 0 && box[1] > 0 && box[2] < img.width - 1 && box[3] < img.height - 1, "the title fits with room to spare")
+            ImageIO.write(img, "png", File(out, "splash_brand_${lang.name.lowercase()}.png"))
+        }
+    }
+
+    /** Left, top, right and bottom of what is drawn, or null for an empty picture. */
+    private fun opaqueBox(img: BufferedImage): IntArray? {
+        var box: IntArray? = null
+        for (y in 0 until img.height) for (x in 0 until img.width) {
+            if (img.getRGB(x, y) ushr 24 == 0) continue
+            val b = box ?: intArrayOf(x, y, x, y).also { box = it }
+            b[0] = minOf(b[0], x)
+            b[1] = minOf(b[1], y)
+            b[2] = maxOf(b[2], x)
+            b[3] = maxOf(b[3], y)
+        }
+        return box
+    }
+
+    @Test
+    fun featureGraphic() {
+        val w = 1024
+        val h = 500
+        val img = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+        val g = AwtGfx(img)
+        // A real battle from the desert, seen from above, with the title over it.
+        val level = Levels.all.first { it.id == 16 }
+        val world = World(level, Rules(progress = 16))
+        val bot = Bot(world)
+        while (world.wavesStarted < 9 && !world.over) {
+            bot.update(1f / 60f)
+            world.step(1f / 60f)
+        }
+        repeat(500) {
+            bot.update(1f / 60f)
+            world.step(1f / 60f)
+        }
+        val cell = w / ROWS.toFloat()
+        g.save()
+        // The map is tall; turn it on its side to fill the wide banner.
+        g.translate(w.toFloat(), (h - cell * COLS) / 2f)
+        g.rotate(90f)
+        g.scale(cell)
+        Renderer().drawWorld(g, world, 3f, cell)
+        g.restore()
+        g.fillRect(0f, 0f, w.toFloat(), h.toFloat(), 0x40000000)
+        g.glow(w * 0.28f, h * 0.5f, w * 0.5f, 0xD8101309.toInt())
+        I18n.lang = Language.RU
+        val ui = Ui {}.apply { dp = 2.4f }
+        val size = 100f
+        val x = 64f
+        val y = h * 0.46f
+        g.text(Tx.TITLE_1.t, x + 5f, y + 6f, size, Ui.EDGE, font = Font.DISPLAY)
+        g.text(Tx.TITLE_1.t, x, y, size, Ui.TEXT, font = Font.DISPLAY)
+        ui.tape(g, Tx.TITLE_2.t, x + g.textWidth(Tx.TITLE_1.t, size, Font.DISPLAY) / 2f, y + size * 0.82f, size * 0.9f, -3f)
+        save(img, "feature-graphic")
+    }
+
+    private fun phone(platform: Platform): Game = Game(platform).apply { resize(1080, 1920, 2.6f, 0, 0) }
+
+    private fun shot(game: Game, name: String) {
+        val img = BufferedImage(1080, 1920, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img))
+        save(img, name)
+    }
+
+    private fun run(game: Game, seconds: Float) {
+        var t = 0f
+        while (t < seconds) {
+            game.update(1f / 30f)
+            t += 1f / 30f
+        }
+    }
+
+    private fun play(game: Game, seconds: Float, until: (World) -> Boolean = { false }) {
+        val w = game.play.world!!
+        val bot = Bot(w)
+        var t = 0f
+        while (t < seconds && !w.over && !until(w)) {
+            bot.update(1f / 60f)
+            w.step(1f / 60f)
+            t += 1f / 60f
+        }
+        game.update(0.02f)
+    }
+
+    private fun tap(game: Game, id: String) {
+        val img = BufferedImage(1080, 1920, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img))
+        val (x, y) = game.ui.centre(id) ?: error("no $id")
+        game.touch(Touch.DOWN, x, y)
+        game.touch(Touch.UP, x, y)
+    }
+
+    @Test
+    fun screenshots() {
+        for (lang in Language.entries) {
+            val tag = lang.name.lowercase()
+            val platform = SilentPlatform(language = tag)
+            for (l in Levels.all) if (l.id <= 29) platform.putInt("stars_${l.id}", if (l.id % 3 == 0) 2 else 3)
+            for (l in listOf(1, 2, 3, 5, 9, 12)) platform.putInt("hard_$l", 1)
+            for (l in listOf(1, 4, 7, 10)) platform.putInt("chal_$l", 1)
+            for (key in Codex.keys) platform.putInt("seen_$key", 1)
+            platform.putString("news_seen", Game.VERSION)
+            val g = phone(platform)
+            g.profile.tips = false
+            run(g, 30f)
+            shot(g, "screen-$tag-1-menu")
+
+            // The volcano erupting over its lava bridges.
+            g.startCampaign(Levels.all.first { it.id == 27 }, Difficulty.NORMAL, false)
+            run(g, 0.5f)
+            play(g, 1500f) { it.wavesStarted >= 7 && it.enemies.size > 10 && it.lava.size >= 2 }
+            run(g, 0.2f)
+            shot(g, "screen-$tag-2-volcano")
+
+            g.startCampaign(Levels.all.first { it.id == 30 }, Difficulty.NORMAL, false)
+            run(g, 0.5f)
+            play(g, 3000f) { it.enemies.any { e -> e.type == EnemyType.TITAN && e.dist > 2f } }
+            // The squads would bring it down at the edge of the map; a tougher one walks in among them.
+            g.play.world!!.enemies.first { it.type == EnemyType.TITAN }.hp *= 4f
+            // Caught between stomps, with no fireball over it.
+            play(g, 600f) { w ->
+                w.enemies.any { e ->
+                    e.type == EnemyType.TITAN && e.dist > 17f && e.jamPulse <= 0f &&
+                        w.blasts.none { b -> b.age < Blast.FIRE_LIFE && abs(b.x - e.x) < 1.2f && abs(b.y - e.y) < 1.2f }
+                }
+            }
+            run(g, 0.1f)
+            shot(g, "screen-$tag-3-boss")
+
+            g.startCampaign(Levels.all.first { it.id == 7 }, Difficulty.NORMAL, false)
+            run(g, 0.5f)
+            play(g, 3000f) { w -> w.wavesStarted >= 8 && w.towers.any { it.type == TowerType.ROCKET && it.branch == null } }
+            val w7 = g.play.world!!
+            val fork = w7.towers.first { it.type == TowerType.ROCKET && it.branch == null }
+            w7.money += 1000
+            while (fork.canUpgrade) w7.upgrade(fork)
+            w7.money = 640
+            g.play.selected = fork
+            run(g, 0.1f)
+            shot(g, "screen-$tag-4-branches")
+
+            g.go(Screen.MENU)
+            run(g, 0.5f)
+            tap(g, "play")
+            run(g, 0.5f)
+            tap(g, "world3")
+            run(g, 0.2f)
+            shot(g, "screen-$tag-5-worlds")
+
+            g.go(Screen.MENU)
+            run(g, 0.5f)
+            tap(g, "codex")
+            run(g, 0.5f)
+            tap(g, "entry${EnemyType.TITAN.ordinal}")
+            shot(g, "screen-$tag-6-codex")
+
+            g.startCampaign(Levels.all.first { it.id == 12 }, Difficulty.NORMAL, false)
+            run(g, 0.5f)
+            play(g, 600f) { it.wavesStarted >= 7 && it.enemies.size > 12 }
+            run(g, 0.2f)
+            shot(g, "screen-$tag-7-desert")
+        }
+    }
+}

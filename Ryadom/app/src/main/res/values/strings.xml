@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Рядом</string>
+    <string name="share_channel">Показ местоположения друзьям</string>
+    <string name="share_title">Друзья видят, где ты</string>
+    <string name="share_text">«Рядом» передаёт твоё местоположение друзьям</string>
+    <string name="share_hide">Скрыть меня</string>
+    <string name="requests_channel">Заявки в друзья</string>
+    <string name="request_title">Заявка в друзья</string>
+    <string name="request_text">%1$s хочет видеть тебя на карте</string>
+</resources>

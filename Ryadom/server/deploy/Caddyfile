@@ -1,0 +1,4 @@
+# Caddy gets and renews the HTTPS certificate by itself. install.sh puts the real domain here.
+shop.example.ru {
+	reverse_proxy 127.0.0.1:8790
+}
