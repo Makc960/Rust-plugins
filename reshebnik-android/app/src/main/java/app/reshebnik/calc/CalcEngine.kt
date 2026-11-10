@@ -12,8 +12,8 @@ sealed interface CalcResult {
 }
 
 /**
- * Вычисляет выражение во внутренней записи: цифры, '.', "+-*^/", скобки, '%', '√', 'π'
- * и 'E' внутри числа (научная запись результата).
+ * Вычисляет выражение во внутренней записи: цифры, '.', "+-*^/", скобки, '%', '!', '√', 'π', 'e',
+ * функции вида "sin(" и 'E' внутри числа (научная запись результата).
  *
  * Незакрытые скобки и висящие в конце операторы прощаются: так работает живой
  * предпросмотр результата, пока выражение ещё набирают.
@@ -24,15 +24,24 @@ object CalcEngine {
     private val HUNDRED = BigDecimal(100)
     private val TWO = BigDecimal(2)
     private val PI = BigDecimal("3.141592653589793238462643383279503")
+    private val E = BigDecimal("2.718281828459045235360287471352662")
+    private val FULL_TURN = BigDecimal(360)
+
+    /** Имена функций; длинные раньше коротких, чтобы "asin" не прочиталось как 'a' + "sin". */
+    private val FUNCTIONS = listOf("asin", "acos", "atan", "cbrt", "sin", "cos", "tan", "abs", "ln", "lg")
+
+    /** Наибольшее n, факториал которого ещё влезает в [MAX_MAGNITUDE] разрядов. */
+    private const val MAX_FACTORIAL = 449
 
     /** Порядок числа, после которого считаем результат слишком большим. */
     private const val MAX_MAGNITUDE = 1000
 
-    fun evaluate(expression: String): CalcResult {
+    /** @param degrees углы тригонометрических функций в градусах; иначе в радианах */
+    fun evaluate(expression: String, degrees: Boolean = true): CalcResult {
         val trimmed = expression.trimEnd { it in "+-*/^(√." }
         if (trimmed.isEmpty()) return CalcResult.Failure(CalcError.INVALID)
         return try {
-            val parser = Parser(trimmed)
+            val parser = Parser(trimmed, degrees)
             val result = parser.parseExpression().value
             if (!parser.atEnd()) throw CalcException(CalcError.INVALID)
             CalcResult.Value(result.round(DISPLAY_MC).normalized())
@@ -64,7 +73,7 @@ object CalcEngine {
     /** [percent] — исходное число b, если операнд записан ровно как «b%». */
     private class Operand(val value: BigDecimal, val percent: BigDecimal? = null)
 
-    private class Parser(private val src: String) {
+    private class Parser(private val src: String, private val degrees: Boolean) {
         private var pos = 0
 
         fun atEnd() = pos >= src.length
@@ -101,8 +110,8 @@ object CalcEngine {
                         if (divisor.signum() == 0) throw CalcException(CalcError.DIVISION_BY_ZERO)
                         Operand(checked(left.value.divide(divisor, MC)))
                     }
-                    // Умножение без знака: 2(3+4), 2π, 3√9, (1+2)(3+4).
-                    c == '(' || c == 'π' || c == '√' || c.isDigit() ->
+                    // Умножение без знака: 2(3+4), 2π, 3√9, (1+2)(3+4), 2e, 2sin(30).
+                    c == '(' || c == 'π' || c == '√' || c.isDigit() || c in 'a'..'z' ->
                         Operand(checked(left.value.multiply(parsePower().value, MC)))
                     else -> return left
                 }
@@ -126,9 +135,12 @@ object CalcEngine {
 
         private fun parsePostfix(): Operand {
             var operand = Operand(parsePrimary())
-            while (peek() == '%') {
-                pos++
-                operand = Operand(operand.value.divide(HUNDRED, MC), percent = operand.value)
+            while (peek() == '%' || peek() == '!') {
+                operand = if (src[pos++] == '%') {
+                    Operand(operand.value.divide(HUNDRED, MC), percent = operand.value)
+                } else {
+                    Operand(factorial(operand.value))
+                }
             }
             return operand
         }
@@ -151,8 +163,71 @@ object CalcEngine {
                     PI
                 }
                 c.isDigit() || c == '.' -> parseNumber()
+                c in 'a'..'z' -> parseNamed()
                 else -> throw CalcException(CalcError.INVALID)
             }
+        }
+
+        /** Функция со скобкой или константа e. */
+        private fun parseNamed(): BigDecimal {
+            val name = FUNCTIONS.firstOrNull { src.startsWith(it, pos) }
+            if (name == null) {
+                if (peek() != 'e') throw CalcException(CalcError.INVALID)
+                pos++
+                return E
+            }
+            pos += name.length
+            if (peek() != '(') throw CalcException(CalcError.INVALID)
+            pos++
+            val argument = parseExpression().value
+            if (peek() == ')') pos++ else if (!atEnd()) throw CalcException(CalcError.INVALID)
+            return call(name, argument)
+        }
+
+        private fun call(name: String, x: BigDecimal): BigDecimal = when (name) {
+            "abs" -> x.abs()
+            "sin" -> snapped(Math.sin(radians(x)))
+            "cos" -> snapped(Math.cos(radians(x)))
+            "tan" -> {
+                // Тангенс через округлённые синус и косинус: иначе tg 90° выходит огромным числом, а не ошибкой.
+                val cosine = snapped(Math.cos(radians(x)))
+                if (cosine.signum() == 0) throw CalcException(CalcError.DOMAIN)
+                snapped(Math.sin(radians(x))).divide(cosine, MC)
+            }
+            "asin", "acos" -> {
+                if (x.abs() > BigDecimal.ONE) throw CalcException(CalcError.DOMAIN)
+                fromRadians(if (name == "asin") Math.asin(x.toDouble()) else Math.acos(x.toDouble()))
+            }
+            "atan" -> fromRadians(Math.atan(x.toDouble()))
+            "ln", "lg" -> {
+                if (x.signum() <= 0) throw CalcException(CalcError.DOMAIN)
+                real(if (name == "ln") Math.log(x.toDouble()) else Math.log10(x.toDouble()))
+            }
+            "cbrt" -> real(Math.cbrt(x.toDouble()))
+            else -> throw CalcException(CalcError.INVALID)
+        }
+
+        private fun radians(angle: BigDecimal): Double =
+            if (degrees) Math.toRadians(angle.remainder(FULL_TURN).toDouble()) else angle.toDouble()
+
+        private fun fromRadians(angle: Double): BigDecimal = real(if (degrees) Math.toDegrees(angle) else angle)
+
+        /** Синус и косинус «круглых» углов в double чуть не доходят до 0 и 0,5 — убираем этот хвост. */
+        private fun snapped(value: Double): BigDecimal = real(value).setScale(14, RoundingMode.HALF_UP)
+
+        private fun real(value: Double): BigDecimal {
+            if (value.isNaN()) throw CalcException(CalcError.DOMAIN)
+            if (value.isInfinite()) throw CalcException(CalcError.TOO_LARGE)
+            return BigDecimal(value, MathContext.DECIMAL64)
+        }
+
+        private fun factorial(value: BigDecimal): BigDecimal {
+            val n = value.normalizedOrZero()
+            if (n.signum() < 0 || n.scale() > 0) throw CalcException(CalcError.DOMAIN)
+            if (n > BigDecimal(MAX_FACTORIAL)) throw CalcException(CalcError.TOO_LARGE)
+            var result = BigDecimal.ONE
+            for (k in 2..n.intValueExact()) result = result.multiply(BigDecimal(k), MC)
+            return result
         }
 
         private fun parseNumber(): BigDecimal {

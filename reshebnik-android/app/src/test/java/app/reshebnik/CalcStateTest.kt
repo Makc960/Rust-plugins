@@ -110,6 +110,47 @@ class CalcStateTest {
     }
 
     @Test
+    fun `functions are entered with their parenthesis and erased whole`() {
+        val sine = CalcState().press(CalcKey.Function("sin"))
+        assertEquals("sin(", sine.expression)
+        assertEquals("sin(30)", type("30(", sine).expression)
+        assertEquals("", sine.press(CalcKey.Backspace).expression)
+        assertEquals("2*", type("2").press(CalcKey.Function("ln")).press(CalcKey.Backspace).expression)
+        assertEquals("0.5", type("30(=", sine).expression)
+    }
+
+    @Test
+    fun `scientific keys build valid expressions`() {
+        assertEquals("120", type("5").press(CalcKey.Factorial).press(CalcKey.Equals).expression)
+        assertEquals("0.25", type("4").press(CalcKey.Reciprocal).press(CalcKey.Equals).expression)
+        assertEquals("2e", type("2").press(CalcKey.Euler).expression)
+        assertEquals("e*5", CalcState().press(CalcKey.Euler).press(CalcKey.Digit('5')).expression)
+        assertEquals("(2+3)", CalcState().press(CalcKey.OpenParenthesis).let { type("2+3", it) }.press(CalcKey.CloseParenthesis).expression)
+        assertEquals("", CalcState().press(CalcKey.CloseParenthesis).expression)
+        assertEquals("", CalcState().press(CalcKey.Factorial).expression)
+    }
+
+    @Test
+    fun `angle unit is kept across clear and equals`() {
+        val radians = CalcState().press(CalcKey.AngleUnit)
+        assertEquals(false, radians.degrees)
+        assertEquals(false, radians.press(CalcKey.Clear).degrees)
+        val sine = type("0(=", radians.press(CalcKey.Function("sin")))
+        assertEquals("0", sine.expression)
+        assertEquals(false, sine.degrees)
+        assertEquals(false, sine.press(CalcKey.Digit('1')).degrees)
+    }
+
+    @Test
+    fun `value from the tape is appended or starts a new expression`() {
+        assertEquals("15", CalcState().insert("15").expression)
+        assertEquals("2+15", type("2+").insert("15").expression)
+        assertEquals("2*(-3)", type("2*").insert("-3").expression)
+        assertEquals("15", type("2+3").insert("15").expression)
+        assertEquals("7", type("2+3=").insert("7").expression)
+    }
+
+    @Test
     fun `clear resets everything`() {
         assertEquals(CalcState(), type("12+3=C"))
     }
@@ -123,5 +164,7 @@ class CalcStateTest {
         assertEquals("2·10^−7", formatExpression("2E-7"))
         assertEquals("√9 + 2^3", formatExpression("√9+2^3"))
         assertEquals("0,", formatExpression("0."))
+        assertEquals("2 × tg(45) + arcsin(0,5)", formatExpression("2*tan(45)+asin(0.5)"))
+        assertEquals("∛(27) − 5! + 2e", formatExpression("cbrt(27)-5!+2e"))
     }
 }

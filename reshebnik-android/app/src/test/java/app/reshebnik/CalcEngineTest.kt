@@ -89,6 +89,58 @@ class CalcEngineTest {
         assertEquals(CalcError.INVALID, error("1.2.3"))
     }
 
+    private fun radians(expression: String): String =
+        when (val result = CalcEngine.evaluate(expression, degrees = false)) {
+            is CalcResult.Value -> CalcEngine.toInternal(result.value)
+            is CalcResult.Failure -> "error:${result.error}"
+        }
+
+    @Test
+    fun `trigonometry gives clean values in degrees`() {
+        assertEquals("0.5", value("sin(30)"))
+        assertEquals("0", value("sin(180)"))
+        assertEquals("0", value("cos(90)"))
+        assertEquals("-1", value("cos(180)"))
+        assertEquals("1", value("tan(45)"))
+        assertEquals("0.5", value("sin(390)"))
+        assertEquals(CalcError.DOMAIN, error("tan(90)"))
+        assertEquals("30", value("asin(0.5)"))
+        assertEquals("60", value("acos(0.5)"))
+        assertEquals("45", value("atan(1)"))
+        assertEquals(CalcError.DOMAIN, error("asin(2)"))
+        assertEquals("1", value("sin(30)^2+cos(30)^2"))
+    }
+
+    @Test
+    fun `trigonometry in radians`() {
+        assertEquals("0", radians("sin(π)"))
+        assertEquals("-1", radians("cos(π)"))
+        assertEquals("1", radians("sin(π/2)"))
+        assertEquals("0.785398163397", radians("atan(1)"))
+    }
+
+    @Test
+    fun `logarithms factorial and constants`() {
+        assertEquals("3", value("lg(1000)"))
+        assertEquals("1", value("ln(e)"))
+        assertEquals("2.71828182846", value("e"))
+        assertEquals("5.43656365692", value("2e"))
+        assertEquals("120", value("5!"))
+        assertEquals("1", value("0!"))
+        assertEquals("12", value("2*3!"))
+        assertEquals("3", value("cbrt(27)"))
+        assertEquals("7", value("abs(3-10)"))
+        assertEquals("0.25", value("4^-1"))
+        assertEquals("1", value("2sin(30)"))
+        assertEquals(CalcError.DOMAIN, error("ln(0)"))
+        assertEquals(CalcError.DOMAIN, error("lg(-5)"))
+        assertEquals(CalcError.DOMAIN, error("2.5!"))
+        assertEquals(CalcError.DOMAIN, error("(-3)!"))
+        assertEquals(CalcError.TOO_LARGE, error("500!"))
+        assertEquals(CalcError.INVALID, error("sin"))
+        assertEquals(CalcError.INVALID, error("foo(1)"))
+    }
+
     @Test
     fun `large and small results use scientific notation`() {
         assertEquals("100000000000000", value("10000000*10000000"))

@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -21,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -107,16 +110,17 @@ fun IconAction(icon: ImageVector, label: String, onClick: () -> Unit, modifier: 
     }
 }
 
+/** @param enabled выключенная кнопка бледнеет и не нажимается */
 @Composable
-fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, enabled: Boolean = true) {
     val palette = LocalPalette.current
-    ButtonFrame(text, onClick, modifier, icon, background = palette.ink, content = palette.onInk, border = null)
+    ButtonFrame(text, onClick, modifier.alpha(if (enabled) 1f else 0.4f), icon, palette.ink, palette.onInk, border = null, enabled = enabled)
 }
 
 @Composable
 fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
     val palette = LocalPalette.current
-    ButtonFrame(text, onClick, modifier, icon, background = palette.key, content = palette.text, border = palette.keyBorder)
+    ButtonFrame(text, onClick, modifier, icon, palette.key, palette.text, border = palette.keyBorder, enabled = true)
 }
 
 @Composable
@@ -128,6 +132,7 @@ private fun ButtonFrame(
     background: Color,
     content: Color,
     border: Color?,
+    enabled: Boolean,
 ) {
     val shape = RoundedCornerShape(16.dp)
     Row(
@@ -137,7 +142,7 @@ private fun ButtonFrame(
             .clip(shape)
             .background(background)
             .then(if (border != null) Modifier.border(BorderStroke(1.dp, border), shape) else Modifier)
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -181,6 +186,20 @@ object AppIcons {
         "M15 5.5V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h.5",
     )
     val Check = strokeIcon("M5 12.5l4.5 4.5L19 7.5")
+    val Close = strokeIcon("M6 6l12 12", "M18 6L6 18")
+    val History = strokeIcon("M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0", "M12 7.5V12l3 2")
+    val Share = strokeIcon(
+        "M15.5 5.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0",
+        "M3.5 12a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0",
+        "M15.5 18.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0",
+        "M8.2 10.8l7.6-4.1",
+        "M8.2 13.2l7.6 4.1",
+    )
+    val Send = strokeIcon("M12 19V5.5", "M6 11l6-6l6 6")
+    val Rotate = strokeIcon("M20 12a8 8 0 1 1-2.34-5.66", "M20.2 3.8v4.6h-4.6")
+    val Torch = strokeIcon("M13 3L5 13.5h6L10 21l8-10.5h-6z")
+    val Pencil = strokeIcon("M4 20h4L19 9l-4-4L4 16z", "M13 7l4 4")
+    val Trash = strokeIcon("M5 7h14", "M9.5 7V5h5v2", "M7 7l1 12.5h8L17 7", "M10.5 10.5v5.5", "M13.5 10.5v5.5")
 
     private fun strokeIcon(vararg paths: String, size: Dp = 24.dp): ImageVector =
         ImageVector.Builder(defaultWidth = size, defaultHeight = size, viewportWidth = 24f, viewportHeight = 24f)
@@ -198,17 +217,68 @@ object AppIcons {
             .build()
 }
 
-/** Текстовая кнопка для второстепенного действия внутри строки. */
+/**
+ * Текстовая кнопка для второстепенного действия внутри строки.
+ *
+ * @param compact мелкая кнопка без отступа слева — для действий под абзацем текста
+ */
 @Composable
-fun TextAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = LocalPalette.current.ink) {
+fun TextAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    color: Color = LocalPalette.current.ink,
+    compact: Boolean = false,
+) {
     Box(
         modifier = modifier
-            .height(44.dp)
+            .height(if (compact) 40.dp else 44.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 12.dp),
+            .padding(start = if (compact) 0.dp else 12.dp, end = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = color, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Text(text, color = color, fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = if (compact) 14.sp else 15.sp)
+    }
+}
+
+/**
+ * Переключатель из двух-трёх вариантов.
+ *
+ * @param options значение и подпись каждого варианта
+ */
+@Composable
+fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+    val palette = LocalPalette.current
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .clip(shape)
+            .background(palette.key)
+            .border(BorderStroke(1.dp, palette.keyBorder), shape)
+            .padding(3.dp),
+    ) {
+        options.forEach { (value, label) ->
+            val active = value == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(if (active) palette.keyTint else Color.Transparent)
+                    .selectable(selected = active, role = Role.RadioButton, onClick = { onSelect(value) }),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    color = if (active) palette.ink else palette.textMuted,
+                    fontFamily = Sans,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }

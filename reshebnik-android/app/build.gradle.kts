@@ -3,6 +3,13 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Адрес сервера вместо api.anthropic.com — для проверки на локальной заглушке:
+// ./gradlew assembleRelease -PapiBaseUrl=http://10.0.2.2:8765
+val apiBaseUrl = (project.findProperty("apiBaseUrl") as String?).orEmpty()
+
+// Постоянный ключ подписи. Файл в репозиторий не входит; без него сборка подписывается отладочным ключом.
+val releaseKeystore = rootProject.file("signing/release.keystore")
+
 android {
     namespace = "app.reshebnik"
     compileSdk = 37
@@ -11,8 +18,23 @@ android {
         applicationId = "app.reshebnik"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
+
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        // Незашифрованный HTTP разрешён только в сборке для заглушки.
+        manifestPlaceholders["cleartextTraffic"] = apiBaseUrl.startsWith("http://").toString()
+    }
+
+    signingConfigs {
+        create("release") {
+            if (releaseKeystore.exists()) {
+                storeFile = releaseKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
     }
 
     buildTypes {
@@ -21,14 +43,14 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Подпись отладочным ключом: хватает для установки APK вручную.
-            // Для публикации в магазине нужен собственный ключ.
-            signingConfig = signingConfigs.getByName("debug")
+            // Обновление ставится поверх старой версии, только если подпись та же.
+            signingConfig = signingConfigs.getByName(if (releaseKeystore.exists()) "release" else "debug")
         }
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -60,7 +82,11 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.exifinterface:exifinterface:1.4.2")
+    implementation("androidx.camera:camera-camera2:1.6.2")
+    implementation("androidx.camera:camera-lifecycle:1.6.2")
+    implementation("androidx.camera:camera-view:1.6.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("com.anthropic:anthropic-java:3.7.0")
 
