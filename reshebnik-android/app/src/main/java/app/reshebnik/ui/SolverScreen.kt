@@ -453,7 +453,14 @@ private fun PanelField(
         shape = RoundedCornerShape(16.dp),
         maxLines = 3,
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = imeAction),
-        keyboardActions = KeyboardActions(onDone = { onImeAction() }, onSend = { onImeAction() }),
+        keyboardActions = KeyboardActions(
+            onDone = {
+                onImeAction()
+                // Своё действие отменяет стандартное — клавиатуру прячем сами.
+                defaultKeyboardAction(ImeAction.Done)
+            },
+            onSend = { onImeAction() },
+        ),
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = palette.key,
             unfocusedContainerColor = palette.key,

@@ -58,6 +58,8 @@ import app.reshebnik.solver.CropArea
 import java.io.File
 import kotlinx.coroutines.delay
 
+private const val SLOW_START_MILLIS = 6000
+
 /** Рамка на экране камеры в долях экрана: то, что в неё попало, предлагается для обрезки. */
 private val FRAME = CropArea(left = 0.06f, top = 0.2f, right = 0.94f, bottom = 0.62f)
 
@@ -78,6 +80,7 @@ fun CameraScreen(onCaptured: (Uri, CropArea) -> Unit, onClose: () -> Unit) {
     }
     var torch by remember { mutableStateOf(false) }
     var hasTorch by remember { mutableStateOf(false) }
+    var ready by remember { mutableStateOf(false) }
     var capturing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -85,17 +88,17 @@ fun CameraScreen(onCaptured: (Uri, CropArea) -> Unit, onClose: () -> Unit) {
         controller.bindToLifecycle(lifecycleOwner)
         onDispose { controller.unbind() }
     }
-    // Камера подключается не мгновенно: ждём, чтобы узнать, есть ли у неё фонарик.
+    // Камера подключается не мгновенно: ждём её, а если ждать приходится долго — говорим об этом.
     LaunchedEffect(controller) {
-        repeat(30) {
-            val info = controller.cameraInfo
-            if (info != null) {
-                hasTorch = info.hasFlashUnit()
-                return@LaunchedEffect
-            }
-            delay(100)
+        var waited = 0
+        while (controller.cameraInfo == null) {
+            delay(200)
+            waited += 200
+            if (waited == SLOW_START_MILLIS) error = "Камера долго не отвечает. Можно подождать ещё или выбрать фото из галереи."
         }
-        error = "Камера не отвечает. Закрой этот экран и попробуй ещё раз или выбери фото из галереи."
+        hasTorch = controller.cameraInfo?.hasFlashUnit() == true
+        ready = true
+        error = null
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -137,8 +140,9 @@ fun CameraScreen(onCaptured: (Uri, CropArea) -> Unit, onClose: () -> Unit) {
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 20.dp),
             )
-            Shutter(enabled = !capturing && error == null) {
+            Shutter(enabled = ready && !capturing) {
                 capturing = true
+                error = null
                 val file = File(File(context.cacheDir, "photos").apply { mkdirs() }, "task.jpg")
                 controller.takePicture(
                     ImageCapture.OutputFileOptions.Builder(file).build(),

@@ -53,8 +53,8 @@ fun SettingsContent(apiKey: String, onSave: (String) -> Unit, onDismiss: () -> U
     ) {
         Text("Ключ Claude API", color = palette.text, fontFamily = Serif, fontSize = 26.sp)
         Text(
-            text = "Задания по фото решает нейросеть Claude. Ключ создаётся в console.anthropic.com, в разделе API Keys. " +
-                "Anthropic берёт плату за каждый запрос по своим тарифам.",
+            text = "Задания решает нейросеть Claude. Ключ создаётся в console.anthropic.com, в разделе API Keys. " +
+                "Anthropic берёт плату за каждый запрос: в режиме «Быстро» работает дешёвая модель, в режиме «Точно» — самая сильная.",
             color = palette.textMuted,
             fontFamily = Sans,
             fontSize = 15.sp,
@@ -74,7 +74,7 @@ fun SettingsContent(apiKey: String, onSave: (String) -> Unit, onDismiss: () -> U
             trailingIcon = { TextAction(if (visible) "Скрыть" else "Показать", { visible = !visible }) },
         )
         Text(
-            text = "Ключ хранится только на этом телефоне и отправляется только в Anthropic.",
+            text = "Ключ хранится на этом телефоне в зашифрованном виде и отправляется только в Anthropic.",
             color = palette.textFaint,
             fontFamily = Sans,
             fontSize = 13.sp,
